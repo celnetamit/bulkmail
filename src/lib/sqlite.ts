@@ -15,10 +15,45 @@ function toPgSql(sql: string) {
   return sql.replace(/\?/g, () => `$${++index}`);
 }
 
+const postgresIdentifiersToQuote = [
+  'isActive',
+  'dailyEmailLimit',
+  'lastLoginAt',
+  'createdAt',
+  'updatedAt',
+  'totalRecipients',
+  'sentCount',
+  'failedCount',
+  'skippedCount',
+  'startedAt',
+  'finishedAt',
+  'durationSeconds',
+  'bodyHtml',
+  'firstName',
+  'lastName',
+  'awsRegion',
+  'awsFromEmail',
+  'awsAccessKeyIdEncrypted',
+  'awsSecretAccessKeyEncrypted',
+  'awsSessionTokenEncrypted',
+  'resendApiKeyEncrypted',
+  'resendFromEmail',
+  'webhookSharedSecretEncrypted',
+  'providerEventId',
+  'providerMessageId',
+] as const;
+
+function quotePostgresIdentifiers(sql: string) {
+  return postgresIdentifiersToQuote.reduce((currentSql, identifier) => {
+    const pattern = new RegExp(`(?<!["\\w])${identifier}(?!["\\w])`, 'g');
+    return currentSql.replace(pattern, `"${identifier}"`);
+  }, sql);
+}
+
 function runSql<T>(payload: QueryPayload): T {
   const convertedPayload = JSON.stringify({
     ...payload,
-    sql: toPgSql(payload.sql),
+    sql: toPgSql(quotePostgresIdentifiers(payload.sql)),
     params: payload.params.map((value) => (value === undefined ? null : value)),
   });
 
