@@ -1,0 +1,32 @@
+{
+  "name": "bulkemail",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev -H localhost",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "type-check": "tsc --noEmit",
+    "smoke:api": "bash scripts/run_api_smoke.sh"
+  },
+  "dependencies": {
+    "@aws-sdk/client-sesv2": "^3.1057.0",
+    "@prisma/client": "^5.15.0",
+    "bcryptjs": "^3.0.3",
+    "grapesjs": "^0.23.1",
+    "grapesjs-mjml": "^1.0.8",
+    "jose": "^6.2.3",
+    "mjml": "^5.3.0",
+    "next": "^14.2.3",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "@types/react": "^18",
+    "@types/react-dom": "^18",
+    "prisma": "^5.15.0",
+    "typescript": "^5"
+  }
+}

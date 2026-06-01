@@ -1,0 +1,14 @@
+.next
+node_modules
+.env
+.env.local
+.env.production
+.env.test
+*.log
+tsconfig.tsbuildinfo
+prisma/dev.db
+prisma/dev.db-*
+coverage
+.git
+.codex
+.agents

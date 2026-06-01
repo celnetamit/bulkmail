@@ -1,0 +1,141 @@
+import bcrypt from 'bcryptjs';
+import { SignJWT, jwtVerify } from 'jose';
+import { cookies } from 'next/headers';
+import { NextResponse } from 'next/server';
+import { executeSql, queryRow } from '@/lib/sqlite';
+
+const SESSION_COOKIE = 'mailflow_session';
+const SESSION_TTL_SECONDS = 60 * 60 * 24 * 7;
+
+function getSessionSecret() {
+  const secret = process.env.AUTH_SECRET || 'dev-insecure-auth-secret-change-in-prod';
+  return new TextEncoder().encode(secret);
+}
+
+type SessionPayload = {
+  userId: string;
+  email: string;
+};
+
+export type AuthUser = {
+  userId: string;
+  email: string;
+  name: string | null;
+  role: string;
+  isActive: boolean;
+  dailyEmailLimit: number;
+  lastLoginAt: Date | null;
+};
+
+export async function hashPassword(password: string) {
+  return bcrypt.hash(password, 10);
+}
+
+export async function verifyPassword(password: string, hash: string) {
+  return bcrypt.compare(password, hash);
+}
+
+export async function createSessionToken(payload: SessionPayload) {
+  return new SignJWT(payload)
+    .setProtectedHeader({ alg: 'HS256' })
+    .setIssuedAt()
+    .setExpirationTime(`${SESSION_TTL_SECONDS}s`)
+    .sign(getSessionSecret());
+}
+
+export async function readSessionToken(token: string) {
+  try {
+    const { payload } = await jwtVerify(token, getSessionSecret());
+    if (typeof payload.userId !== 'string' || typeof payload.email !== 'string') {
+      return null;
+    }
+
+    return {
+      userId: payload.userId,
+      email: payload.email,
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function getUserRecordFromSession() {
+  const token = cookies().get(SESSION_COOKIE)?.value;
+  if (!token) return null;
+
+  const session = await readSessionToken(token);
+  if (!session) return null;
+
+  const user = queryRow<{
+    id: string;
+    email: string;
+    name: string | null;
+    role: string;
+    isActive: number | boolean;
+    dailyEmailLimit: number;
+    lastLoginAt: string | null;
+  }>(
+    'SELECT id, email, name, role, isActive, dailyEmailLimit, lastLoginAt FROM "User" WHERE id = ? LIMIT 1',
+    [session.userId],
+  );
+
+  if (!user || !Boolean(user.isActive)) return null;
+
+  return {
+    userId: user.id,
+    email: user.email,
+    name: user.name,
+    role: user.role,
+    isActive: Boolean(user.isActive),
+    dailyEmailLimit: user.dailyEmailLimit,
+    lastLoginAt: user.lastLoginAt ? new Date(user.lastLoginAt) : null,
+  } satisfies AuthUser;
+}
+
+export async function getCurrentUserFromCookies() {
+  return getUserRecordFromSession();
+}
+
+export async function requireUserFromCookies(): Promise<{ user: AuthUser } | { error: NextResponse }> {
+  const user = await getCurrentUserFromCookies();
+  if (!user) {
+    return { error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) };
+  }
+
+  return { user };
+}
+
+export async function requireAdminFromCookies(): Promise<{ user: AuthUser } | { error: NextResponse }> {
+  const auth = await requireUserFromCookies();
+  if ('error' in auth) return auth;
+
+  if (auth.user.role !== 'ADMIN') {
+    return { error: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) };
+  }
+
+  return auth;
+}
+
+export function setSessionCookie(response: NextResponse, token: string) {
+  response.cookies.set({
+    name: SESSION_COOKIE,
+    value: token,
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: process.env.NODE_ENV === 'production',
+    path: '/',
+    maxAge: SESSION_TTL_SECONDS,
+  });
+}
+
+export function clearSessionCookie(response: NextResponse) {
+  response.cookies.set({
+    name: SESSION_COOKIE,
+    value: '',
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: process.env.NODE_ENV === 'production',
+    path: '/',
+    maxAge: 0,
+  });
+}

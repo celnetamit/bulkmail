@@ -1,0 +1,11 @@
+.next/
+node_modules/
+.env.local
+.env
+.env.production
+.env.test
+tsconfig.tsbuildinfo
+prisma/dev.db
+prisma/dev.db-*
+coverage/
+.DS_Store
