@@ -1,22 +1,23 @@
-# SQLite to Postgres Migration Path
+# SQLite to Postgres Migration Note
 
-## 1) Update datasource
-- In `prisma/schema.prisma`, change:
-  - `provider = "sqlite"` -> `provider = "postgresql"`
-  - `url = env("DATABASE_URL")`
+This repo now runs on Postgres in production.
 
-## 2) Set environment
-- Add `DATABASE_URL=postgresql://user:pass@host:5432/dbname?schema=public`
+The app still keeps a local SQLite fallback for development when `DATABASE_URL` is not set, but the deployment path in Coolify should use a Postgres service and set `DATABASE_URL`.
 
-## 3) Generate migration for Postgres
-- `pnpm exec prisma migrate dev --name postgres_init`
+## Production setup
 
-## 4) Apply in production
-- `pnpm exec prisma migrate deploy`
+- Set `provider = "postgresql"` in `prisma/schema.prisma`
+- Provide `DATABASE_URL` in Coolify
+- Let `scripts/init-postgres.js` create the schema on startup
 
-## 5) Data transfer options
-- For fresh environments: deploy without historical SQLite data.
-- For existing data: export SQLite rows and import to Postgres via ETL script (table order: User -> List -> Contact -> Template -> Campaign -> Event).
+## If you are migrating old SQLite data
 
-## 6) Verification
-- Run API smoke script and confirm analytics counts.
+- Fresh deployments can start empty on Postgres
+- Existing SQLite data would need a one-time export/import into the new Postgres database
+- Table order for a manual import is: `User -> List -> Contact -> Template -> Campaign -> Event`
+
+## Verification
+
+- Run the build
+- Open `/api/health`
+- Log in and send a test campaign

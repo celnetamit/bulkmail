@@ -1,0 +1,25 @@
+const fs = require('node:fs');
+const path = require('node:path');
+const { Pool } = require('pg');
+
+const databaseUrl = process.env.DATABASE_URL;
+if (!databaseUrl) {
+  throw new Error('DATABASE_URL is required for Postgres initialization.');
+}
+
+const sqlPath = path.join(process.cwd(), 'prisma', 'postgres-init.sql');
+const sql = fs.readFileSync(sqlPath, 'utf8');
+
+const pool = new Pool({ connectionString: databaseUrl });
+
+(async () => {
+  try {
+    await pool.query(sql);
+    console.log('Postgres schema ready');
+  } finally {
+    await pool.end();
+  }
+})().catch((error) => {
+  console.error(error);
+  process.exit(1);
+});

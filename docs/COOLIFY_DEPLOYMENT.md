@@ -11,19 +11,16 @@ This app is ready to deploy from GitHub on Coolify with the included `Dockerfile
 
 ## Storage
 
-This app stores its live database in SQLite at `prisma/dev.db`.
+This app now uses Postgres.
 
-In Coolify, add persistent storage for:
-
-- **Destination path:** `/app/prisma/dev.db`
-
-Do not mount the whole `/app/prisma` directory, because that would hide the migrations and schema files that live in the image.
+In Coolify, add a Postgres database service and copy its connection string into `DATABASE_URL`.
 
 ## Environment variables
 
 Set these in Coolify for production:
 
 ```env
+DATABASE_URL=postgresql://postgres:password@your-postgres-host:5432/bulkmail?schema=public
 AUTH_SECRET=replace-with-a-long-random-secret
 MAIL_PROVIDER=aws-ses
 AWS_REGION=ap-south-1
@@ -44,10 +41,10 @@ WEBHOOK_SHARED_SECRET=...
 2. Create a new Coolify application from that repository.
 3. Choose the `Dockerfile` build pack.
 4. Set the exposed port to `3000`.
-5. Add the persistent storage mount for `/app/prisma/dev.db`.
+5. Add the Postgres service and set `DATABASE_URL` in the app environment.
 6. Add the production environment variables.
 7. Deploy.
-8. On each new release, Coolify will rebuild from GitHub and run `prisma migrate deploy` before starting Next.js.
+8. On each new release, Coolify will rebuild from GitHub, initialize the Postgres schema, and then start Next.js.
 
 ## Post-deploy checks
 
@@ -58,5 +55,5 @@ WEBHOOK_SHARED_SECRET=...
 
 ## Notes
 
-- The image runs `prisma migrate deploy` at startup so schema changes are applied before the app serves traffic.
-- If you later move to Postgres, the app should be updated to use a proper database URL and external database service. For now, SQLite works well as long as the database file is persisted.
+- The image runs `scripts/init-postgres.js` at startup so schema objects exist before the app serves traffic.
+- The runtime connects directly to `DATABASE_URL` through the database helper layer.
