@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { EmailRichEditor, starterTemplate } from '@/components/email-rich-editor';
 
@@ -17,11 +17,13 @@ type Campaign = {
   template: { id: string; name: string } | null;
 };
 
-export function CampaignCreateClient() {
+type CampaignCreateClientProps = {
+  campaignId?: string;
+  templateIdFromQuery?: string;
+};
+
+export function CampaignCreateClient({ campaignId, templateIdFromQuery }: CampaignCreateClientProps) {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const campaignId = searchParams.get('campaignId') || '';
-  const templateIdFromQuery = searchParams.get('templateId') || '';
   const [lists, setLists] = useState<List[]>([]);
   const [templates, setTemplates] = useState<Template[]>([]);
   const [message, setMessage] = useState('');

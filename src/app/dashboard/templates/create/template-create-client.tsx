@@ -1,16 +1,18 @@
 'use client';
 
 import Link from 'next/link';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { EmailRichEditor, starterTemplate } from '@/components/email-rich-editor';
 
 type Template = { id: string; name: string; subject: string; bodyHtml: string };
 
-export function TemplateCreateClient() {
+type TemplateCreateClientProps = {
+  templateId?: string;
+};
+
+export function TemplateCreateClient({ templateId }: TemplateCreateClientProps) {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const templateId = searchParams.get('templateId') || '';
   const [message, setMessage] = useState('');
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -45,7 +47,7 @@ export function TemplateCreateClient() {
     setSubject('');
     setBodyHtml(starterTemplate('Hello {{firstName}},'));
     setMessage('');
-    router.replace('/dashboard/templates/create');
+    router.replace(`/dashboard/templates/create${templateId ? `?templateId=${templateId}` : ''}`);
   }
 
   async function saveTemplate(event: FormEvent) {

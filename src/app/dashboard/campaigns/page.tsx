@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 type Campaign = {
   id: string;
@@ -46,24 +46,26 @@ export default function CampaignsPage() {
   const [message, setMessage] = useState('');
   const [sendingId, setSendingId] = useState<string | null>(null);
 
-  async function loadAll() {
+  const loadAll = useCallback(async () => {
     const campaignsRes = await fetch('/api/campaigns', { cache: 'no-store' });
     const campaignsData = (await campaignsRes.json()) as { campaigns: Campaign[] };
     setCampaigns(campaignsData.campaigns || []);
-  }
-
-  useEffect(() => { loadAll(); }, []);
+  }, []);
 
   useEffect(() => {
-    const hasSending = campaigns.some((campaign) => campaign.status === 'SENDING');
-    if (!hasSending) return undefined;
+    loadAll();
+  }, [loadAll]);
+
+  const sendingCampaign = useMemo(() => campaigns.find((campaign) => campaign.status === 'SENDING') || null, [campaigns]);
+  useEffect(() => {
+    if (!sendingCampaign) return undefined;
 
     const interval = window.setInterval(() => {
       loadAll();
     }, 2000);
 
     return () => window.clearInterval(interval);
-  }, [campaigns]);
+  }, [loadAll, sendingCampaign]);
 
   const sentCampaigns = useMemo(() => campaigns.filter((campaign) => campaign.status === 'SENT'), [campaigns]);
   const summary = useMemo(() => {
@@ -122,8 +124,6 @@ export default function CampaignsPage() {
     setMessage(`Campaign sent via ${data.provider}. Sent count: ${data.sentCount ?? 0}.${quotaNote}`);
     await loadAll();
   }
-
-  const sendingCampaign = useMemo(() => campaigns.find((campaign) => campaign.status === 'SENDING') || null, [campaigns]);
 
   return (
     <div className="overview">
