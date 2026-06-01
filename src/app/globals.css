@@ -420,13 +420,29 @@ p {
   color: #fca5a5;
 }
 
-.auth-form--inline {
-  flex-direction: row;
-  flex-wrap: wrap;
+.list-create-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) auto;
+  gap: 0.75rem;
+  align-items: end;
 }
 
-.auth-form--inline input {
-  flex: 1 1 220px;
+.list-create-form input {
+  width: 100%;
+  min-height: 44px;
+}
+
+.list-create-form .btn-primary {
+  min-height: 44px;
+  padding: 0 1.5rem;
+  border-radius: 0.6rem;
+  box-shadow: none;
+}
+
+@media (max-width: 860px) {
+  .list-create-form {
+    grid-template-columns: 1fr;
+  }
 }
 
 .data-table {

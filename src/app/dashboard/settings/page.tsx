@@ -15,8 +15,15 @@ type Settings = {
   source: 'database' | 'env';
 };
 
+type CurrentUser = {
+  role: 'ADMIN' | 'USER';
+  email: string;
+  name: string | null;
+};
+
 export default function SettingsPage() {
   const [settings, setSettings] = useState<Settings | null>(null);
+  const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
   const [message, setMessage] = useState('');
   const [saving, setSaving] = useState(false);
   const [sendingTest, setSendingTest] = useState(false);
@@ -35,7 +42,22 @@ export default function SettingsPage() {
   const [testSubject, setTestSubject] = useState('MailFlow test email');
   const [testBodyHtml, setTestBodyHtml] = useState('<p>Hello, this is a test email from MailFlow.</p>');
 
-  async function loadSettings() {
+  async function loadSessionAndSettings() {
+    const meResponse = await fetch('/api/auth/me', { cache: 'no-store' });
+    const meData = (await meResponse.json()) as { user?: CurrentUser; error?: string };
+
+    if (!meResponse.ok || !meData.user) {
+      setMessage(meData.error || 'Failed to load account details.');
+      return;
+    }
+
+    setCurrentUser(meData.user);
+
+    if (meData.user.role !== 'ADMIN') {
+      setSettings(null);
+      return;
+    }
+
     const res = await fetch('/api/settings', { cache: 'no-store' });
     const data = (await res.json()) as { settings?: Settings; error?: string };
     if (!res.ok) {
@@ -52,11 +74,15 @@ export default function SettingsPage() {
   }
 
   useEffect(() => {
-    loadSettings();
+    loadSessionAndSettings();
   }, []);
 
   async function saveSettings(event: FormEvent) {
     event.preventDefault();
+    if (currentUser?.role !== 'ADMIN') {
+      setMessage('Mail Provider settings are admin-only.');
+      return;
+    }
     setSaving(true);
     setMessage('');
 
@@ -87,7 +113,7 @@ export default function SettingsPage() {
     setAwsSessionToken('');
     setResendApiKey('');
     setWebhookSharedSecret('');
-    await loadSettings();
+    await loadSessionAndSettings();
   }
 
   async function sendTestEmail(event: FormEvent) {
@@ -122,40 +148,47 @@ export default function SettingsPage() {
 
       {message ? <p className="form-note">{message}</p> : null}
 
-      <div className="card" style={{ padding: '1rem', marginBottom: '1rem' }}>
-        <h2>Mail Provider</h2>
-        <form className="auth-form" onSubmit={saveSettings}>
-          <select className="status-select" value={provider} onChange={(e) => setProvider(e.target.value as Settings['provider'])}>
-            <option value="mock">Mock</option>
-            <option value="resend">Resend</option>
-            <option value="aws-ses">AWS SES</option>
-          </select>
+      {currentUser?.role === 'ADMIN' ? (
+        <div className="card" style={{ padding: '1rem', marginBottom: '1rem' }}>
+          <h2>Mail Provider</h2>
+          <form className="auth-form" onSubmit={saveSettings}>
+            <select className="status-select" value={provider} onChange={(e) => setProvider(e.target.value as Settings['provider'])}>
+              <option value="mock">Mock</option>
+              <option value="resend">Resend</option>
+              <option value="aws-ses">AWS SES</option>
+            </select>
 
-          {provider === 'aws-ses' ? (
-            <>
-              <input value={awsRegion} onChange={(e) => setAwsRegion(e.target.value)} placeholder="AWS region, e.g. ap-south-1" />
-              <input value={awsFromEmail} onChange={(e) => setAwsFromEmail(e.target.value)} placeholder="From email, e.g. no-reply@yourdomain.com" />
-              <input value={awsAccessKeyId} onChange={(e) => setAwsAccessKeyId(e.target.value)} placeholder={settings?.hasAwsAccessKeyId ? 'Access key stored - leave blank to keep' : 'AWS access key id'} />
-              <input type="password" value={awsSecretAccessKey} onChange={(e) => setAwsSecretAccessKey(e.target.value)} placeholder={settings?.hasAwsSecretAccessKey ? 'Secret key stored - leave blank to keep' : 'AWS secret access key'} />
-              <input type="password" value={awsSessionToken} onChange={(e) => setAwsSessionToken(e.target.value)} placeholder={settings?.hasAwsSessionToken ? 'Session token stored - leave blank to keep' : 'Optional session token'} />
-            </>
-          ) : null}
+            {provider === 'aws-ses' ? (
+              <>
+                <input value={awsRegion} onChange={(e) => setAwsRegion(e.target.value)} placeholder="AWS region, e.g. ap-south-1" />
+                <input value={awsFromEmail} onChange={(e) => setAwsFromEmail(e.target.value)} placeholder="From email, e.g. no-reply@yourdomain.com" />
+                <input value={awsAccessKeyId} onChange={(e) => setAwsAccessKeyId(e.target.value)} placeholder={settings?.hasAwsAccessKeyId ? 'Access key stored - leave blank to keep' : 'AWS access key id'} />
+                <input type="password" value={awsSecretAccessKey} onChange={(e) => setAwsSecretAccessKey(e.target.value)} placeholder={settings?.hasAwsSecretAccessKey ? 'Secret key stored - leave blank to keep' : 'AWS secret access key'} />
+                <input type="password" value={awsSessionToken} onChange={(e) => setAwsSessionToken(e.target.value)} placeholder={settings?.hasAwsSessionToken ? 'Session token stored - leave blank to keep' : 'Optional session token'} />
+              </>
+            ) : null}
 
-          {provider === 'resend' ? (
-            <>
-              <input type="password" value={resendApiKey} onChange={(e) => setResendApiKey(e.target.value)} placeholder={settings?.resendApiKeyMasked ? 'API key stored - leave blank to keep' : 'Resend API key'} />
-              <input value={resendFromEmail} onChange={(e) => setResendFromEmail(e.target.value)} placeholder="From email, e.g. no-reply@example.com" />
-            </>
-          ) : null}
+            {provider === 'resend' ? (
+              <>
+                <input type="password" value={resendApiKey} onChange={(e) => setResendApiKey(e.target.value)} placeholder={settings?.resendApiKeyMasked ? 'API key stored - leave blank to keep' : 'Resend API key'} />
+                <input value={resendFromEmail} onChange={(e) => setResendFromEmail(e.target.value)} placeholder="From email, e.g. no-reply@example.com" />
+              </>
+            ) : null}
 
-          <input type="password" value={webhookSharedSecret} onChange={(e) => setWebhookSharedSecret(e.target.value)} placeholder={settings?.hasWebhookSharedSecret ? 'Webhook secret stored - leave blank to keep' : 'Webhook shared secret'} />
+            <input type="password" value={webhookSharedSecret} onChange={(e) => setWebhookSharedSecret(e.target.value)} placeholder={settings?.hasWebhookSharedSecret ? 'Webhook secret stored - leave blank to keep' : 'Webhook shared secret'} />
 
-          <button className="btn-primary" type="submit" disabled={saving}>
-            {saving ? 'Saving...' : 'Save Settings'}
-          </button>
-        </form>
-        <p className="form-note">Stored values are kept encrypted in the database. Leave secret fields blank to keep the existing value.</p>
-      </div>
+            <button className="btn-primary" type="submit" disabled={saving}>
+              {saving ? 'Saving...' : 'Save Settings'}
+            </button>
+          </form>
+          <p className="form-note">Stored values are kept encrypted in the database. Leave secret fields blank to keep the existing value.</p>
+        </div>
+      ) : (
+        <div className="card" style={{ padding: '1rem', marginBottom: '1rem' }}>
+          <h2>Mail Provider</h2>
+          <p className="form-note">Mail Provider settings are managed by admins only.</p>
+        </div>
+      )}
 
       <div className="card" style={{ padding: '1rem' }}>
         <h2>Send Test Email</h2>

@@ -387,7 +387,7 @@ export default function ListsPage() {
 
       <div className="card" style={{ padding: '1rem', marginBottom: '1rem' }}>
         <h2>Create List</h2>
-        <form className="auth-form auth-form--inline" onSubmit={createList}>
+        <form className="list-create-form" onSubmit={createList}>
           <input value={newListName} onChange={(e) => setNewListName(e.target.value)} placeholder="List name" required />
           <input value={newListDescription} onChange={(e) => setNewListDescription(e.target.value)} placeholder="Description" />
           <button className="btn-primary" type="submit">Create</button>

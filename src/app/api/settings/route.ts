@@ -6,6 +6,10 @@ export async function GET() {
   const auth = await requireUserFromCookies();
   if ('error' in auth) return auth.error;
 
+  if (auth.user.role !== 'ADMIN') {
+    return fail('Mail Provider settings are admin-only.', 403);
+  }
+
   const settings = await getMailSettings(auth.user.userId);
   return ok({ settings });
 }
@@ -13,6 +17,10 @@ export async function GET() {
 export async function PUT(request: Request) {
   const auth = await requireUserFromCookies();
   if ('error' in auth) return auth.error;
+
+  if (auth.user.role !== 'ADMIN') {
+    return fail('Mail Provider settings are admin-only.', 403);
+  }
 
   let body: unknown;
   try {
