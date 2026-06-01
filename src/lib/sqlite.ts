@@ -17,6 +17,11 @@ function toPgSql(sql: string) {
 
 const postgresIdentifiersToQuote = [
   'isActive',
+  'userId',
+  'campaignId',
+  'listId',
+  'contactId',
+  'templateId',
   'dailyEmailLimit',
   'lastLoginAt',
   'createdAt',
