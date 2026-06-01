@@ -4,6 +4,19 @@ import { executeSql, queryRow } from '@/lib/sqlite';
 
 type Params = { params: { id: string } };
 
+export async function GET(_: Request, { params }: Params) {
+  const auth = await requireUserFromCookies();
+  if ('error' in auth) return auth.error;
+
+  const template = queryRow(
+    'SELECT id, name, subject, bodyHtml, userId, createdAt, updatedAt FROM "Template" WHERE id = ? AND userId = ? LIMIT 1',
+    [params.id, auth.user.userId],
+  );
+  if (!template) return fail('Template not found.', 404);
+
+  return ok({ template });
+}
+
 export async function PATCH(request: Request, { params }: Params) {
   const auth = await requireUserFromCookies();
   if ('error' in auth) return auth.error;

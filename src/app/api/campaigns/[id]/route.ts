@@ -5,6 +5,53 @@ import { executeSql, queryRow } from '@/lib/sqlite';
 type Params = { params: { id: string } };
 const ALLOWED_STATUSES = new Set(['DRAFT', 'SCHEDULED', 'SENDING', 'SENT', 'FAILED']);
 
+export async function GET(_: Request, { params }: Params) {
+  const auth = await requireUserFromCookies();
+  if ('error' in auth) return auth.error;
+
+  const campaign = queryRow(
+    `
+      SELECT
+        c.id,
+        c.name,
+        c.subject,
+        c.bodyHtml,
+        c.status,
+        c.provider,
+        c.totalRecipients,
+        c.sentCount,
+        c.failedCount,
+        c.skippedCount,
+        c.startedAt,
+        c.finishedAt,
+        c.durationSeconds,
+        c.userId,
+        c.listId,
+        c.templateId,
+        c.createdAt,
+        c.updatedAt,
+        l.name as listName,
+        t.name as templateName
+      FROM "Campaign" c
+      INNER JOIN "List" l ON l.id = c.listId
+      LEFT JOIN "Template" t ON t.id = c.templateId
+      WHERE c.id = ? AND c.userId = ?
+      LIMIT 1
+    `,
+    [params.id, auth.user.userId],
+  );
+
+  if (!campaign) return fail('Campaign not found.', 404);
+
+  return ok({
+    campaign: {
+      ...campaign,
+      list: { id: campaign.listId, name: campaign.listName },
+      template: campaign.templateId ? { id: campaign.templateId, name: campaign.templateName || '' } : null,
+    },
+  });
+}
+
 export async function PATCH(request: Request, { params }: Params) {
   const auth = await requireUserFromCookies();
   if ('error' in auth) return auth.error;

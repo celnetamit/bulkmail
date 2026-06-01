@@ -1,6 +1,7 @@
 'use client';
 
 import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 
 type ListItem = {
   id: string;
@@ -78,6 +79,7 @@ function PaginationControls({
 }
 
 export default function ListsPage() {
+  const router = useRouter();
   const [lists, setLists] = useState<ListItem[]>([]);
   const [listsPagination, setListsPagination] = useState<Pagination>({
     page: 1,
@@ -89,17 +91,6 @@ export default function ListsPage() {
     order: 'desc',
   });
   const [selectedListId, setSelectedListId] = useState('');
-  const [selectedList, setSelectedList] = useState<ListDetail | null>(null);
-  const [contacts, setContacts] = useState<Contact[]>([]);
-  const [contactsPagination, setContactsPagination] = useState<Pagination>({
-    page: 1,
-    pageSize: 10,
-    total: 0,
-    totalPages: 1,
-    search: '',
-    sort: 'createdAt',
-    order: 'desc',
-  });
   const [message, setMessage] = useState('');
   const [listSearch, setListSearch] = useState('');
   const [listSearchDraft, setListSearchDraft] = useState('');
@@ -107,19 +98,9 @@ export default function ListsPage() {
   const [listPageSize, setListPageSize] = useState(8);
   const [listSort, setListSort] = useState('createdAt');
   const [listOrder, setListOrder] = useState<'asc' | 'desc'>('desc');
-  const [contactSearch, setContactSearch] = useState('');
-  const [contactSearchDraft, setContactSearchDraft] = useState('');
-  const [contactPage, setContactPage] = useState(1);
-  const [contactPageSize, setContactPageSize] = useState(10);
-  const [contactSort, setContactSort] = useState('createdAt');
-  const [contactOrder, setContactOrder] = useState<'asc' | 'desc'>('desc');
   const [activeMenuId, setActiveMenuId] = useState('');
   const [newListName, setNewListName] = useState('');
   const [newListDescription, setNewListDescription] = useState('');
-  const [contactEmail, setContactEmail] = useState('');
-  const [contactFirstName, setContactFirstName] = useState('');
-  const [contactLastName, setContactLastName] = useState('');
-  const [csvText, setCsvText] = useState('');
 
   async function loadLists() {
     const params = new URLSearchParams({
@@ -141,68 +122,10 @@ export default function ListsPage() {
     }
   }
 
-  async function loadSelectedList(listId: string) {
-    if (!listId) {
-      setSelectedList(null);
-      return;
-    }
-
-    const response = await fetch(`/api/lists/${listId}`, { cache: 'no-store' });
-    if (!response.ok) {
-      setSelectedList(null);
-      return;
-    }
-
-    const data = (await response.json()) as { list: ListDetail };
-    setSelectedList(data.list || null);
-  }
-
-  async function loadContacts(listId: string) {
-    if (!listId) {
-      setContacts([]);
-      setContactsPagination((current) => ({ ...current, total: 0, totalPages: 1 }));
-      return;
-    }
-
-    const params = new URLSearchParams({
-      listId,
-      page: String(contactPage),
-      pageSize: String(contactPageSize),
-      search: contactSearch,
-      sort: contactSort,
-      order: contactOrder,
-    });
-    const response = await fetch(`/api/contacts?${params.toString()}`, { cache: 'no-store' });
-    const data = (await response.json()) as ContactsResponse;
-    setContacts(data.contacts || []);
-    setContactsPagination(data.pagination || contactsPagination);
-  }
-
   useEffect(() => {
     loadLists();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [listPage, listPageSize, listSearch, listSort, listOrder]);
-
-  useEffect(() => {
-    if (!selectedListId && lists.length > 0) {
-      setSelectedListId(lists[0].id);
-    }
-  }, [lists, selectedListId]);
-
-  useEffect(() => {
-    loadSelectedList(selectedListId);
-    setContactPage(1);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedListId]);
-
-  useEffect(() => {
-    loadContacts(selectedListId);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedListId, contactPage, contactPageSize, contactSearch, contactSort, contactOrder]);
-
-  async function refreshAll(nextSelectedListId = selectedListId) {
-    await Promise.all([loadLists(), loadSelectedList(nextSelectedListId), loadContacts(nextSelectedListId)]);
-  }
 
   async function createList(event: FormEvent) {
     event.preventDefault();
@@ -223,9 +146,10 @@ export default function ListsPage() {
     setNewListName('');
     setNewListDescription('');
     setMessage('List created.');
-    const nextListId = data.list?.id || selectedListId;
-    setSelectedListId(nextListId);
-    await refreshAll(nextListId);
+    await loadLists();
+    if (data.list?.id) {
+      router.push(`/dashboard/lists/${data.list.id}`);
+    }
   }
 
   async function updateList(list: ListItem) {
@@ -246,7 +170,7 @@ export default function ListsPage() {
     }
 
     setMessage('List updated.');
-    await refreshAll();
+    await loadLists();
   }
 
   async function deleteList(list: ListItem) {
@@ -259,103 +183,13 @@ export default function ListsPage() {
       return;
     }
 
-    if (selectedListId === list.id) {
-      setSelectedListId('');
-      setSelectedList(null);
-      setContacts([]);
-    }
-
     setMessage('List deleted.');
     await loadLists();
   }
 
-  async function addContact(event: FormEvent) {
-    event.preventDefault();
-    if (!selectedListId) return;
-
-    const response = await fetch('/api/contacts', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        listId: selectedListId,
-        email: contactEmail,
-        firstName: contactFirstName,
-        lastName: contactLastName,
-      }),
-    });
-
-    const data = await response.json();
-    if (!response.ok) {
-      setMessage(data.error || 'Failed to add contact.');
-      return;
-    }
-
-    setContactEmail('');
-    setContactFirstName('');
-    setContactLastName('');
-    setMessage('Contact added.');
-    await refreshAll();
-  }
-
-  async function importCsv(event: FormEvent) {
-    event.preventDefault();
-    if (!selectedListId) return;
-
-    const response = await fetch('/api/contacts', {
-      method: 'PUT',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ listId: selectedListId, csv: csvText }),
-    });
-
-    const data = (await response.json()) as { created?: number; skipped?: number; error?: string };
-
-    if (!response.ok) {
-      setMessage(data.error || 'Import failed.');
-      return;
-    }
-
-    setMessage(`Import complete. Created: ${data.created ?? 0}, Skipped: ${data.skipped ?? 0}.`);
-    setCsvText('');
-    await refreshAll();
-  }
-
-  async function updateContactStatus(contactId: string, status: string) {
-    const response = await fetch(`/api/contacts/${contactId}`, {
-      method: 'PATCH',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ status }),
-    });
-
-    const data = await response.json();
-    if (!response.ok) {
-      setMessage(data.error || 'Failed to update contact status.');
-      return;
-    }
-
-    setMessage('Contact status updated.');
-    await refreshAll();
-  }
-
-  async function deleteContact(contactId: string) {
-    const response = await fetch(`/api/contacts/${contactId}`, { method: 'DELETE' });
-    const data = await response.json();
-    if (!response.ok) {
-      setMessage(data.error || 'Failed to delete contact.');
-      return;
-    }
-
-    setMessage('Contact deleted.');
-    await refreshAll();
-  }
-
-  const selectedListSummary = useMemo(
-    () => selectedList || lists.find((item) => item.id === selectedListId) || null,
-    [lists, selectedList, selectedListId],
-  );
 
   const listTotal = listsPagination.total;
   const listCountOnPage = lists.length;
-  const contactsTotal = contactsPagination.total;
 
   return (
     <div className="overview">
@@ -376,12 +210,8 @@ export default function ListsPage() {
           <p className="stat-value">{listCountOnPage}</p>
         </div>
         <div className="stat-card">
-          <h3>Selected Contacts</h3>
-          <p className="stat-value">{selectedListSummary?.contactsCount ?? contactsTotal}</p>
-        </div>
-        <div className="stat-card">
-          <h3>Selected Campaigns</h3>
-          <p className="stat-value">{selectedListSummary?.campaignsCount ?? 0}</p>
+          <h3>Detail Pages</h3>
+          <p className="stat-value">{listTotal}</p>
         </div>
       </div>
 
@@ -477,7 +307,7 @@ export default function ListsPage() {
                     onClick={() => setSelectedListId(list.id)}
                   >
                     <td>
-                      <button className="link-btn" type="button" onClick={(event) => { event.stopPropagation(); setSelectedListId(list.id); }}>
+                      <button className="link-btn" type="button" onClick={(event) => { event.stopPropagation(); router.push(`/dashboard/lists/${list.id}`); }}>
                         {list.name}
                       </button>
                     </td>
@@ -498,7 +328,7 @@ export default function ListsPage() {
                         </button>
                         {activeMenuId === list.id ? (
                           <div className="row-menu" onClick={(event) => event.stopPropagation()}>
-                            <button type="button" onClick={() => setSelectedListId(list.id)}>Open</button>
+                            <button type="button" onClick={() => router.push(`/dashboard/lists/${list.id}`)}>Open</button>
                             <button type="button" onClick={() => updateList(list)}>Edit</button>
                             <button type="button" className="danger" onClick={() => deleteList(list)}>Delete</button>
                           </div>
@@ -513,157 +343,35 @@ export default function ListsPage() {
         </section>
 
         <aside className="card lists-detail">
-          {selectedListSummary ? (
+          {selectedListId ? (
             <>
               <div className="section-header">
                 <div>
-                  <h2>{selectedListSummary.name}</h2>
-                  <p>{selectedListSummary.description || 'No description yet.'}</p>
+                  <h2>Open list workspace</h2>
+                  <p>Move into a dedicated page for the contacts, imports, and list actions.</p>
                 </div>
                 <div className="detail-actions">
-                  <button className="mini-btn" type="button" onClick={() => updateList(selectedListSummary)}>Edit</button>
-                  <button className="mini-btn danger" type="button" onClick={() => deleteList(selectedListSummary)}>Delete</button>
+                  <button className="mini-btn" type="button" onClick={() => router.push(`/dashboard/lists/${selectedListId}`)}>Open page</button>
                 </div>
               </div>
 
               <div className="detail-stats">
                 <div>
-                  <span>Contacts</span>
-                  <strong>{selectedListSummary.contactsCount}</strong>
+                  <span>Selected list</span>
+                  <strong>{selectedListId.slice(0, 8)}</strong>
                 </div>
                 <div>
-                  <span>Campaigns</span>
-                  <strong>{selectedListSummary.campaignsCount}</strong>
+                  <span>Current page</span>
+                  <strong>{listPage}</strong>
                 </div>
               </div>
 
-              <div className="detail-panel">
-                <h3>Add Contact</h3>
-                <form className="auth-form" onSubmit={addContact}>
-                  <input value={contactEmail} onChange={(e) => setContactEmail(e.target.value)} placeholder="email@example.com" type="email" required />
-                  <input value={contactFirstName} onChange={(e) => setContactFirstName(e.target.value)} placeholder="First name" />
-                  <input value={contactLastName} onChange={(e) => setContactLastName(e.target.value)} placeholder="Last name" />
-                  <button className="btn-primary" type="submit">Add Contact</button>
-                </form>
-              </div>
-
-              <div className="detail-panel">
-                <h3>Import CSV</h3>
-                <p>Format: `email,firstName,lastName` (header optional)</p>
-                <form className="auth-form" onSubmit={importCsv}>
-                  <textarea
-                    value={csvText}
-                    onChange={(e) => setCsvText(e.target.value)}
-                    placeholder={'email,firstName,lastName\nuser1@example.com,Jane,Doe'}
-                    rows={6}
-                    className="auth-textarea"
-                  />
-                  <button className="btn-primary" type="submit">Import Contacts</button>
-                </form>
-              </div>
-
-              <div className="detail-panel">
-                <div className="section-header section-header--compact">
-                  <h3>Contacts</h3>
-                  <PaginationControls
-                    pagination={contactsPagination}
-                    onPrevious={() => setContactPage((current) => Math.max(1, current - 1))}
-                    onNext={() => setContactPage((current) => Math.min(contactsPagination.totalPages, current + 1))}
-                  />
-                </div>
-
-                <div className="list-toolbar list-toolbar--compact">
-                  <form
-                    className="list-toolbar__search"
-                    onSubmit={(event) => {
-                      event.preventDefault();
-                      setContactPage(1);
-                      setContactSearch(contactSearchDraft.trim());
-                    }}
-                  >
-                    <input
-                      name="contactSearch"
-                      value={contactSearchDraft}
-                      onChange={(e) => setContactSearchDraft(e.target.value)}
-                      placeholder="Search contacts"
-                    />
-                    <button className="btn-secondary" type="submit">Search</button>
-                    <button
-                      className="btn-secondary"
-                      type="button"
-                      onClick={() => {
-                        setContactSearch('');
-                        setContactSearchDraft('');
-                        setContactPage(1);
-                      }}
-                    >
-                      Clear
-                    </button>
-                  </form>
-
-                  <div className="list-toolbar__filters">
-                    <select value={contactSort} onChange={(e) => setContactSort(e.target.value)} className="status-select">
-                      <option value="createdAt">Created</option>
-                      <option value="email">Email</option>
-                      <option value="status">Status</option>
-                      <option value="firstName">First name</option>
-                      <option value="lastName">Last name</option>
-                    </select>
-                    <select value={contactOrder} onChange={(e) => setContactOrder(e.target.value as 'asc' | 'desc')} className="status-select">
-                      <option value="desc">Newest first</option>
-                      <option value="asc">Oldest first</option>
-                    </select>
-                    <select value={contactPageSize} onChange={(e) => setContactPageSize(Number(e.target.value))} className="status-select">
-                      <option value={10}>10 / page</option>
-                      <option value={20}>20 / page</option>
-                      <option value={40}>40 / page</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div className="detail-table-wrap">
-                  <table className="data-table">
-                    <thead>
-                      <tr>
-                        <th>Email</th>
-                        <th>Name</th>
-                        <th>Status</th>
-                        <th>Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {contacts.length === 0 ? (
-                        <tr><td colSpan={4}>No contacts for selected list.</td></tr>
-                      ) : (
-                        contacts.map((contact) => (
-                          <tr key={contact.id}>
-                            <td>{contact.email}</td>
-                            <td>{[contact.firstName, contact.lastName].filter(Boolean).join(' ') || '-'}</td>
-                            <td>{contact.status}</td>
-                            <td>
-                              <select
-                                value={contact.status}
-                                onChange={(e) => updateContactStatus(contact.id, e.target.value)}
-                                className="status-select"
-                              >
-                                <option value="SUBSCRIBED">SUBSCRIBED</option>
-                                <option value="UNSUBSCRIBED">UNSUBSCRIBED</option>
-                                <option value="BOUNCED">BOUNCED</option>
-                              </select>
-                              <button className="mini-btn danger" type="button" onClick={() => deleteContact(contact.id)}>Delete</button>
-                            </td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
+              <p className="form-note">The full contact manager is now on the list detail page for a cleaner workflow.</p>
             </>
           ) : (
             <div className="detail-empty">
               <h2>Select a list</h2>
-              <p>Choose a list from the table to manage its contacts, imports, and actions here.</p>
+              <p>Choose a list from the table to open its detail page.</p>
             </div>
           )}
         </aside>
