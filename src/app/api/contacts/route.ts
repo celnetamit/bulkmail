@@ -4,6 +4,33 @@ import { executeSql, queryRow, queryRows } from '@/lib/sqlite';
 import { isValidEmailAddress, normalizeEmailAddress } from '@/lib/email-address';
 
 const ALLOWED_STATUSES = new Set(['SUBSCRIBED', 'UNSUBSCRIBED', 'BOUNCED']);
+const DEFAULT_PAGE_SIZE = 10;
+
+function parsePagination(url: URL) {
+  const page = Math.max(1, Number(url.searchParams.get('page') || 1) || 1);
+  const pageSize = Math.min(
+    100,
+    Math.max(1, Number(url.searchParams.get('pageSize') || DEFAULT_PAGE_SIZE) || DEFAULT_PAGE_SIZE),
+  );
+  const search = (url.searchParams.get('search') || '').trim();
+  const sort = (url.searchParams.get('sort') || 'createdAt').trim();
+  const order = ((url.searchParams.get('order') || 'desc').trim().toLowerCase() === 'asc' ? 'asc' : 'desc') as
+    | 'asc'
+    | 'desc';
+  return { page, pageSize, search, sort, order };
+}
+
+function getSortClause(sort: string, order: 'asc' | 'desc') {
+  const allowedSorts: Record<string, string> = {
+    createdAt: `c."createdAt" ${order.toUpperCase()}`,
+    email: `LOWER(c.email) ${order.toUpperCase()}, c."createdAt" DESC`,
+    status: `c.status ${order.toUpperCase()}, c."createdAt" DESC`,
+    firstName: `LOWER(COALESCE(c."firstName", '')) ${order.toUpperCase()}, c."createdAt" DESC`,
+    lastName: `LOWER(COALESCE(c."lastName", '')) ${order.toUpperCase()}, c."createdAt" DESC`,
+  };
+
+  return allowedSorts[sort] || allowedSorts.createdAt;
+}
 
 async function assertOwnedList(listId: string, userId: string) {
   return queryRow<{ id: string }>(
@@ -18,34 +45,63 @@ export async function GET(request: Request) {
 
   const { searchParams } = new URL(request.url);
   const listId = searchParams.get('listId')?.trim() || '';
+  const { page, pageSize, search, sort, order } = parsePagination(new URL(request.url));
+  const offset = (page - 1) * pageSize;
+  const searchTerm = search ? `%${search.toLowerCase()}%` : '';
+  const searchClause = search
+    ? "AND (LOWER(c.email) LIKE ? OR LOWER(COALESCE(c.\"firstName\", '')) LIKE ? OR LOWER(COALESCE(c.\"lastName\", '')) LIKE ? OR LOWER(c.status) LIKE ?)"
+    : '';
 
-  const where = listId
-    ? { listId, list: { userId: auth.user.userId } }
-    : { list: { userId: auth.user.userId } };
+  const countParams = listId
+    ? [auth.user.userId, listId, ...(search ? [searchTerm, searchTerm, searchTerm, searchTerm] : [])]
+    : [auth.user.userId, ...(search ? [searchTerm, searchTerm, searchTerm, searchTerm] : [])];
 
-  const contacts = listId
-    ? queryRows(
-        `
-          SELECT c.id, c.email, c.firstName, c.lastName, c.status, c.createdAt, c.updatedAt, l.id as listId, l.name as listName
-          FROM "Contact" c
-          INNER JOIN "List" l ON l.id = c.listId
-          WHERE c.listId = ? AND l.userId = ?
-          ORDER BY c.createdAt DESC
-        `,
-        [listId, auth.user.userId],
-      )
-    : queryRows(
-        `
-          SELECT c.id, c.email, c.firstName, c.lastName, c.status, c.createdAt, c.updatedAt, l.id as listId, l.name as listName
-          FROM "Contact" c
-          INNER JOIN "List" l ON l.id = c.listId
-          WHERE l.userId = ?
-          ORDER BY c.createdAt DESC
-        `,
-        [auth.user.userId],
-      );
+  const totalRow = queryRow<{ total: number }>(
+    `
+      SELECT COUNT(*) as total
+      FROM "Contact" c
+      INNER JOIN "List" l ON l.id = c.listId
+      WHERE l.userId = ?
+      ${listId ? 'AND c.listId = ?' : ''}
+      ${searchClause}
+    `,
+    countParams,
+  );
 
-  return ok({ contacts });
+  const contacts = queryRows(
+    `
+      SELECT c.id, c.email, c.firstName, c.lastName, c.status, c.createdAt, c.updatedAt, l.id as listId, l.name as listName
+      FROM "Contact" c
+      INNER JOIN "List" l ON l.id = c.listId
+      WHERE l.userId = ?
+      ${listId ? 'AND c.listId = ?' : ''}
+      ${searchClause}
+      ORDER BY ${getSortClause(sort, order)}
+      LIMIT ? OFFSET ?
+    `,
+    listId
+      ? [
+          auth.user.userId,
+          listId,
+          ...(search ? [searchTerm, searchTerm, searchTerm, searchTerm] : []),
+          pageSize,
+          offset,
+        ]
+      : [auth.user.userId, ...(search ? [searchTerm, searchTerm, searchTerm, searchTerm] : []), pageSize, offset],
+  );
+
+  return ok({
+    contacts,
+    pagination: {
+      page,
+      pageSize,
+      total: totalRow?.total ?? 0,
+      totalPages: Math.max(1, Math.ceil((totalRow?.total ?? 0) / pageSize)),
+      search,
+      sort,
+      order,
+    },
+  });
 }
 
 export async function POST(request: Request) {

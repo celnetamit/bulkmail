@@ -4,6 +4,41 @@ import { executeSql, queryRow } from '@/lib/sqlite';
 
 type Params = { params: { id: string } };
 
+export async function GET(_: Request, { params }: Params) {
+  const auth = await requireUserFromCookies();
+  if ('error' in auth) return auth.error;
+
+  const list = queryRow<{
+    id: string;
+    name: string;
+    description: string | null;
+    userId: string;
+    createdAt: string;
+    updatedAt: string;
+    contactsCount: number;
+    campaignsCount: number;
+  }>(
+    `
+      SELECT
+        l.id,
+        l.name,
+        l.description,
+        l.userId,
+        l.createdAt,
+        l.updatedAt,
+        (SELECT COUNT(*) FROM "Contact" c WHERE c.listId = l.id) as contactsCount,
+        (SELECT COUNT(*) FROM "Campaign" ca WHERE ca.listId = l.id) as campaignsCount
+      FROM "List" l
+      WHERE l.id = ? AND l.userId = ?
+      LIMIT 1
+    `,
+    [params.id, auth.user.userId],
+  );
+
+  if (!list) return fail('List not found.', 404);
+  return ok({ list });
+}
+
 export async function PATCH(request: Request, { params }: Params) {
   const auth = await requireUserFromCookies();
   if ('error' in auth) return auth.error;
