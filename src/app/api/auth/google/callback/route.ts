@@ -2,7 +2,7 @@ import { createRemoteJWKSet, jwtVerify } from 'jose';
 import { NextResponse } from 'next/server';
 import { createProvisionedPasswordHash, createSessionToken, isAdminEmailAllowed, setSessionCookie } from '@/lib/auth';
 import { executeSql, queryRow } from '@/lib/sqlite';
-import { getGoogleClientId, getGoogleClientSecret, getGoogleRedirectUri, sanitizeNextPath } from '@/lib/google-oauth';
+import { getAppOrigin, getGoogleClientId, getGoogleClientSecret, getGoogleRedirectUri, sanitizeNextPath } from '@/lib/google-oauth';
 
 const GOOGLE_JWKS = createRemoteJWKSet(new URL('https://www.googleapis.com/oauth2/v3/certs'));
 
@@ -31,6 +31,7 @@ export async function GET(request: Request) {
   if (!clientId || !clientSecret) {
     return redirectToLogin(request, 'google_missing');
   }
+  const origin = getAppOrigin(request);
 
   const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
     method: 'POST',
@@ -39,7 +40,7 @@ export async function GET(request: Request) {
       code,
       client_id: clientId,
       client_secret: clientSecret,
-      redirect_uri: getGoogleRedirectUri(url.origin),
+      redirect_uri: getGoogleRedirectUri(origin),
       grant_type: 'authorization_code',
     }),
   });

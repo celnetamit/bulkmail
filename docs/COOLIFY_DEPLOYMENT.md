@@ -22,6 +22,7 @@ Set these in Coolify for production:
 ```env
 DATABASE_URL=postgresql://postgres:password@your-postgres-host:5432/bulkmail?schema=public
 AUTH_SECRET=replace-with-a-long-random-secret
+APP_URL=https://bemail.panoptical.org
 GOOGLE_CLIENT_ID=...
 GOOGLE_CLIENT_SECRET=...
 ADMIN_EMAIL_ALLOWLIST=amit.rai@celnet.in,puneet.mehrotra@celnet.in
@@ -61,3 +62,4 @@ WEBHOOK_SHARED_SECRET=...
 - The image runs `scripts/init-postgres.js` at startup so schema objects exist before the app serves traffic.
 - The runtime connects directly to `DATABASE_URL` through the database helper layer.
 - Public self-registration is disabled; admins create user access from the dashboard, and users sign in through Google only.
+- Google OAuth must use the public app URL, not an internal host like `0.0.0.0:3000`.

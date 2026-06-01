@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { NextResponse } from 'next/server';
-import { getGoogleClientId, getGoogleClientSecret, getGoogleRedirectUri, sanitizeNextPath } from '@/lib/google-oauth';
+import { getAppOrigin, getGoogleClientId, getGoogleClientSecret, getGoogleRedirectUri, sanitizeNextPath } from '@/lib/google-oauth';
 
 export async function GET(request: Request) {
   const clientId = getGoogleClientId();
@@ -14,9 +14,10 @@ export async function GET(request: Request) {
   const nextPath = sanitizeNextPath(url.searchParams.get('next'));
   const state = randomUUID();
   const authUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth');
+  const origin = getAppOrigin(request);
 
   authUrl.searchParams.set('client_id', clientId);
-  authUrl.searchParams.set('redirect_uri', getGoogleRedirectUri(url.origin));
+  authUrl.searchParams.set('redirect_uri', getGoogleRedirectUri(origin));
   authUrl.searchParams.set('response_type', 'code');
   authUrl.searchParams.set('scope', 'openid email profile');
   authUrl.searchParams.set('access_type', 'offline');
