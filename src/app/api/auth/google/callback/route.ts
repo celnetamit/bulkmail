@@ -7,7 +7,7 @@ import { getAppOrigin, getGoogleClientId, getGoogleClientSecret, getGoogleRedire
 const GOOGLE_JWKS = createRemoteJWKSet(new URL('https://www.googleapis.com/oauth2/v3/certs'));
 
 function redirectToLogin(request: Request, error: string) {
-  return NextResponse.redirect(new URL(`/login?error=${error}`, request.url));
+  return NextResponse.redirect(new URL(`/login?error=${error}`, getAppOrigin(request)));
 }
 
 export async function GET(request: Request) {
@@ -109,7 +109,7 @@ export async function GET(request: Request) {
 
     const token = await createSessionToken({ userId: provisionedUser.id, email: provisionedUser.email });
     const nextPath = sanitizeNextPath(nextCookie ? decodeURIComponent(nextCookie) : null);
-    const response = NextResponse.redirect(new URL(nextPath, request.url));
+    const response = NextResponse.redirect(new URL(nextPath, origin));
     setSessionCookie(response, token);
     response.cookies.set('google_oauth_state', '', { path: '/', maxAge: 0 });
     response.cookies.set('google_oauth_next', '', { path: '/', maxAge: 0 });
@@ -131,7 +131,7 @@ export async function GET(request: Request) {
 
   const token = await createSessionToken({ userId: user.id, email: user.email });
   const nextPath = sanitizeNextPath(nextCookie ? decodeURIComponent(nextCookie) : null);
-  const response = NextResponse.redirect(new URL(nextPath, request.url));
+  const response = NextResponse.redirect(new URL(nextPath, origin));
   setSessionCookie(response, token);
   response.cookies.set('google_oauth_state', '', { path: '/', maxAge: 0 });
   response.cookies.set('google_oauth_next', '', { path: '/', maxAge: 0 });
