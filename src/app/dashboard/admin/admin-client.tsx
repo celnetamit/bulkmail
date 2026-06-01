@@ -52,25 +52,23 @@ export default function AdminDashboardClient() {
   const [message, setMessage] = useState('');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
   const [role, setRole] = useState('USER');
   const [dailyEmailLimit, setDailyEmailLimit] = useState('100000');
   const [savingId, setSavingId] = useState<string | null>(null);
-  const [drafts, setDrafts] = useState<Record<string, Partial<UserRow> & { password?: string }>>({});
+  const [drafts, setDrafts] = useState<Record<string, Partial<UserRow>>>({});
 
   async function load() {
     const response = await fetch('/api/admin/overview', { cache: 'no-store' });
     const data = (await response.json()) as SummaryResponse;
     setSummary(data);
 
-    const nextDrafts: Record<string, Partial<UserRow> & { password?: string }> = {};
+    const nextDrafts: Record<string, Partial<UserRow>> = {};
     for (const user of data.users || []) {
       nextDrafts[user.id] = {
         name: user.name || '',
         role: user.role,
         isActive: user.isActive,
         dailyEmailLimit: user.dailyEmailLimit,
-        password: '',
       };
     }
     setDrafts(nextDrafts);
@@ -88,7 +86,6 @@ export default function AdminDashboardClient() {
       body: JSON.stringify({
         name,
         email,
-        password,
         role,
         dailyEmailLimit: Number(dailyEmailLimit),
       }),
@@ -100,7 +97,6 @@ export default function AdminDashboardClient() {
     setMessage(`User created: ${data.user.email}`);
     setName('');
     setEmail('');
-    setPassword('');
     setRole('USER');
     setDailyEmailLimit('100000');
     await load();
@@ -124,14 +120,13 @@ export default function AdminDashboardClient() {
     const response = await fetch(`/api/admin/users/${id}`, {
       method: 'PATCH',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        name: draft.name,
-        role: draft.role,
-        isActive: draft.isActive,
-        dailyEmailLimit: draft.dailyEmailLimit,
-        password: draft.password || undefined,
-      }),
-    });
+        body: JSON.stringify({
+          name: draft.name,
+          role: draft.role,
+          isActive: draft.isActive,
+          dailyEmailLimit: draft.dailyEmailLimit,
+        }),
+      });
 
     const data = await response.json();
     setSavingId(null);
@@ -166,7 +161,6 @@ export default function AdminDashboardClient() {
         <form className="auth-form" onSubmit={createUser}>
           <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Name" />
           <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email" type="email" required />
-          <input value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Temporary password" type="password" required />
           <select className="status-select" value={role} onChange={(e) => setRole(e.target.value)}>
             <option value="USER">USER</option>
             <option value="ADMIN">ADMIN</option>
@@ -249,12 +243,6 @@ export default function AdminDashboardClient() {
                     {user.unsubscribeRate.toFixed(2)}% unsubscribe rate
                   </td>
                   <td>
-                    <input
-                      type="password"
-                      value={String(draft.password || '')}
-                      onChange={(e) => updateDraft(user.id, 'password', e.target.value)}
-                      placeholder="Reset password"
-                    />
                     <button className="mini-btn" type="button" onClick={() => saveUser(user.id)} disabled={savingId === user.id}>
                       {savingId === user.id ? 'Saving...' : 'Save'}
                     </button>

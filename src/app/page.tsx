@@ -8,8 +8,7 @@ export default function Home() {
           craft templates, and launch campaigns.
         </p>
         <div className="actions">
-          <a href="/register" className="btn-primary">Create Account</a>
-          <a href="/login" className="btn-secondary">Sign In</a>
+          <a href="/login" className="btn-primary">Sign In with Google</a>
         </div>
       </header>
     </main>

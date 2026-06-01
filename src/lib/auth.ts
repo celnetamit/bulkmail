@@ -1,4 +1,5 @@
 import bcrypt from 'bcryptjs';
+import { randomUUID } from 'node:crypto';
 import { SignJWT, jwtVerify } from 'jose';
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
@@ -6,10 +7,24 @@ import { executeSql, queryRow } from '@/lib/sqlite';
 
 const SESSION_COOKIE = 'mailflow_session';
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 7;
+const DEFAULT_ADMIN_EMAIL_ALLOWLIST = ['amit.rai@celnet.in', 'puneet.mehrotra@celnet.in'];
 
 function getSessionSecret() {
   const secret = process.env.AUTH_SECRET || 'dev-insecure-auth-secret-change-in-prod';
   return new TextEncoder().encode(secret);
+}
+
+function getAdminEmailAllowlist() {
+  const envList = process.env.ADMIN_EMAIL_ALLOWLIST || '';
+  return new Set(
+    [...DEFAULT_ADMIN_EMAIL_ALLOWLIST, ...envList.split(',')]
+      .map((email) => email.trim().toLowerCase())
+      .filter(Boolean),
+  );
+}
+
+export function isAdminEmailAllowed(email: string) {
+  return getAdminEmailAllowlist().has(email.trim().toLowerCase());
 }
 
 type SessionPayload = {
@@ -29,6 +44,10 @@ export type AuthUser = {
 
 export async function hashPassword(password: string) {
   return bcrypt.hash(password, 10);
+}
+
+export async function createProvisionedPasswordHash() {
+  return hashPassword(randomUUID() + randomUUID());
 }
 
 export async function verifyPassword(password: string, hash: string) {
@@ -80,6 +99,11 @@ async function getUserRecordFromSession() {
   );
 
   if (!user || !Boolean(user.isActive)) return null;
+
+  if (isAdminEmailAllowed(user.email) && user.role !== 'ADMIN') {
+    executeSql('UPDATE "User" SET role = ?, updatedAt = CURRENT_TIMESTAMP WHERE id = ?', ['ADMIN', user.id]);
+    user.role = 'ADMIN';
+  }
 
   return {
     userId: user.id,

@@ -9,6 +9,6 @@ Quick checklist:
 3. Use the `Dockerfile` build pack.
 4. Expose port `3000`.
 5. Add a Postgres database service and set `DATABASE_URL`.
-6. Set production environment variables in Coolify.
+6. Set production environment variables in Coolify, including Google OAuth.
 7. Deploy and confirm `/api/health` returns `200`.
-8. Log in, send a test campaign, and verify analytics / webhook tracking.
+8. Sign in with Google using an admin-provisioned email, send a test campaign, and verify analytics / webhook tracking.

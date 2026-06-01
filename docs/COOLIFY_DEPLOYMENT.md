@@ -22,6 +22,9 @@ Set these in Coolify for production:
 ```env
 DATABASE_URL=postgresql://postgres:password@your-postgres-host:5432/bulkmail?schema=public
 AUTH_SECRET=replace-with-a-long-random-secret
+GOOGLE_CLIENT_ID=...
+GOOGLE_CLIENT_SECRET=...
+ADMIN_EMAIL_ALLOWLIST=amit.rai@celnet.in,puneet.mehrotra@celnet.in
 MAIL_PROVIDER=aws-ses
 AWS_REGION=ap-south-1
 AWS_SES_FROM_EMAIL=no-reply@yourdomain.com
@@ -42,14 +45,14 @@ WEBHOOK_SHARED_SECRET=...
 3. Choose the `Dockerfile` build pack.
 4. Set the exposed port to `3000`.
 5. Add the Postgres service and set `DATABASE_URL` in the app environment.
-6. Add the production environment variables.
+6. Add the production environment variables, including Google OAuth.
 7. Deploy.
 8. On each new release, Coolify will rebuild from GitHub, initialize the Postgres schema, and then start Next.js.
 
 ## Post-deploy checks
 
 - Open `/api/health`
-- Log in with your admin account
+- Sign in with Google using an admin-provisioned email
 - Send a test campaign
 - Confirm analytics and webhook events are updating
 
@@ -57,3 +60,4 @@ WEBHOOK_SHARED_SECRET=...
 
 - The image runs `scripts/init-postgres.js` at startup so schema objects exist before the app serves traffic.
 - The runtime connects directly to `DATABASE_URL` through the database helper layer.
+- Public self-registration is disabled; admins create user access from the dashboard, and users sign in through Google only.
