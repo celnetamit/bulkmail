@@ -1,6 +1,6 @@
 import { createRemoteJWKSet, jwtVerify } from 'jose';
 import { NextResponse } from 'next/server';
-import { createSessionToken, isAdminEmailAllowed, setSessionCookie } from '@/lib/auth';
+import { createProvisionedPasswordHash, createSessionToken, isAdminEmailAllowed, setSessionCookie } from '@/lib/auth';
 import { executeSql, queryRow } from '@/lib/sqlite';
 import { getGoogleClientId, getGoogleClientSecret, getGoogleRedirectUri, sanitizeNextPath } from '@/lib/google-oauth';
 
@@ -78,7 +78,41 @@ export async function GET(request: Request) {
   }>('SELECT id, email, name, role, isActive FROM "User" WHERE email = ? LIMIT 1', [email]);
 
   if (!user) {
-    return redirectToLogin(request, 'not_provisioned');
+    if (!isAdminEmailAllowed(email)) {
+      return redirectToLogin(request, 'not_provisioned');
+    }
+
+    const id = crypto.randomUUID().replace(/-/g, '');
+    const createdAt = new Date().toISOString();
+    const passwordHash = await createProvisionedPasswordHash();
+    executeSql(
+      `
+        INSERT INTO "User" (
+          id, email, name, password, role, isActive, dailyEmailLimit, lastLoginAt, createdAt, updatedAt
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `,
+      [id, email, null, passwordHash, 'ADMIN', 1, 100000, null, createdAt, createdAt],
+    );
+
+    const provisionedUser = queryRow<{
+      id: string;
+      email: string;
+      name: string | null;
+      role: string;
+      isActive: number | boolean;
+    }>('SELECT id, email, name, role, isActive FROM "User" WHERE id = ? LIMIT 1', [id]);
+
+    if (!provisionedUser) {
+      return redirectToLogin(request, 'auth_failed');
+    }
+
+    const token = await createSessionToken({ userId: provisionedUser.id, email: provisionedUser.email });
+    const nextPath = sanitizeNextPath(nextCookie ? decodeURIComponent(nextCookie) : null);
+    const response = NextResponse.redirect(new URL(nextPath, request.url));
+    setSessionCookie(response, token);
+    response.cookies.set('google_oauth_state', '', { path: '/', maxAge: 0 });
+    response.cookies.set('google_oauth_next', '', { path: '/', maxAge: 0 });
+    return response;
   }
 
   if (!Boolean(user.isActive)) {
