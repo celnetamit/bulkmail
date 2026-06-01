@@ -25,6 +25,7 @@ export default async function DashboardLayout({
           <Link href="/dashboard/templates" className="nav-link">Templates</Link>
           <Link href="/dashboard/campaigns" className="nav-link">Campaigns</Link>
           <Link href="/dashboard/analytics" className="nav-link">Analytics</Link>
+          <Link href="/dashboard/help" className="nav-link">Help</Link>
           <Link href="/dashboard/settings" className="nav-link">Settings</Link>
           {user.role === 'ADMIN' ? <Link href="/dashboard/admin" className="nav-link">Admin</Link> : null}
         </nav>
