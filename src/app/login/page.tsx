@@ -1,9 +1,6 @@
-'use client';
+import Link from 'next/link';
 
-import { useMemo } from 'react';
-import { useSearchParams } from 'next/navigation';
-
-function getErrorMessage(error: string | null) {
+function getErrorMessage(error: string | undefined) {
   switch (error) {
     case 'not_provisioned':
       return 'Your email is not provisioned yet. Ask an admin to create your access first.';
@@ -18,10 +15,13 @@ function getErrorMessage(error: string | null) {
   }
 }
 
-export default function LoginPage() {
-  const searchParams = useSearchParams();
-  const nextPath = searchParams.get('next') || '/dashboard';
-  const error = useMemo(() => getErrorMessage(searchParams.get('error')), [searchParams]);
+export default function LoginPage({
+  searchParams,
+}: {
+  searchParams?: { next?: string; error?: string };
+}) {
+  const nextPath = searchParams?.next || '/dashboard';
+  const error = getErrorMessage(searchParams?.error);
   const googleSignInUrl = `/api/auth/google/start?next=${encodeURIComponent(nextPath)}`;
 
   return (
@@ -31,9 +31,9 @@ export default function LoginPage() {
         <p>Use your Google account to access your provisioned MailFlow workspace.</p>
         {error ? <div className="form-error">{error}</div> : null}
         <div className="auth-form">
-          <a className="btn-primary" href={googleSignInUrl}>
+          <Link className="btn-primary" href={googleSignInUrl}>
             Continue with Google
-          </a>
+          </Link>
         </div>
         <p className="auth-link" style={{ marginTop: '1rem' }}>
           Access is provisioned by an admin. There is no public registration.
