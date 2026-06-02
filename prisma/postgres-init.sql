@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS "User" (
   "role" TEXT NOT NULL DEFAULT 'USER',
   "isActive" BOOLEAN NOT NULL DEFAULT TRUE,
   "dailyEmailLimit" INTEGER NOT NULL DEFAULT 100000,
+  "imageUploadLimitKb" INTEGER,
   "lastLoginAt" TIMESTAMPTZ,
   "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   "updatedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -38,6 +39,17 @@ CREATE TABLE IF NOT EXISTS "TeamMember" (
 );
 
 CREATE INDEX IF NOT EXISTS "TeamMember_teamId_idx" ON "TeamMember" ("teamId");
+
+CREATE TABLE IF NOT EXISTS "PlatformSettings" (
+  "id" TEXT NOT NULL PRIMARY KEY,
+  "imageUploadLimitKb" INTEGER NOT NULL DEFAULT 50,
+  "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  "updatedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+INSERT INTO "PlatformSettings" ("id", "imageUploadLimitKb")
+VALUES ('global', 50)
+ON CONFLICT ("id") DO NOTHING;
 
 CREATE TABLE IF NOT EXISTS "MailSettings" (
   "id" TEXT NOT NULL PRIMARY KEY,

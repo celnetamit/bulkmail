@@ -9,12 +9,17 @@ if (!databaseUrl) {
 
 const sqlPath = path.join(process.cwd(), 'prisma', 'postgres-init.sql');
 const sql = fs.readFileSync(sqlPath, 'utf8');
+const uploadMigrationPath = path.join(process.cwd(), 'prisma', 'migrations', '20260602120000_image_upload_limits', 'migration.sql');
+const uploadMigrationSql = fs.existsSync(uploadMigrationPath) ? fs.readFileSync(uploadMigrationPath, 'utf8') : '';
 
 const pool = new Pool({ connectionString: databaseUrl });
 
 (async () => {
   try {
     await pool.query(sql);
+    if (uploadMigrationSql) {
+      await pool.query(uploadMigrationSql);
+    }
     console.log('Postgres schema ready');
   } finally {
     await pool.end();

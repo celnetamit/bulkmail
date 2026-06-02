@@ -12,11 +12,12 @@ type Settings = {
   resendApiKeyMasked: boolean;
   resendFromEmail: string;
   hasWebhookSharedSecret: boolean;
+  imageUploadLimitKb: number;
   source: 'database' | 'env';
 };
 
 type CurrentUser = {
-  role: 'ADMIN' | 'USER';
+  role: 'ADMIN' | 'MANAGER' | 'USER';
   email: string;
   name: string | null;
 };
@@ -37,6 +38,7 @@ export default function SettingsPage() {
   const [resendApiKey, setResendApiKey] = useState('');
   const [resendFromEmail, setResendFromEmail] = useState('');
   const [webhookSharedSecret, setWebhookSharedSecret] = useState('');
+  const [imageUploadLimitKb, setImageUploadLimitKb] = useState('50');
 
   const [testToEmail, setTestToEmail] = useState('');
   const [testSubject, setTestSubject] = useState('MailFlow test email');
@@ -71,6 +73,7 @@ export default function SettingsPage() {
     setAwsRegion(data.settings.awsRegion);
     setAwsFromEmail(data.settings.awsFromEmail);
     setResendFromEmail(data.settings.resendFromEmail);
+    setImageUploadLimitKb(String(data.settings.imageUploadLimitKb || 50));
   }
 
   useEffect(() => {
@@ -99,6 +102,7 @@ export default function SettingsPage() {
         resendApiKey,
         resendFromEmail,
         webhookSharedSecret,
+        imageUploadLimitKb: Number(imageUploadLimitKb),
       }),
     });
 
@@ -111,9 +115,9 @@ export default function SettingsPage() {
     setAwsAccessKeyId('');
     setAwsSecretAccessKey('');
     setAwsSessionToken('');
-    setResendApiKey('');
-    setWebhookSharedSecret('');
-    await loadSessionAndSettings();
+      setResendApiKey('');
+      setWebhookSharedSecret('');
+      await loadSessionAndSettings();
   }
 
   async function sendTestEmail(event: FormEvent) {
@@ -176,17 +180,26 @@ export default function SettingsPage() {
             ) : null}
 
             <input type="password" value={webhookSharedSecret} onChange={(e) => setWebhookSharedSecret(e.target.value)} placeholder={settings?.hasWebhookSharedSecret ? 'Webhook secret stored - leave blank to keep' : 'Webhook shared secret'} />
+            <input
+              value={imageUploadLimitKb}
+              onChange={(e) => setImageUploadLimitKb(e.target.value)}
+              type="number"
+              min={1}
+              step={1}
+              placeholder="Default image upload limit KB"
+            />
 
             <button className="btn-primary" type="submit" disabled={saving}>
               {saving ? 'Saving...' : 'Save Settings'}
             </button>
           </form>
-          <p className="form-note">Stored values are kept encrypted in the database. Leave secret fields blank to keep the existing value.</p>
+          <p className="form-note">Stored values are kept encrypted in the database. Leave secret fields blank to keep the existing value. The upload limit applies to users without a per-user override.</p>
         </div>
       ) : (
         <div className="card" style={{ padding: '1rem', marginBottom: '1rem' }}>
           <h2>Mail Provider</h2>
           <p className="form-note">Mail Provider settings are managed by admins only.</p>
+          <p className="form-note">Image upload limits are also controlled by admins, with per-user overrides where assigned.</p>
         </div>
       )}
 

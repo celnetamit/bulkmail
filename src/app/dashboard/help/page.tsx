@@ -2,6 +2,8 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { getCurrentUserFromCookies } from '@/lib/auth';
 
+export const dynamic = 'force-dynamic';
+
 const steps = [
   {
     title: 'Start with a list',
@@ -42,6 +44,10 @@ const tips = [
   {
     title: 'If an email bounces or is unsubscribed',
     body: 'Those contacts are automatically skipped on future sends. You can review contact status inside the list detail page.',
+  },
+  {
+    title: 'If you need images',
+    body: 'Use the visual editor upload button to add images. The size limit is controlled by your admin, and per-user overrides may apply.',
   },
 ];
 
@@ -121,6 +127,7 @@ export default async function HelpPage() {
           <Link className="help-link" href="/dashboard/lists">Lists</Link>
           <Link className="help-link" href="/dashboard/templates">Templates</Link>
           <Link className="help-link" href="/dashboard/campaigns">Campaigns</Link>
+          <Link className="help-link" href="/dashboard/media-library">Media Library</Link>
           <Link className="help-link" href="/dashboard/analytics">Analytics</Link>
           <Link className="help-link" href="/dashboard/settings">Settings</Link>
         </div>

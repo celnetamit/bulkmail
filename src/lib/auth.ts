@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { SignJWT, jwtVerify } from 'jose';
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
+import { ensurePlatformSettingsSchema } from '@/lib/platform-settings';
 import { executeSql, queryRow } from '@/lib/sqlite';
 
 const SESSION_COOKIE = 'mailflow_session';
@@ -39,6 +40,7 @@ export type AuthUser = {
   role: string;
   isActive: boolean;
   dailyEmailLimit: number;
+  imageUploadLimitKb: number | null;
   lastLoginAt: Date | null;
 };
 
@@ -79,6 +81,8 @@ export async function readSessionToken(token: string) {
 }
 
 async function getUserRecordFromSession() {
+  ensurePlatformSettingsSchema();
+
   const token = cookies().get(SESSION_COOKIE)?.value;
   if (!token) return null;
 
@@ -92,9 +96,10 @@ async function getUserRecordFromSession() {
     role: string;
     isActive: number | boolean;
     dailyEmailLimit: number;
+    imageUploadLimitKb: number | null;
     lastLoginAt: string | null;
   }>(
-    'SELECT id, email, name, role, isActive, dailyEmailLimit, lastLoginAt FROM "User" WHERE id = ? LIMIT 1',
+    'SELECT id, email, name, role, isActive, dailyEmailLimit, imageUploadLimitKb, lastLoginAt FROM "User" WHERE id = ? LIMIT 1',
     [session.userId],
   );
 
@@ -112,6 +117,7 @@ async function getUserRecordFromSession() {
     role: user.role,
     isActive: Boolean(user.isActive),
     dailyEmailLimit: user.dailyEmailLimit,
+    imageUploadLimitKb: user.imageUploadLimitKb ?? null,
     lastLoginAt: user.lastLoginAt ? new Date(user.lastLoginAt) : null,
   } satisfies AuthUser;
 }

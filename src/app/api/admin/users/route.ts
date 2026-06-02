@@ -13,7 +13,7 @@ export async function GET() {
 
   const users = queryRows(
     `
-      SELECT id, email, name, role, isActive, dailyEmailLimit, lastLoginAt, createdAt
+      SELECT id, email, name, role, isActive, dailyEmailLimit, imageUploadLimitKb, lastLoginAt, createdAt
       FROM "User"
       ORDER BY createdAt DESC
     `,
@@ -38,6 +38,12 @@ export async function POST(request: Request) {
   const role = typeof body === 'object' && body && 'role' in body ? String((body as Record<string, unknown>).role || 'USER').trim().toUpperCase() : 'USER';
   const dailyEmailLimitRaw = typeof body === 'object' && body && 'dailyEmailLimit' in body ? Number((body as Record<string, unknown>).dailyEmailLimit) : 100000;
   const dailyEmailLimit = Number.isFinite(dailyEmailLimitRaw) && dailyEmailLimitRaw > 0 ? Math.floor(dailyEmailLimitRaw) : 100000;
+  const imageUploadLimitRaw = typeof body === 'object' && body && 'imageUploadLimitKb' in body ? (body as Record<string, unknown>).imageUploadLimitKb : undefined;
+  const imageUploadLimitKb = imageUploadLimitRaw === undefined || imageUploadLimitRaw === '' || imageUploadLimitRaw === null
+    ? null
+    : Number.isFinite(Number(imageUploadLimitRaw)) && Number(imageUploadLimitRaw) > 0
+      ? Math.floor(Number(imageUploadLimitRaw))
+      : null;
 
   if (!email) return fail('email is required.', 400);
   if (!isValidEmailAddress(email)) return fail('Invalid email address.', 400);
@@ -53,10 +59,10 @@ export async function POST(request: Request) {
   executeSql(
     `
       INSERT INTO "User" (
-        id, email, name, password, role, isActive, dailyEmailLimit, lastLoginAt, createdAt, updatedAt
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        id, email, name, password, role, isActive, dailyEmailLimit, imageUploadLimitKb, lastLoginAt, createdAt, updatedAt
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
-    [id, email, name || null, passwordHash, effectiveRole, 1, dailyEmailLimit, null, createdAt, createdAt],
+    [id, email, name || null, passwordHash, effectiveRole, 1, dailyEmailLimit, imageUploadLimitKb, null, createdAt, createdAt],
   );
 
   const user = queryRow(

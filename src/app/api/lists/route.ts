@@ -2,6 +2,9 @@ import { requireUserFromCookies } from '@/lib/auth';
 import { fail, ok } from '@/lib/http';
 import { executeSql, queryRow, queryRows } from '@/lib/sqlite';
 
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
+
 const DEFAULT_PAGE_SIZE = 8;
 
 function parsePagination(url: URL) {

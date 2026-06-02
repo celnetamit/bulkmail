@@ -3,6 +3,9 @@ import { ok } from '@/lib/http';
 import { getUserAnalyticsSummary } from '@/lib/analytics';
 import { queryRows } from '@/lib/sqlite';
 
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
+
 function parseDate(value: string | null) {
   if (!value) return null;
   const date = new Date(value);

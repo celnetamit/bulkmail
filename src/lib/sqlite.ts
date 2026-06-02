@@ -27,6 +27,7 @@ const postgresIdentifiersToQuote = [
   'dailyCreditLimit',
   'allocatedDailyLimit',
   'dailyEmailLimit',
+  'imageUploadLimitKb',
   'lastLoginAt',
   'createdAt',
   'updatedAt',

@@ -2,6 +2,9 @@ import { requireUserFromCookies } from '@/lib/auth';
 import { fail, ok } from '@/lib/http';
 import { queryRow, queryRows, executeSql } from '@/lib/sqlite';
 
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
+
 export async function GET() {
   const auth = await requireUserFromCookies();
   if ('error' in auth) return auth.error;

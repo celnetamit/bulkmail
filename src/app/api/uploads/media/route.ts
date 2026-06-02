@@ -1,14 +1,16 @@
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, stat, writeFile } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import { extname } from 'node:path';
 
-import { ok, fail } from '@/lib/http';
 import { requireUserFromCookies } from '@/lib/auth';
+import { fail, ok } from '@/lib/http';
+import { getAppOrigin } from '@/lib/google-oauth';
+import { getPlatformSettings, resolveImageUploadLimitKb } from '@/lib/platform-settings';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
-
-const MAX_UPLOAD_SIZE = 50 * 1024;
 const UPLOAD_DIR = `${process.cwd()}/public/uploads/email-media`;
+const IMAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.svg', '.ico', '.tif', '.tiff', '.avif']);
 
 function sanitizeBaseName(name: string) {
   return name
@@ -38,6 +40,39 @@ function fileExtension(file: File) {
   return mimeToExt[file.type] || '.png';
 }
 
+function isImageFile(name: string) {
+  return IMAGE_EXTENSIONS.has(extname(name).toLowerCase());
+}
+
+export async function GET(request: Request) {
+  const auth = await requireUserFromCookies();
+  if ('error' in auth) return auth.error;
+
+  const directory = `${UPLOAD_DIR}/${auth.user.userId}`;
+  if (!existsSync(directory)) {
+    return ok({ uploads: [] });
+  }
+
+  const files = (await readdir(directory)).filter((fileName) => !fileName.startsWith('.') && isImageFile(fileName));
+  const uploads = await Promise.all(
+    files.map(async (fileName) => {
+      const filePath = `${directory}/${fileName}`;
+      const fileStats = await stat(filePath);
+      const relativeUrl = `/uploads/email-media/${auth.user.userId}/${fileName}`;
+      return {
+        fileName,
+        relativeUrl,
+        url: `${getAppOrigin(request)}${relativeUrl}`,
+        size: fileStats.size,
+        lastModified: fileStats.mtime.toISOString(),
+      };
+    }),
+  );
+
+  uploads.sort((a, b) => b.lastModified.localeCompare(a.lastModified));
+  return ok({ uploads });
+}
+
 export async function POST(request: Request) {
   const auth = await requireUserFromCookies();
   if ('error' in auth) return auth.error;
@@ -58,8 +93,12 @@ export async function POST(request: Request) {
     return fail('Only image uploads are allowed.', 400);
   }
 
-  if (file.size > MAX_UPLOAD_SIZE) {
-    return fail('Image must be 50 KB or smaller.', 400);
+  const platformSettings = await getPlatformSettings();
+  const maxUploadKb = resolveImageUploadLimitKb(auth.user.imageUploadLimitKb, platformSettings.imageUploadLimitKb);
+  const maxUploadBytes = maxUploadKb * 1024;
+
+  if (file.size > maxUploadBytes) {
+    return fail(`Image must be ${maxUploadKb} KB or smaller.`, 400);
   }
 
   const bytes = Buffer.from(await file.arrayBuffer());
@@ -71,6 +110,7 @@ export async function POST(request: Request) {
   await mkdir(directory, { recursive: true });
   await writeFile(`${directory}/${fileName}`, bytes);
 
-  const url = `/uploads/email-media/${auth.user.userId}/${fileName}`;
-  return ok({ url, fileName, size: file.size }, 201);
+  const relativeUrl = `/uploads/email-media/${auth.user.userId}/${fileName}`;
+  const publicUrl = `${getAppOrigin(request)}${relativeUrl}`;
+  return ok({ url: publicUrl, relativeUrl, fileName, size: file.size, maxUploadKb }, 201);
 }

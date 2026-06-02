@@ -3,6 +3,8 @@ import { getUserAnalyticsSummary } from '@/lib/analytics';
 import { getUserQuotaStatus } from '@/lib/quota';
 import { redirect } from 'next/navigation';
 
+export const dynamic = 'force-dynamic';
+
 export default async function DashboardOverview() {
   const user = await getCurrentUserFromCookies();
   if (!user) redirect('/login');

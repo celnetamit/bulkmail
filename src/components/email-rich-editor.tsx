@@ -285,6 +285,11 @@ export function EmailRichEditor({
     document.execCommand('insertHTML', false, html);
   }
 
+  function insertMediaUrl(url: string) {
+    const image = `<img src="${url}" alt="" style="display:block;max-width:100%;height:auto;margin:16px 0;" />`;
+    insertHtml(image);
+  }
+
   function handleVisualCommand(command: ToolbarCommand, value?: string) {
     const el = visualRef.current;
     if (!el) return;
@@ -375,7 +380,7 @@ export function EmailRichEditor({
       if (el) {
         el.focus();
         restoreSelection();
-        insertHtml(`<img src="${url}" alt="" style="display:block;max-width:100%;height:auto;margin:16px 0;" />`);
+        insertMediaUrl(url);
         syncVisualContent();
         setUploadMessage('Image uploaded and inserted.');
       }
@@ -388,6 +393,33 @@ export function EmailRichEditor({
       }
     }
   }
+
+  function openMediaLibrary() {
+    saveSelection();
+    window.open('/dashboard/media-library?pick=1', '_blank', 'width=1024,height=840');
+  }
+
+  useEffect(() => {
+    function handleMessage(event: MessageEvent) {
+      if (event.origin !== window.location.origin) return;
+      if (!event.data || typeof event.data !== 'object') return;
+      if ((event.data as { type?: string }).type !== 'mailflow.insert-media') return;
+
+      const url = (event.data as { url?: string }).url;
+      if (!url) return;
+
+      const el = visualRef.current;
+      if (el) {
+        el.focus();
+        restoreSelection();
+        insertMediaUrl(url);
+        syncVisualContent();
+      }
+    }
+
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, []);
 
   return (
     <div className="email-editor email-editor--html">
@@ -411,7 +443,7 @@ export function EmailRichEditor({
         <div className="email-editor__panel">
           <div className="email-editor__panel-header">
             <span>Visual editor</span>
-            <span>Click and type in the email canvas. Image uploads are limited to 50 KB.</span>
+            <span>Click and type in the email canvas. Image uploads follow the configured limit.</span>
           </div>
           <div className="email-editor__toolbar">
             <button type="button" className="mini-btn" onClick={() => handleVisualCommand('undo')}>Undo</button>
@@ -434,6 +466,9 @@ export function EmailRichEditor({
             <button type="button" className="mini-btn" onClick={() => handleVisualCommand('insertImage')}>Image</button>
             <button type="button" className="mini-btn" onClick={() => uploadInputRef.current?.click()} disabled={uploading}>
               {uploading ? 'Uploading...' : 'Upload image'}
+            </button>
+            <button type="button" className="mini-btn" onClick={openMediaLibrary}>
+              Media library
             </button>
             <button type="button" className="mini-btn" onClick={() => insertTable()}>Table</button>
             <button type="button" className="mini-btn" onClick={() => handleVisualCommand('removeFormat')}>Clear</button>

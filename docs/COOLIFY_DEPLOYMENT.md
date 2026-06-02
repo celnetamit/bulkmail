@@ -14,6 +14,7 @@ This app is ready to deploy from GitHub on Coolify with the included `Dockerfile
 This app now uses Postgres.
 
 In Coolify, add a Postgres database service and copy its connection string into `DATABASE_URL`.
+Also add persistent storage for `/app/public/uploads` so uploaded email images survive redeploys.
 
 ## Environment variables
 
@@ -61,5 +62,6 @@ WEBHOOK_SHARED_SECRET=...
 
 - The image runs `scripts/init-postgres.js` at startup so schema objects exist before the app serves traffic.
 - The runtime connects directly to `DATABASE_URL` through the database helper layer.
+- Uploaded email images are stored under `/app/public/uploads/email-media`, so that folder needs persistent storage in Coolify.
 - Public self-registration is disabled; admins create user access from the dashboard, and users sign in through Google only.
 - Google OAuth must use the public app URL, not an internal host like `0.0.0.0:3000`.

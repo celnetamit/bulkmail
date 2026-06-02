@@ -2,6 +2,9 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { getCurrentUserFromCookies } from '@/lib/auth';
 
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
+
 export default async function DashboardLayout({
   children,
 }: {
@@ -24,6 +27,7 @@ export default async function DashboardLayout({
           <Link href="/dashboard/lists" className="nav-link">Lists</Link>
           <Link href="/dashboard/templates" className="nav-link">Templates</Link>
           <Link href="/dashboard/campaigns" className="nav-link">Campaigns</Link>
+          <Link href="/dashboard/media-library" className="nav-link">Media Library</Link>
           <Link href="/dashboard/analytics" className="nav-link">Analytics</Link>
           <Link href="/dashboard/help" className="nav-link">Help</Link>
           <Link href="/dashboard/settings" className="nav-link">Settings</Link>

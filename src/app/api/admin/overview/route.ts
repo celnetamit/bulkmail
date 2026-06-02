@@ -19,6 +19,7 @@ export async function GET() {
     role: string;
     isActive: number | boolean;
     dailyEmailLimit: number;
+    imageUploadLimitKb: number | null;
     lastLoginAt: string | null;
     createdAt: string;
     listsCount: number;
@@ -33,6 +34,7 @@ export async function GET() {
         u.role,
         u.isActive,
         u.dailyEmailLimit,
+        u.imageUploadLimitKb,
         u.lastLoginAt,
         u.createdAt,
         (SELECT COUNT(*) FROM "List" l WHERE l.userId = u.id) as listsCount,
@@ -99,6 +101,7 @@ export async function GET() {
       sentToday,
       contactCount,
       remainingToday,
+      imageUploadLimitKb: user.imageUploadLimitKb ?? null,
       sentTotal,
       opened,
       delivered,

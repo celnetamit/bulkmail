@@ -1,6 +1,10 @@
 import { requireUserFromCookies } from '@/lib/auth';
 import { fail, ok } from '@/lib/http';
 import { getMailSettings, saveMailSettings } from '@/lib/mail-settings';
+import { getPlatformSettings, savePlatformSettings } from '@/lib/platform-settings';
+
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
 
 export async function GET() {
   const auth = await requireUserFromCookies();
@@ -11,7 +15,8 @@ export async function GET() {
   }
 
   const settings = await getMailSettings(auth.user.userId);
-  return ok({ settings });
+  const platformSettings = await getPlatformSettings();
+  return ok({ settings: { ...settings, imageUploadLimitKb: platformSettings.imageUploadLimitKb, imageUploadSource: platformSettings.source } });
 }
 
 export async function PUT(request: Request) {
@@ -48,5 +53,13 @@ export async function PUT(request: Request) {
     webhookSharedSecret: 'webhookSharedSecret' in body ? String((body as Record<string, unknown>).webhookSharedSecret || '').trim() : undefined,
   });
 
-  return ok({ settings: await getMailSettings(auth.user.userId), saved: provider });
+  const imageUploadLimitKbRaw = 'imageUploadLimitKb' in body ? Number((body as Record<string, unknown>).imageUploadLimitKb) : undefined;
+  if (imageUploadLimitKbRaw !== undefined) {
+    const imageUploadLimitKb = Number.isFinite(imageUploadLimitKbRaw) && imageUploadLimitKbRaw > 0 ? Math.floor(imageUploadLimitKbRaw) : 50;
+    await savePlatformSettings({ imageUploadLimitKb });
+  }
+
+  const settings = await getMailSettings(auth.user.userId);
+  const platformSettings = await getPlatformSettings();
+  return ok({ settings: { ...settings, imageUploadLimitKb: platformSettings.imageUploadLimitKb, imageUploadSource: platformSettings.source }, saved: provider });
 }
