@@ -32,11 +32,14 @@ export default function TemplatesPage() {
         <div className="page-header__row">
           <div>
             <h1>Templates</h1>
-            <p>Browse reusable templates, then open a dedicated page to create or edit one.</p>
+            <p>Keep reusable templates in one tidy index, then open the builder when you need to author or edit one.</p>
           </div>
-          <button className="btn-secondary" type="button" onClick={() => router.push('/dashboard/templates/create')}>
-            New Template
-          </button>
+          <div className="header-actions">
+            <button className="btn-secondary" type="button" onClick={() => router.push('/dashboard/templates/create')}>
+              New Template
+            </button>
+            <Link className="btn-secondary" href="/dashboard/help">Help</Link>
+          </div>
         </div>
       </header>
 

@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 
 type UserRow = {
@@ -147,13 +148,21 @@ export default function AdminDashboardClient() {
   return (
     <div className="overview">
       <header className="page-header">
-        <h1>Admin</h1>
-        <p>Manage access, daily sending limits, and platform activity.</p>
+        <div className="page-header__row">
+          <div>
+            <h1>Admin</h1>
+            <p>Manage access, daily sending limits, image controls, and platform activity from one view.</p>
+          </div>
+          <div className="header-actions">
+            <Link className="btn-secondary" href="/dashboard/admin/agents">AI Settings</Link>
+            <Link className="btn-secondary" href="/dashboard/help">Help</Link>
+          </div>
+        </div>
       </header>
 
       {message ? <p className="form-note">{message}</p> : null}
 
-      <div className="stats-grid">
+      <div className="stats-grid dashboard-stats">
         <div className="stat-card"><h3>Users</h3><p className="stat-value">{summary?.totals.users ?? 0}</p></div>
         <div className="stat-card"><h3>Active Users</h3><p className="stat-value">{summary?.totals.activeUsers ?? 0}</p></div>
         <div className="stat-card"><h3>Campaigns</h3><p className="stat-value">{summary?.totals.campaigns ?? 0}</p></div>
@@ -162,9 +171,10 @@ export default function AdminDashboardClient() {
         <div className="stat-card"><h3>Bounced</h3><p className="stat-value text-red">{summary?.totals.bounceTotal ?? 0}</p></div>
       </div>
 
-      <div className="card" style={{ padding: '1rem', marginBottom: '1rem' }}>
+      <div className="card dashboard-panel" style={{ marginBottom: '1rem' }}>
         <h2>Create User Access</h2>
-        <form className="auth-form" onSubmit={createUser}>
+        <p className="form-note">Provision a user before they can log in with Google. Managers and admins can be assigned here too.</p>
+        <form className="admin-form-grid" onSubmit={createUser}>
           <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Name" />
           <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email" type="email" required />
           <select className="status-select" value={role} onChange={(e) => setRole(e.target.value)}>
@@ -186,6 +196,7 @@ export default function AdminDashboardClient() {
       </div>
 
       <div className="card">
+        <div className="table-wrap">
         <table className="data-table">
           <thead>
             <tr>
@@ -279,6 +290,7 @@ export default function AdminDashboardClient() {
             })}
           </tbody>
         </table>
+        </div>
       </div>
     </div>
   );

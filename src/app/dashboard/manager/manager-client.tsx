@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 
 type TeamMember = {
@@ -310,12 +311,16 @@ export default function ManagerDashboardClient() {
             <h1>Manager Dashboard</h1>
             <p>Create teams, assign email credits to members, and watch team activity in one place.</p>
           </div>
+          <div className="header-actions">
+            <Link className="btn-secondary" href="/dashboard/resources">Resources</Link>
+            <Link className="btn-secondary" href="/dashboard/help">Help</Link>
+          </div>
         </div>
       </header>
 
       {message ? <p className="form-note">{message}</p> : null}
 
-      <div className="stats-grid" style={{ marginBottom: '1rem' }}>
+      <div className="stats-grid dashboard-stats">
         <div className="stat-card"><h3>Teams</h3><p className="stat-value">{overview?.totals.teams ?? 0}</p></div>
         <div className="stat-card"><h3>Members</h3><p className="stat-value">{overview?.totals.members ?? 0}</p></div>
         <div className="stat-card"><h3>Allocated Credits</h3><p className="stat-value">{overview?.totals.allocatedCredits ?? 0}</p></div>
@@ -324,8 +329,9 @@ export default function ManagerDashboardClient() {
         <div className="stat-card"><h3>Unsubscribed</h3><p className="stat-value text-yellow">{overview?.totals.unsubscribeTotal ?? 0}</p></div>
       </div>
 
-      <div className="card" style={{ padding: '1rem', marginBottom: '1rem' }}>
+      <div className="card dashboard-panel" style={{ marginBottom: '1rem' }}>
         <h2>Create Team</h2>
+        <p className="form-note">Give each team a daily credit pool, then distribute members under that cap.</p>
         <form className="auth-form" onSubmit={createTeam}>
           <input value={teamName} onChange={(e) => setTeamName(e.target.value)} placeholder="Team name" required />
           <input value={teamDescription} onChange={(e) => setTeamDescription(e.target.value)} placeholder="Description" />
@@ -397,7 +403,7 @@ export default function ManagerDashboardClient() {
                 <div><span>Sent Today</span><strong>{selectedTeam.sentToday}</strong></div>
               </div>
 
-              <div className="card" style={{ padding: '1rem', marginBottom: '1rem' }}>
+              <div className="card dashboard-panel" style={{ marginBottom: '1rem' }}>
                 <h3>Edit Team</h3>
                 <form className="auth-form" onSubmit={(event) => { event.preventDefault(); saveTeam(selectedTeam.id); }}>
                   <input
@@ -442,7 +448,7 @@ export default function ManagerDashboardClient() {
                 </form>
               </div>
 
-              <div className="card" style={{ padding: '1rem', marginBottom: '1rem' }}>
+              <div className="card dashboard-panel" style={{ marginBottom: '1rem' }}>
                 <h3>Add Member</h3>
                 <form className="auth-form" onSubmit={addMember}>
                   <input type="email" value={memberEmail} onChange={(e) => setMemberEmail(e.target.value)} placeholder="User email" required />

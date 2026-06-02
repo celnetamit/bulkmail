@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { FormEvent, useEffect, useState } from 'react';
 
 type Settings = {
@@ -146,14 +147,21 @@ export default function SettingsPage() {
   return (
     <div className="overview">
       <header className="page-header">
-        <h1>Settings</h1>
-        <p>Configure the active mail provider, store credentials securely, and send a live test email.</p>
+        <div className="page-header__row">
+          <div>
+            <h1>Settings</h1>
+            <p>Configure the active mail provider, store credentials securely, and send a live test email.</p>
+          </div>
+          <div className="header-actions">
+            <Link className="btn-secondary" href="/dashboard/help">Help</Link>
+          </div>
+        </div>
       </header>
 
       {message ? <p className="form-note">{message}</p> : null}
 
       {currentUser?.role === 'ADMIN' ? (
-        <div className="card" style={{ padding: '1rem', marginBottom: '1rem' }}>
+        <div className="card dashboard-panel" style={{ marginBottom: '1rem' }}>
           <h2>Mail Provider</h2>
           <form className="auth-form" onSubmit={saveSettings}>
             <select className="status-select" value={provider} onChange={(e) => setProvider(e.target.value as Settings['provider'])}>
@@ -203,7 +211,7 @@ export default function SettingsPage() {
         </div>
       )}
 
-      <div className="card" style={{ padding: '1rem' }}>
+      <div className="card dashboard-panel">
         <h2>Send Test Email</h2>
         <form className="auth-form" onSubmit={sendTestEmail}>
           <input type="email" value={testToEmail} onChange={(e) => setTestToEmail(e.target.value)} placeholder="recipient@example.com" required />

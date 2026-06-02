@@ -2,6 +2,7 @@ import { getCurrentUserFromCookies } from '@/lib/auth';
 import { getUserAnalyticsSummary } from '@/lib/analytics';
 import { getUserQuotaStatus } from '@/lib/quota';
 import { recordResourceMetric } from '@/lib/resource-analytics';
+import Link from 'next/link';
 import { redirect } from 'next/navigation';
 
 export const dynamic = 'force-dynamic';
@@ -23,11 +24,20 @@ export default async function DashboardOverview() {
   return (
     <div className="overview">
       <header className="page-header">
-        <h1>Dashboard Overview</h1>
-        <p>Welcome back! Here is a live snapshot from your event pipeline.</p>
+        <div className="page-header__row">
+          <div>
+            <h1>Dashboard Overview</h1>
+            <p>Track activity, quotas, and the next best action without digging through every module.</p>
+          </div>
+          <div className="header-actions">
+            <Link href="/dashboard/lists" className="btn-secondary">Lists</Link>
+            <Link href="/dashboard/campaigns/create" className="btn-secondary">New Campaign</Link>
+            <Link href="/dashboard/templates/create" className="btn-secondary">New Template</Link>
+          </div>
+        </div>
       </header>
 
-      <div className="stats-grid">
+      <div className="stats-grid dashboard-stats">
         <div className="stat-card"><h3>Total Sent</h3><p className="stat-value">{metrics.sent}</p></div>
         <div className="stat-card"><h3>Open Rate</h3><p className="stat-value">{metrics.openRate.toFixed(2)}%</p></div>
         <div className="stat-card"><h3>Bounce Rate</h3><p className="stat-value text-red">{metrics.bounceRate.toFixed(2)}%</p></div>
@@ -36,9 +46,23 @@ export default async function DashboardOverview() {
         <div className="stat-card"><h3>Remaining</h3><p className="stat-value">{quota.remainingToday}</p></div>
       </div>
 
-      <div className="card" style={{ padding: '1rem' }}>
-        <h2>Next Step</h2>
-        <p>Visit Analytics for campaign, list, and date-filtered performance breakdown.</p>
+      <div className="dashboard-panels">
+        <section className="card dashboard-panel">
+          <h2>Next step</h2>
+          <p>Start with a list, then build the campaign, send a test, and watch delivery metrics land in Analytics.</p>
+        </section>
+        <section className="card dashboard-panel">
+          <h2>Today</h2>
+          <p>{quota.remainingToday} messages remain in your daily allowance.</p>
+        </section>
+        <section className="card dashboard-panel">
+          <h2>Quick actions</h2>
+          <div className="quick-actions">
+            <Link href="/dashboard/lists" className="mini-btn">Manage lists</Link>
+            <Link href="/dashboard/media-library" className="mini-btn">Open media</Link>
+            <Link href="/dashboard/help" className="mini-btn">Read guide</Link>
+          </div>
+        </section>
       </div>
     </div>
   );

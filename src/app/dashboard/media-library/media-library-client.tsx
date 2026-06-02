@@ -79,7 +79,7 @@ export default function MediaLibraryClient({ pickMode }: { pickMode: boolean }) 
             <h1>Media Library</h1>
             <p>Browse previously uploaded images, copy their URLs, or insert one back into the email editor.</p>
           </div>
-          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+          <div className="header-actions">
             <Link className="btn-secondary" href="/dashboard/campaigns/create">Open Campaign Editor</Link>
             <Link className="btn-secondary" href="/dashboard/templates/create">Open Template Editor</Link>
           </div>
@@ -89,7 +89,7 @@ export default function MediaLibraryClient({ pickMode }: { pickMode: boolean }) 
       {pickMode ? <p className="form-note">Pick mode is on. Click Insert to send an image back to the editor.</p> : null}
       {message ? <p className="form-note">{message}</p> : null}
 
-      <div className="card" style={{ padding: '1rem', marginBottom: '1rem' }}>
+      <div className="card dashboard-panel" style={{ marginBottom: '1rem' }}>
         <div className="media-library-toolbar">
           <input
             value={search}

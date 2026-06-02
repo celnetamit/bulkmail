@@ -372,13 +372,15 @@ export default function ResourceAnalyticsClient({ role }: { role: string }) {
           <h1>Resource Analytics</h1>
           <p>Trace global load, team usage, and send spikes so you can see where the platform is working hardest.</p>
         </div>
-        <form className="resource-filter" onSubmit={applyFilters}>
-          <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
-          <input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
-          <button className="btn-primary" type="submit" disabled={loading}>
-            {loading ? 'Loading' : 'Refresh'}
-          </button>
-        </form>
+        <div className="header-actions">
+          <form className="resource-filter" onSubmit={applyFilters}>
+            <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
+            <input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
+            <button className="btn-primary" type="submit" disabled={loading}>
+              {loading ? 'Loading' : 'Refresh'}
+            </button>
+          </form>
+        </div>
       </header>
 
       {message ? <div className="form-message">{message}</div> : null}
