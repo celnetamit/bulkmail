@@ -1,6 +1,7 @@
 import { getCurrentUserFromCookies } from '@/lib/auth';
 import { getUserAnalyticsSummary } from '@/lib/analytics';
 import { getUserQuotaStatus } from '@/lib/quota';
+import { recordResourceMetric } from '@/lib/resource-analytics';
 import { redirect } from 'next/navigation';
 
 export const dynamic = 'force-dynamic';
@@ -8,6 +9,13 @@ export const dynamic = 'force-dynamic';
 export default async function DashboardOverview() {
   const user = await getCurrentUserFromCookies();
   if (!user) redirect('/login');
+
+  recordResourceMetric({
+    scopeType: 'GLOBAL',
+    eventType: 'PAGE_VIEW',
+    userId: user.userId,
+    note: 'dashboard_overview',
+  });
 
   const metrics = await getUserAnalyticsSummary(user.userId);
   const quota = await getUserQuotaStatus(user.userId, user.dailyEmailLimit);

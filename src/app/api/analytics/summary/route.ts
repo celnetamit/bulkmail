@@ -1,6 +1,7 @@
 import { requireUserFromCookies } from '@/lib/auth';
 import { ok } from '@/lib/http';
 import { getUserAnalyticsSummary } from '@/lib/analytics';
+import { recordResourceMetric } from '@/lib/resource-analytics';
 import { queryRows } from '@/lib/sqlite';
 
 export const dynamic = 'force-dynamic';
@@ -21,6 +22,13 @@ export async function GET(request: Request) {
   const listId = searchParams.get('listId')?.trim() || undefined;
   const from = parseDate(searchParams.get('from'));
   const to = parseDate(searchParams.get('to'));
+
+  recordResourceMetric({
+    scopeType: 'GLOBAL',
+    eventType: 'PAGE_VIEW',
+    userId: auth.user.userId,
+    note: 'analytics_summary',
+  });
 
   const [metrics, campaigns, lists] = await Promise.all([
     getUserAnalyticsSummary(auth.user.userId, { campaignId, listId, from, to }),

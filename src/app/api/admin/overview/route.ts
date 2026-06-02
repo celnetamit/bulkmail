@@ -1,6 +1,7 @@
 import { requireAdminFromCookies } from '@/lib/auth';
 import { ok } from '@/lib/http';
 import { startOfUtcDay } from '@/lib/quota';
+import { recordResourceMetric } from '@/lib/resource-analytics';
 import { queryRows, queryRow } from '@/lib/sqlite';
 
 export const dynamic = 'force-dynamic';
@@ -11,6 +12,13 @@ export async function GET() {
   if ('error' in auth) return auth.error;
 
   const from = startOfUtcDay();
+
+  recordResourceMetric({
+    scopeType: 'GLOBAL',
+    eventType: 'PAGE_VIEW',
+    userId: auth.user.userId,
+    note: 'admin_overview',
+  });
 
   const users = queryRows<{
     id: string;

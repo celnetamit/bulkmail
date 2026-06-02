@@ -4,6 +4,7 @@ import { createUnsubscribeToken } from '@/lib/unsubscribe';
 import { createOpenTrackingToken } from '@/lib/tracking';
 import { isValidEmailAddress, normalizeEmailAddress } from '@/lib/email-address';
 import { getUserQuotaStatus } from '@/lib/quota';
+import { recordResourceMetric } from '@/lib/resource-analytics';
 import { executeSql, queryRow } from '@/lib/sqlite';
 
 type CampaignRecipient = { id: string; email: string; status: string };
@@ -300,6 +301,19 @@ export async function dispatchCampaignEmails(userId: string, input: SendInput) {
     durationSeconds: null,
   });
 
+  recordResourceMetric({
+    scopeType: 'CAMPAIGN',
+    eventType: 'SEND_START',
+    userId,
+    campaignId: input.campaignId,
+    sentCount: 0,
+    failedCount: 0,
+    skippedCount: duplicates + invalid + quotaSkipped,
+    recipientCount: dedupedContacts.length,
+    durationMs: 0,
+    note: `provider:${transport.provider}`,
+  });
+
   if (sendableContacts.length === 0) {
     const finishedAt = new Date();
     await updateCampaignProgress(input.campaignId, {
@@ -307,6 +321,18 @@ export async function dispatchCampaignEmails(userId: string, input: SendInput) {
       provider: transport.provider,
       finishedAt,
       durationSeconds: Math.max(0, Math.round((finishedAt.getTime() - startedAt.getTime()) / 1000)),
+    });
+    recordResourceMetric({
+      scopeType: 'CAMPAIGN',
+      eventType: 'SEND_COMPLETE',
+      userId,
+      campaignId: input.campaignId,
+      sentCount: 0,
+      failedCount: 0,
+      skippedCount: duplicates + invalid + quotaSkipped,
+      recipientCount: dedupedContacts.length,
+      durationMs: Math.max(0, finishedAt.getTime() - startedAt.getTime()),
+      note: `provider:${transport.provider};empty_send`,
     });
     return {
       provider: transport.provider,
@@ -390,6 +416,21 @@ export async function dispatchCampaignEmails(userId: string, input: SendInput) {
       skippedCount: duplicates + invalid + quotaSkipped,
       startedAt,
     });
+
+    if ((sentCount + failedCount) % 100 === 0 || sentCount + failedCount === sendableContacts.length) {
+      recordResourceMetric({
+        scopeType: 'CAMPAIGN',
+        eventType: 'SEND_PROGRESS',
+        userId,
+        campaignId: input.campaignId,
+        sentCount,
+        failedCount,
+        skippedCount: duplicates + invalid + quotaSkipped,
+        recipientCount: dedupedContacts.length,
+        durationMs: Math.max(0, Date.now() - startedAt.getTime()),
+        note: `provider:${transport.provider}`,
+      });
+    }
   }
 
   const finishedAt = new Date();
@@ -403,6 +444,18 @@ export async function dispatchCampaignEmails(userId: string, input: SendInput) {
     startedAt,
     finishedAt,
     durationSeconds: Math.max(0, Math.round((finishedAt.getTime() - startedAt.getTime()) / 1000)),
+  });
+  recordResourceMetric({
+    scopeType: 'CAMPAIGN',
+    eventType: 'SEND_COMPLETE',
+    userId,
+    campaignId: input.campaignId,
+    sentCount,
+    failedCount,
+    skippedCount: duplicates + invalid + quotaSkipped,
+    recipientCount: dedupedContacts.length,
+    durationMs: Math.max(0, finishedAt.getTime() - startedAt.getTime()),
+    note: `provider:${transport.provider}`,
   });
 
   return {

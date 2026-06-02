@@ -1,6 +1,7 @@
 import { ok } from '@/lib/http';
 import { startOfUtcDay } from '@/lib/quota';
 import { ensureManagerSchema, requireManagerOrAdminFromCookies } from '@/lib/manager';
+import { recordResourceMetric } from '@/lib/resource-analytics';
 import { queryRows } from '@/lib/sqlite';
 
 export const dynamic = 'force-dynamic';
@@ -14,6 +15,13 @@ export async function GET() {
 
   const from = startOfUtcDay();
   const managerId = auth.user.userId;
+
+  recordResourceMetric({
+    scopeType: 'GLOBAL',
+    eventType: 'PAGE_VIEW',
+    userId: auth.user.userId,
+    note: 'manager_overview',
+  });
 
   const teams = queryRows<{
     id: string;

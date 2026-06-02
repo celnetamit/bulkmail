@@ -9,6 +9,7 @@ type UserRow = {
   role: string;
   isActive: boolean;
   dailyEmailLimit: number;
+  imageUploadLimitKb: number | null;
   lastLoginAt: string | null;
   createdAt: string;
   listsCount: number;
@@ -54,6 +55,7 @@ export default function AdminDashboardClient() {
   const [email, setEmail] = useState('');
   const [role, setRole] = useState('USER');
   const [dailyEmailLimit, setDailyEmailLimit] = useState('100000');
+  const [imageUploadLimitKb, setImageUploadLimitKb] = useState('');
   const [savingId, setSavingId] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<Record<string, Partial<UserRow>>>({});
 
@@ -69,6 +71,7 @@ export default function AdminDashboardClient() {
         role: user.role,
         isActive: user.isActive,
         dailyEmailLimit: user.dailyEmailLimit,
+        imageUploadLimitKb: user.imageUploadLimitKb,
       };
     }
     setDrafts(nextDrafts);
@@ -83,13 +86,14 @@ export default function AdminDashboardClient() {
     const response = await fetch('/api/admin/users', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        name,
-        email,
-        role,
-        dailyEmailLimit: Number(dailyEmailLimit),
-      }),
-    });
+        body: JSON.stringify({
+          name,
+          email,
+          role,
+          dailyEmailLimit: Number(dailyEmailLimit),
+          imageUploadLimitKb: imageUploadLimitKb ? Number(imageUploadLimitKb) : null,
+        }),
+      });
 
     const data = await response.json();
     if (!response.ok) return setMessage(data.error || 'Failed to create user.');
@@ -99,10 +103,11 @@ export default function AdminDashboardClient() {
     setEmail('');
     setRole('USER');
     setDailyEmailLimit('100000');
+    setImageUploadLimitKb('');
     await load();
   }
 
-  function updateDraft(id: string, field: string, value: string | boolean | number) {
+  function updateDraft(id: string, field: string, value: string | boolean | number | null) {
     setDrafts((current) => ({
       ...current,
       [id]: {
@@ -125,6 +130,7 @@ export default function AdminDashboardClient() {
           role: draft.role,
           isActive: draft.isActive,
           dailyEmailLimit: draft.dailyEmailLimit,
+          imageUploadLimitKb: draft.imageUploadLimitKb,
         }),
       });
 
@@ -167,6 +173,14 @@ export default function AdminDashboardClient() {
             <option value="ADMIN">ADMIN</option>
           </select>
           <input value={dailyEmailLimit} onChange={(e) => setDailyEmailLimit(e.target.value)} type="number" min={1} step={1} />
+          <input
+            value={imageUploadLimitKb}
+            onChange={(e) => setImageUploadLimitKb(e.target.value)}
+            type="number"
+            min={1}
+            step={1}
+            placeholder="Upload limit KB (blank uses global)"
+          />
           <button className="btn-primary" type="submit">Create User</button>
         </form>
       </div>
@@ -209,16 +223,25 @@ export default function AdminDashboardClient() {
                       />
                       Active
                     </label>
-                    <input
-                      type="number"
-                      min={1}
-                      step={1}
-                      value={String(draft.dailyEmailLimit ?? user.dailyEmailLimit)}
-                      onChange={(e) => updateDraft(user.id, 'dailyEmailLimit', Number(e.target.value))}
-                      style={{ marginTop: '0.5rem' }}
-                    />
-                  </td>
-                  <td style={{ minWidth: '220px' }}>
+                      <input
+                        type="number"
+                        min={1}
+                        step={1}
+                        value={String(draft.dailyEmailLimit ?? user.dailyEmailLimit)}
+                        onChange={(e) => updateDraft(user.id, 'dailyEmailLimit', Number(e.target.value))}
+                        style={{ marginTop: '0.5rem' }}
+                      />
+                      <input
+                        type="number"
+                        min={1}
+                        step={1}
+                        value={draft.imageUploadLimitKb === null ? '' : String(draft.imageUploadLimitKb ?? user.imageUploadLimitKb ?? '')}
+                        onChange={(e) => updateDraft(user.id, 'imageUploadLimitKb', e.target.value ? Number(e.target.value) : null)}
+                        placeholder="Global default"
+                        style={{ marginTop: '0.5rem' }}
+                      />
+                    </td>
+                    <td style={{ minWidth: '220px' }}>
                     <div className="progress-track" aria-hidden="true">
                       <div className="progress-bar" style={{ width: `${percent(user.sentToday, user.dailyEmailLimit)}%` }} />
                     </div>
@@ -232,6 +255,8 @@ export default function AdminDashboardClient() {
                     {user.templatesCount} templates
                     <br />
                     {user.campaignsCount} campaigns
+                    <br />
+                    {user.imageUploadLimitKb ? `${user.imageUploadLimitKb} KB upload limit` : 'Global upload limit'}
                   </td>
                   <td style={{ fontSize: '0.85rem', color: '#cbd5e1' }}>
                     {user.sentTotal} sent total
