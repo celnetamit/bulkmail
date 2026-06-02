@@ -143,8 +143,8 @@ export async function POST(request: Request) {
   const createdAt = new Date().toISOString();
 
   executeSql(
-    'INSERT INTO "List" (id, name, description, userId, isDefaultTestList, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?)',
-    [id, name, description || null, auth.user.userId, isDefaultTestList, createdAt, createdAt],
+    'INSERT INTO "List" (id, name, description, userId, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?)',
+    [id, name, description || null, auth.user.userId, createdAt, createdAt],
   );
 
   if (isDefaultTestList) {
