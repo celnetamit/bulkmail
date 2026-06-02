@@ -124,11 +124,6 @@ function insertTable(rows = 2, cols = 2) {
   document.execCommand('insertHTML', false, table);
 }
 
-function insertImage(url: string) {
-  const image = `<img src="${url}" alt="" style="display:block;max-width:100%;height:auto;margin:16px 0;" />`;
-  document.execCommand('insertHTML', false, image);
-}
-
 function insertBlock(block: InsertBlock) {
   const blocks: Record<InsertBlock, string> = {
     text: `<p style="margin:0 0 16px;line-height:1.7;color:#334155;">Write your paragraph here.</p>`,
@@ -226,8 +221,12 @@ export function EmailRichEditor({
 }: Props) {
   const [mode, setMode] = useState<Mode>('visual');
   const visualRef = useRef<HTMLDivElement | null>(null);
+  const uploadInputRef = useRef<HTMLInputElement | null>(null);
   const lastAppliedValueRef = useRef<string>('');
   const shellRef = useRef<{ headHtml: string; bodyHtml: string }>({ headHtml: '', bodyHtml: '' });
+  const savedSelectionRef = useRef<Range | null>(null);
+  const [uploadMessage, setUploadMessage] = useState('');
+  const [uploading, setUploading] = useState(false);
   const [fontFamily, setFontFamily] = useState('Arial');
   const [fontSize, setFontSize] = useState('3');
   const [foreColor, setForeColor] = useState('#0f172a');
@@ -256,10 +255,41 @@ export function EmailRichEditor({
     onChange(nextValue);
   }
 
+  function saveSelection() {
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0) return;
+    const range = selection.getRangeAt(0);
+    const container = visualRef.current;
+    if (!container) return;
+
+    const anchorNode = selection.anchorNode;
+    const focusNode = selection.focusNode;
+    if (!anchorNode || !focusNode || (!container.contains(anchorNode) && !container.contains(focusNode))) return;
+
+    savedSelectionRef.current = range;
+  }
+
+  function restoreSelection() {
+    const range = savedSelectionRef.current;
+    if (!range) return false;
+
+    const selection = window.getSelection();
+    if (!selection) return false;
+
+    selection.removeAllRanges();
+    selection.addRange(range);
+    return true;
+  }
+
+  function insertHtml(html: string) {
+    document.execCommand('insertHTML', false, html);
+  }
+
   function handleVisualCommand(command: ToolbarCommand, value?: string) {
     const el = visualRef.current;
     if (!el) return;
     el.focus();
+    restoreSelection();
 
     if (command === 'createLink') {
       const url = window.prompt('Enter link URL');
@@ -272,7 +302,7 @@ export function EmailRichEditor({
     if (command === 'insertImage') {
       const url = window.prompt('Enter image URL');
       if (!url) return;
-      insertImage(url);
+      insertHtml(`<img src="${url}" alt="" style="display:block;max-width:100%;height:auto;margin:16px 0;" />`);
       syncVisualContent();
       return;
     }
@@ -306,6 +336,59 @@ export function EmailRichEditor({
     syncVisualContent();
   }
 
+  async function uploadImage(file: File) {
+    if (file.size > 50 * 1024) {
+      setUploadMessage('Images must be 50 KB or smaller.');
+      return;
+    }
+
+    if (!file.type.startsWith('image/')) {
+      setUploadMessage('Only image files are supported here.');
+      return;
+    }
+
+    setUploadMessage('');
+    setUploading(true);
+
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const response = await fetch('/api/uploads/media', {
+        method: 'POST',
+        body: formData,
+      });
+
+      const data = await response.json() as { url?: string; error?: string };
+      if (!response.ok) {
+        setUploadMessage(data.error || 'Upload failed.');
+        return;
+      }
+
+      const url = data.url;
+      if (!url) {
+        setUploadMessage('Upload returned no file URL.');
+        return;
+      }
+
+      const el = visualRef.current;
+      if (el) {
+        el.focus();
+        restoreSelection();
+        insertHtml(`<img src="${url}" alt="" style="display:block;max-width:100%;height:auto;margin:16px 0;" />`);
+        syncVisualContent();
+        setUploadMessage('Image uploaded and inserted.');
+      }
+    } catch {
+      setUploadMessage('Upload failed. Please try again.');
+    } finally {
+      setUploading(false);
+      if (uploadInputRef.current) {
+        uploadInputRef.current.value = '';
+      }
+    }
+  }
+
   return (
     <div className="email-editor email-editor--html">
       <div className="email-editor__header">
@@ -328,7 +411,7 @@ export function EmailRichEditor({
         <div className="email-editor__panel">
           <div className="email-editor__panel-header">
             <span>Visual editor</span>
-            <span>Click and type in the email canvas</span>
+            <span>Click and type in the email canvas. Image uploads are limited to 50 KB.</span>
           </div>
           <div className="email-editor__toolbar">
             <button type="button" className="mini-btn" onClick={() => handleVisualCommand('undo')}>Undo</button>
@@ -349,6 +432,9 @@ export function EmailRichEditor({
             <button type="button" className="mini-btn" onClick={() => handleVisualCommand('unlink')}>Unlink</button>
             <button type="button" className="mini-btn" onClick={() => handleVisualCommand('insertHorizontalRule')}>Rule</button>
             <button type="button" className="mini-btn" onClick={() => handleVisualCommand('insertImage')}>Image</button>
+            <button type="button" className="mini-btn" onClick={() => uploadInputRef.current?.click()} disabled={uploading}>
+              {uploading ? 'Uploading...' : 'Upload image'}
+            </button>
             <button type="button" className="mini-btn" onClick={() => insertTable()}>Table</button>
             <button type="button" className="mini-btn" onClick={() => handleVisualCommand('removeFormat')}>Clear</button>
             <select
@@ -440,7 +526,10 @@ export function EmailRichEditor({
                 aria-multiline="true"
                 style={{ fontFamily }}
                 onInput={syncVisualContent}
+                onMouseUp={saveSelection}
+                onKeyUp={saveSelection}
                 onFocus={(event) => {
+                  saveSelection();
                   const current = event.currentTarget.innerHTML;
                   if (!current) {
                     const parts = extractDocumentParts(value, placeholder);
@@ -450,6 +539,19 @@ export function EmailRichEditor({
               />
             </div>
           </div>
+          <input
+            ref={uploadInputRef}
+            type="file"
+            accept="image/*"
+            hidden
+            onChange={(event) => {
+              const file = event.currentTarget.files?.[0];
+              if (file) {
+                void uploadImage(file);
+              }
+            }}
+          />
+          {uploadMessage ? <p className="form-note" style={{ marginTop: '0.75rem' }}>{uploadMessage}</p> : null}
         </div>
       ) : null}
 
