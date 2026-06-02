@@ -59,16 +59,19 @@ export default function CampaignsPage() {
     loadAll();
   }, [loadAll]);
 
-  const sendingCampaign = useMemo(() => campaigns.find((campaign) => campaign.status === 'SENDING') || null, [campaigns]);
+  const activeCampaign = useMemo(
+    () => campaigns.find((campaign) => campaign.status === 'QUEUED' || campaign.status === 'SENDING') || null,
+    [campaigns],
+  );
   useEffect(() => {
-    if (!sendingCampaign) return undefined;
+    if (!activeCampaign) return undefined;
 
     const interval = window.setInterval(() => {
       loadAll();
     }, 2000);
 
     return () => window.clearInterval(interval);
-  }, [loadAll, sendingCampaign]);
+  }, [activeCampaign, loadAll]);
 
   const sentCampaigns = useMemo(() => campaigns.filter((campaign) => campaign.status === 'SENT'), [campaigns]);
   const summary = useMemo(() => {
@@ -84,6 +87,13 @@ export default function CampaignsPage() {
     const averageOpenRate = totals.sent > 0 ? (totals.opened / totals.sent) * 100 : 0;
     return { ...totals, averageOpenRate, sentCampaigns: sentCampaigns.length };
   }, [sentCampaigns]);
+  const activeCampaignProgress = activeCampaign
+    ? activeCampaign.totalRecipients > 0
+      ? Math.min(100, (activeCampaign.sentCount / activeCampaign.totalRecipients) * 100)
+      : activeCampaign.status === 'QUEUED'
+        ? 6
+        : 0
+    : 0;
 
   async function updateStatus(campaign: Campaign, status: string) {
     const selectedListIds = (campaign.lists && campaign.lists.length > 0 ? campaign.lists : [campaign.list]).map((list) => list.id);
@@ -131,11 +141,15 @@ export default function CampaignsPage() {
   async function sendCampaign(id: string) {
     setSendingId(id);
     const res = await fetch(`/api/campaigns/${id}/send`, { method: 'POST' });
-    const data = (await res.json()) as { error?: string; sentCount?: number; provider?: string; quotaSkippedCount?: number; remainingToday?: number };
+    const data = (await res.json()) as { error?: string; queued?: boolean; jobId?: string; sentCount?: number; provider?: string; quotaSkippedCount?: number; remainingToday?: number };
     setSendingId(null);
     if (!res.ok) return setMessage(data.error || 'Failed to send campaign.');
-    const quotaNote = data.quotaSkippedCount ? ` ${data.quotaSkippedCount} skipped because of the daily limit.` : '';
-    setMessage(`Campaign sent via ${data.provider}. Sent count: ${data.sentCount ?? 0}.${quotaNote}`);
+    if (data.queued) {
+      setMessage(`Campaign queued${data.jobId ? ` as job ${data.jobId}` : ''}. It will send in the background.`);
+    } else {
+      const quotaNote = data.quotaSkippedCount ? ` ${data.quotaSkippedCount} skipped because of the daily limit.` : '';
+      setMessage(`Campaign sent via ${data.provider}. Sent count: ${data.sentCount ?? 0}.${quotaNote}`);
+    }
     await loadAll();
   }
 
@@ -167,12 +181,14 @@ export default function CampaignsPage() {
         <div className="stat-card"><h3>Avg Open Rate</h3><p className="stat-value">{formatPercent(summary.averageOpenRate)}</p></div>
       </div>
 
-      {sendingCampaign ? (
+      {activeCampaign ? (
         <div className="card" style={{ padding: '1rem', marginBottom: '1rem' }}>
-          <h2 style={{ marginBottom: '0.5rem' }}>Sending Now</h2>
-          <p className="form-note" style={{ marginBottom: '0.75rem' }}>{sendingCampaign.name} is sending {sendingCampaign.sentCount}/{sendingCampaign.totalRecipients} emails.</p>
+          <h2 style={{ marginBottom: '0.5rem' }}>{activeCampaign.status === 'QUEUED' ? 'Queued for Send' : 'Sending Now'}</h2>
+          <p className="form-note" style={{ marginBottom: '0.75rem' }}>
+            {activeCampaign.name} is {activeCampaign.status === 'QUEUED' ? 'queued to send' : `sending ${activeCampaign.sentCount}/${activeCampaign.totalRecipients} emails`}.
+          </p>
           <div className="progress-track" aria-hidden="true">
-            <div className="progress-bar" style={{ width: `${sendingCampaign.totalRecipients > 0 ? Math.min(100, (sendingCampaign.sentCount / sendingCampaign.totalRecipients) * 100) : 0}%` }} />
+            <div className="progress-bar" style={{ width: `${activeCampaignProgress}%` }} />
           </div>
         </div>
       ) : null}
@@ -205,8 +221,8 @@ export default function CampaignsPage() {
                   </div>
                 </td>
                 <td>
-                  <div className={`badge ${c.status === 'SENT' ? 'badge-success' : c.status === 'FAILED' ? 'badge-warning' : ''}`} style={{ display: 'inline-flex', marginBottom: '0.35rem' }}>{c.status}</div>
-                  <div style={{ fontSize: '0.85rem', color: '#94a3b8' }}>{c.provider || 'mock'}</div>
+                  <div className={`badge ${c.status === 'SENT' ? 'badge-success' : c.status === 'FAILED' || c.status === 'QUEUED' ? 'badge-warning' : ''}`} style={{ display: 'inline-flex', marginBottom: '0.35rem' }}>{c.status}</div>
+                  <div style={{ fontSize: '0.85rem', color: '#94a3b8' }}>{c.status === 'QUEUED' ? 'queued' : c.provider || 'mock'}</div>
                 </td>
                 <td style={{ minWidth: '240px' }}>
                   <div className="progress-track" aria-hidden="true">
@@ -222,13 +238,20 @@ export default function CampaignsPage() {
                 <td style={{ whiteSpace: 'nowrap', fontSize: '0.85rem', color: '#cbd5e1' }}>
                   {c.startedAt ? `Started ${new Date(c.startedAt).toLocaleString()}` : '-'}
                   <br />
-                  {c.finishedAt ? `Finished ${new Date(c.finishedAt).toLocaleString()}` : c.status === 'SENDING' ? 'In progress' : '-'}
+                  {c.finishedAt ? `Finished ${new Date(c.finishedAt).toLocaleString()}` : c.status === 'QUEUED' ? 'Queued' : c.status === 'SENDING' ? 'In progress' : '-'}
                   <br />
                   Duration: {formatDuration(c.durationSeconds)}
                 </td>
                 <td>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
-                    <button className="mini-btn" type="button" onClick={() => router.push(`/dashboard/campaigns/create?campaignId=${c.id}`)}>Edit Draft</button>
+                    <button
+                      className="mini-btn"
+                      type="button"
+                      onClick={() => router.push(`/dashboard/campaigns/create?campaignId=${c.id}`)}
+                      disabled={c.status === 'QUEUED' || c.status === 'SENDING'}
+                    >
+                      Edit Draft
+                    </button>
                     <button className="mini-btn" type="button" onClick={() => duplicateCampaign(c.id)}>Copy</button>
                     <button className="mini-btn" type="button" onClick={() => testCampaign(c.id)} disabled={testingId === c.id}>
                       {testingId === c.id ? 'Testing...' : 'Test'}
@@ -236,13 +259,20 @@ export default function CampaignsPage() {
                     <Link className="mini-btn" href={`/dashboard/analytics?campaignId=${c.id}`}>Stats</Link>
                   </div>
                   <div style={{ marginTop: '0.4rem' }}>
-                    <select className="status-select" value={c.status} onChange={(e) => updateStatus(c, e.target.value)}>
-                      <option>DRAFT</option><option>SCHEDULED</option><option>SENDING</option><option>SENT</option><option>FAILED</option>
+                    <select className="status-select" value={c.status} onChange={(e) => updateStatus(c, e.target.value)} disabled={c.status === 'QUEUED' || c.status === 'SENDING'}>
+                      <option>DRAFT</option><option>SCHEDULED</option><option>QUEUED</option><option>SENDING</option><option>SENT</option><option>FAILED</option>
                     </select>
                   </div>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', marginTop: '0.4rem' }}>
-                    <button className="mini-btn" type="button" onClick={() => sendCampaign(c.id)} disabled={sendingId === c.id}>{sendingId === c.id ? 'Sending...' : 'Send'}</button>
-                    <button className="mini-btn danger" type="button" onClick={() => deleteCampaign(c.id)}>Delete</button>
+                    <button
+                      className="mini-btn"
+                      type="button"
+                      onClick={() => sendCampaign(c.id)}
+                      disabled={sendingId === c.id || c.status === 'QUEUED' || c.status === 'SENDING'}
+                    >
+                      {sendingId === c.id ? 'Sending...' : c.status === 'QUEUED' || c.status === 'SENDING' ? 'Queued' : 'Send'}
+                    </button>
+                    <button className="mini-btn danger" type="button" onClick={() => deleteCampaign(c.id)} disabled={c.status === 'QUEUED' || c.status === 'SENDING'}>Delete</button>
                   </div>
                 </td>
               </tr>

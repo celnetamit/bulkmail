@@ -4,7 +4,7 @@ import { executeSql, queryRow } from '@/lib/sqlite';
 import { getCampaignLists, replaceCampaignLists } from '@/lib/campaign-lists';
 
 type Params = { params: { id: string } };
-const ALLOWED_STATUSES = new Set(['DRAFT', 'SCHEDULED', 'SENDING', 'SENT', 'FAILED']);
+const ALLOWED_STATUSES = new Set(['DRAFT', 'SCHEDULED', 'QUEUED', 'SENDING', 'SENT', 'FAILED']);
 
 export async function GET(_: Request, { params }: Params) {
   const auth = await requireUserFromCookies();
@@ -81,11 +81,14 @@ export async function PATCH(request: Request, { params }: Params) {
   if (!ALLOWED_STATUSES.has(status)) return fail('Invalid status.', 400);
   if (listIds.length === 0) return fail('At least one list is required.', 400);
 
-  const existing = queryRow<{ id: string; listId: string }>(
-    'SELECT id, listId FROM "Campaign" WHERE id = ? AND userId = ? LIMIT 1',
+  const existing = queryRow<{ id: string; listId: string; status: string }>(
+    'SELECT id, listId, status FROM "Campaign" WHERE id = ? AND userId = ? LIMIT 1',
     [params.id, auth.user.userId],
   );
   if (!existing) return fail('Campaign not found.', 404);
+  if (existing.status === 'QUEUED' || existing.status === 'SENDING') {
+    return fail('Queued or sending campaigns cannot be edited.', 409);
+  }
   const previousListId = existing.listId;
 
   const ownedLists = queryRow<{ total: number }>(
@@ -174,11 +177,14 @@ export async function DELETE(_: Request, { params }: Params) {
   const auth = await requireUserFromCookies();
   if ('error' in auth) return auth.error;
 
-  const existing = queryRow<{ id: string }>(
-    'SELECT id FROM "Campaign" WHERE id = ? AND userId = ? LIMIT 1',
+  const existing = queryRow<{ id: string; status: string }>(
+    'SELECT id, status FROM "Campaign" WHERE id = ? AND userId = ? LIMIT 1',
     [params.id, auth.user.userId],
   );
   if (!existing) return fail('Campaign not found.', 404);
+  if (existing.status === 'QUEUED' || existing.status === 'SENDING') {
+    return fail('Queued or sending campaigns cannot be deleted.', 409);
+  }
 
   executeSql('DELETE FROM "Campaign" WHERE id = ? AND userId = ?', [params.id, auth.user.userId]);
   return ok({ success: true });

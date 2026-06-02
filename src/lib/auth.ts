@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { SignJWT, jwtVerify } from 'jose';
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
+import { startCampaignSendQueueWorker } from '@/lib/campaign-send-queue';
 import { ensurePlatformSettingsSchema } from '@/lib/platform-settings';
 import { executeSql, queryRow } from '@/lib/sqlite';
 
@@ -82,6 +83,7 @@ export async function readSessionToken(token: string) {
 
 async function getUserRecordFromSession() {
   ensurePlatformSettingsSchema();
+  startCampaignSendQueueWorker();
 
   const token = cookies().get(SESSION_COOKIE)?.value;
   if (!token) return null;

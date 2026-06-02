@@ -318,15 +318,42 @@ if [ "${TEST_SENT_COUNT:-0}" -lt 1 ]; then
   exit 1
 fi
 
-echo "[8/11] send full campaign"
+echo "[8/11] queue full campaign send"
 SEND_STATUS="$(request_json POST "/api/campaigns/$CAMPAIGN_ID/send")"
-if [ "$SEND_STATUS" != "200" ]; then
+if [ "$SEND_STATUS" != "202" ] && [ "$SEND_STATUS" != "200" ]; then
   echo "campaign send failed ($SEND_STATUS)"
   cat "$BODY_FILE"
   exit 1
 fi
-SEND_PROVIDER="$(json_parse provider "$BODY_FILE")"
-SEND_SENT_COUNT="$(json_parse sentCount "$BODY_FILE")"
+SEND_JOB_ID="$(json_parse jobId "$BODY_FILE")"
+if [ -z "$SEND_JOB_ID" ]; then
+  echo "campaign queue response did not include a job id"
+  cat "$BODY_FILE"
+  exit 1
+fi
+
+FINAL_CAMPAIGN_STATUS=""
+for _ in $(seq 1 25); do
+  sleep 1
+  CAMPAIGN_REFRESH_STATUS="$(request_json GET "/api/campaigns/$CAMPAIGN_ID")"
+  if [ "$CAMPAIGN_REFRESH_STATUS" != "200" ]; then
+    continue
+  fi
+
+  FINAL_CAMPAIGN_STATUS="$(json_parse campaign.status "$BODY_FILE")"
+  if [ "$FINAL_CAMPAIGN_STATUS" = "SENT" ] || [ "$FINAL_CAMPAIGN_STATUS" = "FAILED" ]; then
+    break
+  fi
+done
+
+if [ "$FINAL_CAMPAIGN_STATUS" != "SENT" ]; then
+  echo "campaign did not finish successfully"
+  cat "$BODY_FILE"
+  exit 1
+fi
+
+SEND_PROVIDER="$(json_parse campaign.provider "$BODY_FILE")"
+SEND_SENT_COUNT="$(json_parse campaign.sentCount "$BODY_FILE")"
 if [ "${SEND_SENT_COUNT:-0}" -lt 3 ]; then
   echo "campaign send returned an unexpected recipient count"
   cat "$BODY_FILE"
