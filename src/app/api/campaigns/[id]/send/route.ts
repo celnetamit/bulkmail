@@ -1,5 +1,6 @@
 import { requireUserFromCookies } from '@/lib/auth';
 import { recordAuditEvent } from '@/lib/audit';
+import { recordSystemEvent } from '@/lib/observability';
 import { fail, ok } from '@/lib/http';
 import { queueCampaignSendJob } from '@/lib/campaign-send-queue';
 
@@ -40,6 +41,16 @@ export async function POST(_: Request, { params }: Params) {
     console.error('campaign_send_queue_failed', {
       campaignId: params.id,
       error: error instanceof Error ? error.message : String(error),
+    });
+    recordSystemEvent({
+      level: 'ERROR',
+      source: 'campaign_send_queue',
+      message: error instanceof Error ? error.message : 'Campaign send failed.',
+      userId: auth.user.userId,
+      campaignId: params.id,
+      details: {
+        route: '/api/campaigns/[id]/send',
+      },
     });
     return fail(error instanceof Error ? error.message : 'Campaign send failed.', 400);
   }

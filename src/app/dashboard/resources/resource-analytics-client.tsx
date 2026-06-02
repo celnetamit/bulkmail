@@ -78,6 +78,27 @@ type ResourceCampaignRow = {
   sentAt: string | null;
 };
 
+type DeliverabilitySummary = {
+  sentCount: number;
+  deliveredCount: number;
+  openedCount: number;
+  bouncedCount: number;
+  unsubscribedCount: number;
+  deliveryRate: number;
+  openRate: number;
+  bounceRate: number;
+  unsubscribeRate: number;
+};
+
+type DeliverabilityTrendPoint = {
+  day: string;
+  sentCount: number;
+  deliveredCount: number;
+  openedCount: number;
+  bouncedCount: number;
+  unsubscribedCount: number;
+};
+
 type ResourceAnalyticsSummary = {
   scope: 'GLOBAL' | 'TEAM' | 'SELF';
   live: ResourceSnapshot;
@@ -106,6 +127,8 @@ type ResourceAnalyticsSummary = {
   userBreakdown: ResourceUserRow[];
   teamBreakdown: ResourceTeamRow[];
   campaignCorrelation: ResourceCampaignRow[];
+  deliverabilitySummary: DeliverabilitySummary;
+  deliverabilityTrend: DeliverabilityTrendPoint[];
 };
 
 function formatNumber(value: number, digits = 0) {
@@ -350,6 +373,8 @@ export default function ResourceAnalyticsClient({ role }: { role: string }) {
   const users = summary?.userBreakdown || [];
   const teams = summary?.teamBreakdown || [];
   const campaigns = summary?.campaignCorrelation || [];
+  const deliverability = summary?.deliverabilitySummary;
+  const deliverabilityTrend = summary?.deliverabilityTrend || [];
 
   const memorySeries = useMemo(() => [
     { label: 'Avg RSS', color: '#60a5fa', values: daily.map((point) => point.avgRssMb) },
@@ -365,6 +390,14 @@ export default function ResourceAnalyticsClient({ role }: { role: string }) {
   const loopSeries = useMemo(() => [
     { label: 'Event loop', color: '#f59e0b', values: daily.map((point) => point.avgEventLoopUtilization * 100) },
   ], [daily]);
+
+  const deliverabilitySeries = useMemo(() => [
+    { label: 'Sent', color: '#3b82f6', values: deliverabilityTrend.map((point) => point.sentCount) },
+    { label: 'Delivered', color: '#22c55e', values: deliverabilityTrend.map((point) => point.deliveredCount) },
+    { label: 'Opened', color: '#f59e0b', values: deliverabilityTrend.map((point) => point.openedCount) },
+    { label: 'Bounced', color: '#ef4444', values: deliverabilityTrend.map((point) => point.bouncedCount) },
+    { label: 'Unsubscribed', color: '#a855f7', values: deliverabilityTrend.map((point) => point.unsubscribedCount) },
+  ], [deliverabilityTrend]);
 
   const scatterPoints = useMemo(() => campaigns.map((campaign) => ({
     x: Math.max(campaign.durationSeconds ?? 0, 1),
@@ -411,6 +444,15 @@ export default function ResourceAnalyticsClient({ role }: { role: string }) {
         <div className="stat-card"><h3>Live Event Loop</h3><p className="stat-value">{formatRate((summary?.live.eventLoopUtilization ?? 0) * 100)}</p></div>
       </div>
 
+      <div className="stats-grid resource-stats-grid" style={{ marginTop: '1rem' }}>
+        <div className="stat-card"><h3>Delivery rate</h3><p className="stat-value">{formatRate(deliverability?.deliveryRate ?? 0)}</p></div>
+        <div className="stat-card"><h3>Open rate</h3><p className="stat-value">{formatRate(deliverability?.openRate ?? 0)}</p></div>
+        <div className="stat-card"><h3>Bounce rate</h3><p className="stat-value text-red">{formatRate(deliverability?.bounceRate ?? 0)}</p></div>
+        <div className="stat-card"><h3>Unsubscribe rate</h3><p className="stat-value text-yellow">{formatRate(deliverability?.unsubscribeRate ?? 0)}</p></div>
+        <div className="stat-card"><h3>Delivered</h3><p className="stat-value">{deliverability?.deliveredCount ?? 0}</p></div>
+        <div className="stat-card"><h3>Opened</h3><p className="stat-value">{deliverability?.openedCount ?? 0}</p></div>
+      </div>
+
       <div className="resource-charts">
         <MultiLineChart
           title="Memory pressure"
@@ -421,6 +463,11 @@ export default function ResourceAnalyticsClient({ role }: { role: string }) {
           title="Event loop"
           subtitle="A coarse look at the runtime’s busy time while the platform is under load."
           series={loopSeries}
+        />
+        <MultiLineChart
+          title="Deliverability trend"
+          subtitle="Daily sent, delivered, opened, bounced, and unsubscribed volume."
+          series={deliverabilitySeries}
         />
         <BarChart
           title="Daily throughput"

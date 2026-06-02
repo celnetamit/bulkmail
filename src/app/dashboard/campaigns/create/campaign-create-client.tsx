@@ -23,6 +23,17 @@ type CampaignCreateClientProps = {
   templateIdFromQuery?: string;
 };
 
+async function readJsonResponse<T>(response: Response): Promise<T | null> {
+  const text = await response.text();
+  if (!text) return null;
+
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    return null;
+  }
+}
+
 export function CampaignCreateClient({ campaignId, templateIdFromQuery }: CampaignCreateClientProps) {
   const router = useRouter();
   const [lists, setLists] = useState<List[]>([]);
@@ -46,8 +57,8 @@ export function CampaignCreateClient({ campaignId, templateIdFromQuery }: Campai
       fetch('/api/lists?all=true', { cache: 'no-store' }),
       fetch('/api/templates', { cache: 'no-store' }),
     ]);
-    const listsData = (await listsRes.json()) as { lists: List[] };
-    const templatesData = (await templatesRes.json()) as { templates: Template[] };
+    const listsData = (await readJsonResponse<{ lists: List[] }>(listsRes)) || { lists: [] };
+    const templatesData = (await readJsonResponse<{ templates: Template[] }>(templatesRes)) || { templates: [] };
     const nextLists = listsData.lists || [];
     const nextTemplates = templatesData.templates || [];
 
@@ -59,7 +70,7 @@ export function CampaignCreateClient({ campaignId, templateIdFromQuery }: Campai
     if (campaignId) {
       const campaignRes = await fetch(`/api/campaigns/${campaignId}`, { cache: 'no-store' });
       if (campaignRes.ok) {
-        const campaignData = (await campaignRes.json()) as { campaign?: Campaign };
+        const campaignData = (await readJsonResponse<{ campaign?: Campaign }>(campaignRes)) || {};
         const campaign = campaignData.campaign;
         if (campaign) {
           skipTemplateApplyRef.current = true;
@@ -126,9 +137,10 @@ export function CampaignCreateClient({ campaignId, templateIdFromQuery }: Campai
           body: JSON.stringify(payload),
         });
 
+    const data = (await readJsonResponse<{ error?: string }>(res)) || null;
     setSaving(false);
     if (!res.ok) {
-      setMessage(editingCampaignId ? 'Failed to update campaign.' : 'Failed to create campaign.');
+      setMessage(data?.error || (editingCampaignId ? 'Failed to update campaign.' : 'Failed to create campaign.'));
       return;
     }
 
@@ -143,11 +155,11 @@ export function CampaignCreateClient({ campaignId, templateIdFromQuery }: Campai
     setMessage('');
 
     const res = await fetch(`/api/campaigns/${editingCampaignId}/test`, { method: 'POST' });
-    const data = (await res.json()) as { error?: string; sentCount?: number; failedCount?: number; testList?: { name?: string } };
+    const data = (await readJsonResponse<{ error?: string; sentCount?: number; failedCount?: number; testList?: { name?: string } }>(res)) || {};
     setTesting(false);
 
     if (!res.ok) {
-      setMessage(data.error || 'Failed to send test campaign.');
+      setMessage(data?.error || 'Failed to send test campaign.');
       return;
     }
 

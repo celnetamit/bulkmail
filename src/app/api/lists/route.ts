@@ -35,80 +35,91 @@ function getSortClause(sort: string, order: 'asc' | 'desc') {
 }
 
 export async function GET(request: Request) {
-  const auth = await requireUserFromCookies();
-  if ('error' in auth) return auth.error;
+  try {
+    const auth = await requireUserFromCookies();
+    if ('error' in auth) return auth.error;
 
-  const url = new URL(request.url);
-  const { page, pageSize, search, sort, order } = parsePagination(url);
-  const all = url.searchParams.get('all') === 'true' || url.searchParams.get('all') === '1';
-  const offset = (page - 1) * pageSize;
-  const searchTerm = search ? `%${search.toLowerCase()}%` : '';
-  const searchClause = search
-    ? "AND (LOWER(l.name) LIKE ? OR LOWER(COALESCE(l.description, '')) LIKE ?)"
-    : '';
-  const params = search ? [auth.user.userId, searchTerm, searchTerm] : [auth.user.userId];
+    const url = new URL(request.url);
+    const { page, pageSize, search, sort, order } = parsePagination(url);
+    const all = url.searchParams.get('all') === 'true' || url.searchParams.get('all') === '1';
+    const includeArchived = url.searchParams.get('includeArchived') === 'true' || url.searchParams.get('includeArchived') === '1';
+    const offset = (page - 1) * pageSize;
+    const searchTerm = search ? `%${search.toLowerCase()}%` : '';
+    const searchClause = search
+      ? "AND (LOWER(l.name) LIKE ? OR LOWER(COALESCE(l.description, '')) LIKE ?)"
+      : '';
+    const archivedClause = includeArchived ? '' : 'AND COALESCE(l.isArchived, FALSE) = FALSE';
+    const params = search ? [auth.user.userId, searchTerm, searchTerm] : [auth.user.userId];
 
-  const totalRow = queryRow<{ total: number }>(
-    `
-      SELECT COUNT(*) as total
-      FROM "List" l
-      WHERE l.userId = ?
-      ${searchClause}
-    `,
-    params,
-  );
+    const totalRow = queryRow<{ total: number }>(
+      `
+        SELECT COUNT(*) as total
+        FROM "List" l
+        WHERE l.userId = ?
+        ${archivedClause}
+        ${searchClause}
+      `,
+      params,
+    );
 
-  const lists = queryRows<{
-    id: string;
-    name: string;
-    description: string | null;
-    userId: string;
-    isDefaultTestList: number | boolean;
-    createdAt: string;
-    updatedAt: string;
-    contactsCount: number;
-    campaignsCount: number;
-  }>(
-    `
-      SELECT
-        l.id,
-        l.name,
-        l.description,
-        l.userId,
-        CASE WHEN COALESCE(l.isDefaultTestList, FALSE) THEN 1 ELSE 0 END as isDefaultTestList,
-        l.createdAt,
-        l.updatedAt,
-        (SELECT COUNT(*) FROM "Contact" c WHERE c.listId = l.id) as contactsCount,
-        (SELECT COUNT(*) FROM "CampaignList" cl WHERE cl.listId = l.id) as campaignsCount
-      FROM "List" l
-      WHERE l.userId = ?
-      ${searchClause}
-      ORDER BY ${getSortClause(sort, order)}
-      ${all ? '' : 'LIMIT ? OFFSET ?'}
-    `,
-    all
-      ? search
-        ? [auth.user.userId, searchTerm, searchTerm]
-        : [auth.user.userId]
-      : search
-        ? [auth.user.userId, searchTerm, searchTerm, pageSize, offset]
-        : [auth.user.userId, pageSize, offset],
-  );
+    const lists = queryRows<{
+      id: string;
+      name: string;
+      description: string | null;
+      userId: string;
+      isDefaultTestList: number | boolean;
+      isArchived: number | boolean;
+      createdAt: string;
+      updatedAt: string;
+      contactsCount: number;
+      campaignsCount: number;
+    }>(
+      `
+        SELECT
+          l.id,
+          l.name,
+          l.description,
+          l.userId,
+          CASE WHEN COALESCE(l.isDefaultTestList, FALSE) THEN 1 ELSE 0 END as isDefaultTestList,
+          CASE WHEN COALESCE(l.isArchived, FALSE) THEN 1 ELSE 0 END as isArchived,
+          l.createdAt,
+          l.updatedAt,
+          (SELECT COUNT(*) FROM "Contact" c WHERE c.listId = l.id) as contactsCount,
+          (SELECT COUNT(*) FROM "CampaignList" cl WHERE cl.listId = l.id) as campaignsCount
+        FROM "List" l
+        WHERE l.userId = ?
+        ${archivedClause}
+        ${searchClause}
+        ORDER BY ${getSortClause(sort, order)}
+        ${all ? '' : 'LIMIT ? OFFSET ?'}
+      `,
+      all
+        ? search
+          ? [auth.user.userId, searchTerm, searchTerm]
+          : [auth.user.userId]
+        : search
+          ? [auth.user.userId, searchTerm, searchTerm, pageSize, offset]
+          : [auth.user.userId, pageSize, offset],
+    );
 
-  const effectivePageSize = all ? Math.max(1, totalRow?.total ?? lists.length ?? 1) : pageSize;
+    const effectivePageSize = all ? Math.max(1, totalRow?.total ?? lists.length ?? 1) : pageSize;
 
-  return ok({
-    lists,
-    pagination: {
-      page,
-      pageSize: effectivePageSize,
-      total: totalRow?.total ?? 0,
-      totalPages: Math.max(1, Math.ceil((totalRow?.total ?? 0) / effectivePageSize)),
-      search,
-      sort,
-      order,
-    },
-  });
+    return ok({
+      lists,
+      pagination: {
+        page,
+        pageSize: effectivePageSize,
+        total: totalRow?.total ?? 0,
+        totalPages: Math.max(1, Math.ceil((totalRow?.total ?? 0) / effectivePageSize)),
+        search,
+        sort,
+        order,
+      },
+    });
+  } catch (error) {
+    console.error('lists_get_failed', error);
+    return fail('Failed to load lists.', 500);
+  }
 }
 
 export async function POST(request: Request) {

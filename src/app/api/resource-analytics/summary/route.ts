@@ -1,5 +1,6 @@
 import { requireManagerOrAdminFromCookies } from '@/lib/auth';
 import { fail, ok } from '@/lib/http';
+import { recordSystemEvent } from '@/lib/observability';
 import { getResourceAnalyticsSummary, recordResourceMetric } from '@/lib/resource-analytics';
 
 export const dynamic = 'force-dynamic';
@@ -38,6 +39,16 @@ export async function GET(request: Request) {
       userId: auth.user.userId,
       role: auth.user.role,
       error: error instanceof Error ? error.message : String(error),
+    });
+    recordSystemEvent({
+      level: 'ERROR',
+      source: 'resource_analytics_summary',
+      message: error instanceof Error ? error.message : 'Failed to load resource analytics.',
+      userId: auth.user.userId,
+      details: {
+        route: '/api/resource-analytics/summary',
+        role: auth.user.role,
+      },
     });
     return fail(error instanceof Error ? error.message : 'Failed to load resource analytics.', 500);
   }

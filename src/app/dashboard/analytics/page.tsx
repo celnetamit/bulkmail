@@ -84,15 +84,17 @@ export default function AnalyticsPage() {
 
       <div className="card" style={{ padding: '1rem', marginTop: '1rem' }}>
         <h2>Rates</h2>
-        <table className="data-table">
-          <thead><tr><th>Metric</th><th>Value</th></tr></thead>
-          <tbody>
-            <tr><td>Open Rate</td><td>{(metrics?.openRate ?? 0).toFixed(2)}%</td></tr>
-            <tr><td>Click Rate</td><td>{(metrics?.clickRate ?? 0).toFixed(2)}%</td></tr>
-            <tr><td>Bounce Rate</td><td>{(metrics?.bounceRate ?? 0).toFixed(2)}%</td></tr>
-            <tr><td>Unsubscribe Rate</td><td>{(metrics?.unsubscribeRate ?? 0).toFixed(2)}%</td></tr>
-          </tbody>
-        </table>
+        <div className="table-wrap">
+          <table className="data-table">
+            <thead><tr><th>Metric</th><th>Value</th></tr></thead>
+            <tbody>
+              <tr><td>Open Rate</td><td>{(metrics?.openRate ?? 0).toFixed(2)}%</td></tr>
+              <tr><td>Click Rate</td><td>{(metrics?.clickRate ?? 0).toFixed(2)}%</td></tr>
+              <tr><td>Bounce Rate</td><td>{(metrics?.bounceRate ?? 0).toFixed(2)}%</td></tr>
+              <tr><td>Unsubscribe Rate</td><td>{(metrics?.unsubscribeRate ?? 0).toFixed(2)}%</td></tr>
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );

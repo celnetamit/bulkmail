@@ -14,6 +14,7 @@ ALTER TABLE "PlatformSettings" ADD COLUMN IF NOT EXISTS "dmarcVerified" BOOLEAN 
 
 ALTER TABLE "Campaign" ADD COLUMN IF NOT EXISTS "templateId" TEXT;
 ALTER TABLE "Campaign" ADD COLUMN IF NOT EXISTS "provider" TEXT;
+ALTER TABLE "Campaign" ADD COLUMN IF NOT EXISTS "isArchived" BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE "Campaign" ADD COLUMN IF NOT EXISTS "totalRecipients" INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE "Campaign" ADD COLUMN IF NOT EXISTS "sentCount" INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE "Campaign" ADD COLUMN IF NOT EXISTS "failedCount" INTEGER NOT NULL DEFAULT 0;
@@ -27,6 +28,7 @@ ALTER TABLE "Event" ADD COLUMN IF NOT EXISTS "providerEventId" TEXT;
 ALTER TABLE "Event" ADD COLUMN IF NOT EXISTS "providerMessageId" TEXT;
 
 ALTER TABLE "List" ADD COLUMN IF NOT EXISTS "isDefaultTestList" BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE "List" ADD COLUMN IF NOT EXISTS "isArchived" BOOLEAN NOT NULL DEFAULT FALSE;
 
 CREATE UNIQUE INDEX IF NOT EXISTS "MailSettings_userId_key" ON "MailSettings" ("userId");
 CREATE UNIQUE INDEX IF NOT EXISTS "Event_providerEventId_key" ON "Event" ("providerEventId");
@@ -58,6 +60,23 @@ CREATE TABLE IF NOT EXISTS "CampaignSendJob" (
 
 CREATE INDEX IF NOT EXISTS "CampaignSendJob_status_requestedAt_idx" ON "CampaignSendJob" ("status", "requestedAt");
 CREATE INDEX IF NOT EXISTS "CampaignSendJob_campaignId_idx" ON "CampaignSendJob" ("campaignId");
+
+CREATE TABLE IF NOT EXISTS "SystemEvent" (
+  "id" TEXT NOT NULL PRIMARY KEY,
+  "level" TEXT NOT NULL,
+  "source" TEXT NOT NULL,
+  "message" TEXT NOT NULL,
+  "userId" TEXT,
+  "campaignId" TEXT,
+  "details" TEXT,
+  "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT "SystemEvent_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE SET NULL ON UPDATE CASCADE,
+  CONSTRAINT "SystemEvent_campaignId_fkey" FOREIGN KEY ("campaignId") REFERENCES "Campaign" ("id") ON DELETE SET NULL ON UPDATE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS "SystemEvent_createdAt_idx" ON "SystemEvent" ("createdAt");
+CREATE INDEX IF NOT EXISTS "SystemEvent_level_createdAt_idx" ON "SystemEvent" ("level", "createdAt");
+CREATE INDEX IF NOT EXISTS "SystemEvent_source_createdAt_idx" ON "SystemEvent" ("source", "createdAt");
 
 INSERT INTO "CampaignList" ("id", "campaignId", "listId", "createdAt", "updatedAt")
 SELECT

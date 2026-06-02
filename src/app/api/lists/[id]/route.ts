@@ -16,6 +16,7 @@ export async function GET(_: Request, { params }: Params) {
     description: string | null;
     userId: string;
     isDefaultTestList: number | boolean;
+    isArchived: number | boolean;
     createdAt: string;
     updatedAt: string;
     contactsCount: number;
@@ -28,6 +29,7 @@ export async function GET(_: Request, { params }: Params) {
         l.description,
         l.userId,
         CASE WHEN COALESCE(l.isDefaultTestList, FALSE) THEN 1 ELSE 0 END as isDefaultTestList,
+        CASE WHEN COALESCE(l.isArchived, FALSE) THEN 1 ELSE 0 END as isArchived,
         l.createdAt,
         l.updatedAt,
         (SELECT COUNT(*) FROM "Contact" c WHERE c.listId = l.id) as contactsCount,

@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 
 import { getCampaignLists } from '@/lib/campaign-lists';
+import { recordSystemEvent } from '@/lib/observability';
 import { dispatchCampaignEmails } from '@/lib/providers/email';
 import { executeSql, queryRow, queryRows } from '@/lib/sqlite';
 
@@ -11,6 +12,7 @@ type CampaignRow = {
   bodyHtml: string;
   status: string;
   provider: string | null;
+  isArchived: number | boolean;
   totalRecipients: number;
   sentCount: number;
   failedCount: number;
@@ -138,6 +140,7 @@ function loadCampaign(campaignId: string, userId: string) {
         c.bodyHtml,
         c.status,
         c.provider,
+        CASE WHEN COALESCE(c.isArchived, FALSE) THEN 1 ELSE 0 END as isArchived,
         c.totalRecipients,
         c.sentCount,
         c.failedCount,
@@ -203,6 +206,9 @@ export function queueCampaignSendJob(userId: string, campaignId: string) {
   const campaign = loadCampaign(campaignId, userId);
   if (!campaign) {
     throw new Error('Campaign not found.');
+  }
+  if (campaign.isArchived) {
+    throw new Error('Archived campaigns cannot be queued.');
   }
 
   if (!SENDABLE_STATUSES.has(campaign.status)) {
@@ -440,6 +446,19 @@ async function processQueuedCampaignSendJob(job: CampaignSendJobRow) {
     );
 
     if (!shouldRetry) {
+      recordSystemEvent({
+        level: 'ERROR',
+        source: 'campaign_send_queue_job',
+        message,
+        campaignId: job.campaignId,
+        userId: job.userId,
+        details: {
+          jobId: job.id,
+          attempts: currentAttempt,
+          status: nextStatus,
+          retryable,
+        },
+      });
       throw error;
     }
   }
@@ -489,6 +508,18 @@ async function drainCampaignSendQueue() {
           campaignId: nextJob.campaignId,
           jobId: nextJob.id,
           error: error instanceof Error ? error.message : String(error),
+        });
+        recordSystemEvent({
+          level: 'ERROR',
+          source: 'campaign_send_queue_worker',
+          message: error instanceof Error ? error.message : 'Queued campaign send failed.',
+          campaignId: nextJob.campaignId,
+          userId: nextJob.userId,
+          details: {
+            jobId: nextJob.id,
+            attempts: nextJob.attempts,
+            status: nextJob.status,
+          },
         });
       }
     }

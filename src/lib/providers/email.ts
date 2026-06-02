@@ -3,6 +3,7 @@ import { resolveMailTransport } from '@/lib/mail-settings';
 import { createUnsubscribeToken } from '@/lib/unsubscribe';
 import { createOpenTrackingToken } from '@/lib/tracking';
 import { isValidEmailAddress, normalizeEmailAddress } from '@/lib/email-address';
+import { recordSystemEvent } from '@/lib/observability';
 import { getUserQuotaStatus } from '@/lib/quota';
 import { recordResourceMetric } from '@/lib/resource-analytics';
 import { executeSql, queryRow } from '@/lib/sqlite';
@@ -404,6 +405,18 @@ export async function dispatchCampaignEmails(userId: string, input: SendInput) {
         contactId: contact.id,
         email: contact.email,
         error: error instanceof Error ? error.message : String(error),
+      });
+      recordSystemEvent({
+        level: 'WARN',
+        source: 'campaign_send_item',
+        message: error instanceof Error ? error.message : 'Campaign send item failed.',
+        userId,
+        campaignId: input.campaignId,
+        details: {
+          contactId: contact.id,
+          email: contact.email,
+          provider: transport.provider,
+        },
       });
     }
 

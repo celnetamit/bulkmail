@@ -7,9 +7,11 @@ import { getCampaignLists, replaceCampaignLists } from '@/lib/campaign-lists';
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
-export async function GET() {
+export async function GET(request: Request) {
   const auth = await requireUserFromCookies();
   if ('error' in auth) return auth.error;
+  const url = new URL(request.url);
+  const includeArchived = url.searchParams.get('includeArchived') === 'true' || url.searchParams.get('includeArchived') === '1';
 
   const campaigns = queryRows<{
     id: string;
@@ -18,6 +20,7 @@ export async function GET() {
     bodyHtml: string;
     status: string;
     provider: string | null;
+    isArchived: number | boolean;
     totalRecipients: number;
     sentCount: number;
     failedCount: number;
@@ -41,6 +44,7 @@ export async function GET() {
         c.bodyHtml,
         c.status,
         c.provider,
+        CASE WHEN COALESCE(c.isArchived, FALSE) THEN 1 ELSE 0 END as isArchived,
         c.totalRecipients,
         c.sentCount,
         c.failedCount,
@@ -59,6 +63,7 @@ export async function GET() {
       INNER JOIN "List" l ON l.id = c.listId
       LEFT JOIN "Template" t ON t.id = c.templateId
       WHERE c.userId = ?
+      ${includeArchived ? '' : 'AND COALESCE(c.isArchived, FALSE) = FALSE'}
       ORDER BY c.createdAt DESC
     `,
     [auth.user.userId],

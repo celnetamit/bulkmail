@@ -1,5 +1,6 @@
-import { requireUserFromCookies } from '@/lib/auth';
+import { requireUserFromRequest } from '@/lib/auth';
 import { fail, ok } from '@/lib/http';
+import { recordSystemEvent } from '@/lib/observability';
 import {
   getAgentConversation,
   listAgentConversations,
@@ -18,7 +19,7 @@ function parseAgentKey(value: string | null) {
 }
 
 export async function GET(request: Request) {
-  const auth = await requireUserFromCookies();
+  const auth = await requireUserFromRequest(request);
   if ('error' in auth) return auth.error;
 
   ensureAiAgentsSchema();
@@ -38,7 +39,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const auth = await requireUserFromCookies();
+  const auth = await requireUserFromRequest(request);
   if ('error' in auth) return auth.error;
 
   let body: unknown;
@@ -65,6 +66,17 @@ export async function POST(request: Request) {
     return ok(await runAgentChat(agentUser, { agentKey, message, conversationId, executeActions }));
   } catch (error) {
     console.error('agent_chat_failed', { agentKey, userId: auth.user.userId, error: error instanceof Error ? error.message : String(error) });
+    recordSystemEvent({
+      level: 'ERROR',
+      source: 'agent_chat',
+      message: error instanceof Error ? error.message : 'Agent request failed.',
+      userId: auth.user.userId,
+      details: {
+        agentKey,
+        executeActions,
+        route: '/api/agents/conversations',
+      },
+    });
     return fail(error instanceof Error ? error.message : 'Agent request failed.', 500);
   }
 }

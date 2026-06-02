@@ -1,5 +1,6 @@
 import { requireUserFromCookies } from '@/lib/auth';
 import { fail, ok } from '@/lib/http';
+import { recordSystemEvent } from '@/lib/observability';
 import { sendTestEmail } from '@/lib/providers/email';
 import { isValidEmailAddress, normalizeEmailAddress } from '@/lib/email-address';
 
@@ -29,11 +30,25 @@ export async function POST(request: Request) {
     return fail('Invalid email address.', 400);
   }
 
-  const result = await sendTestEmail(auth.user.userId, {
-    toEmail,
-    subject,
-    bodyHtml,
-  });
+  try {
+    const result = await sendTestEmail(auth.user.userId, {
+      toEmail,
+      subject,
+      bodyHtml,
+    });
 
-  return ok({ success: true, ...result });
+    return ok({ success: true, ...result });
+  } catch (error) {
+    recordSystemEvent({
+      level: 'ERROR',
+      source: 'test_email_send',
+      message: error instanceof Error ? error.message : 'Failed to send test email.',
+      userId: auth.user.userId,
+      details: {
+        route: '/api/settings/test-email',
+        toEmail,
+      },
+    });
+    return fail(error instanceof Error ? error.message : 'Failed to send test email.', 500);
+  }
 }

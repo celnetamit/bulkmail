@@ -97,6 +97,27 @@ export type ResourceCampaignRow = {
   sentAt: string | null;
 };
 
+export type DeliverabilityTrendPoint = {
+  day: string;
+  sentCount: number;
+  deliveredCount: number;
+  openedCount: number;
+  bouncedCount: number;
+  unsubscribedCount: number;
+};
+
+export type DeliverabilitySummary = {
+  sentCount: number;
+  deliveredCount: number;
+  openedCount: number;
+  bouncedCount: number;
+  unsubscribedCount: number;
+  deliveryRate: number;
+  openRate: number;
+  bounceRate: number;
+  unsubscribeRate: number;
+};
+
 export type ResourceAnalyticsSummary = {
   scope: 'GLOBAL' | 'TEAM' | 'SELF';
   live: ResourceSnapshot;
@@ -125,6 +146,8 @@ export type ResourceAnalyticsSummary = {
   userBreakdown: ResourceUserRow[];
   teamBreakdown: ResourceTeamRow[];
   campaignCorrelation: ResourceCampaignRow[];
+  deliverabilitySummary: DeliverabilitySummary;
+  deliverabilityTrend: DeliverabilityTrendPoint[];
 };
 
 let lastEventLoopSample = performance.eventLoopUtilization();
@@ -460,6 +483,67 @@ export async function getResourceAnalyticsSummary(userId: string, role: Role, fr
     [...accessibleCampaignFilter.params, from.toISOString()],
   );
 
+  const eventDateClause = to ? 'e.createdAt BETWEEN ? AND ?' : 'e.createdAt >= ?';
+  const eventDateParams = [from.toISOString(), ...(to ? [to.toISOString()] : [])];
+  const deliverabilitySummary = queryRow<DeliverabilitySummary>(
+    `
+      SELECT
+        COALESCE(SUM(CASE WHEN e.type = 'SENT' THEN 1 ELSE 0 END), 0) as sentCount,
+        COALESCE(SUM(CASE WHEN e.type = 'DELIVERED' THEN 1 ELSE 0 END), 0) as deliveredCount,
+        COALESCE(SUM(CASE WHEN e.type = 'OPENED' THEN 1 ELSE 0 END), 0) as openedCount,
+        COALESCE(SUM(CASE WHEN e.type = 'BOUNCED' THEN 1 ELSE 0 END), 0) as bouncedCount,
+        COALESCE(SUM(CASE WHEN e.type = 'UNSUBSCRIBED' THEN 1 ELSE 0 END), 0) as unsubscribedCount,
+        CASE
+          WHEN COALESCE(SUM(CASE WHEN e.type = 'SENT' THEN 1 ELSE 0 END), 0) > 0
+            THEN COALESCE(SUM(CASE WHEN e.type = 'DELIVERED' THEN 1 ELSE 0 END), 0) * 100.0
+                 / NULLIF(SUM(CASE WHEN e.type = 'SENT' THEN 1 ELSE 0 END), 0)
+          ELSE 0
+        END as deliveryRate,
+        CASE
+          WHEN COALESCE(SUM(CASE WHEN e.type = 'DELIVERED' THEN 1 ELSE 0 END), 0) > 0
+            THEN COALESCE(SUM(CASE WHEN e.type = 'OPENED' THEN 1 ELSE 0 END), 0) * 100.0
+                 / NULLIF(SUM(CASE WHEN e.type = 'DELIVERED' THEN 1 ELSE 0 END), 0)
+          ELSE 0
+        END as openRate,
+        CASE
+          WHEN COALESCE(SUM(CASE WHEN e.type = 'SENT' THEN 1 ELSE 0 END), 0) > 0
+            THEN COALESCE(SUM(CASE WHEN e.type = 'BOUNCED' THEN 1 ELSE 0 END), 0) * 100.0
+                 / NULLIF(SUM(CASE WHEN e.type = 'SENT' THEN 1 ELSE 0 END), 0)
+          ELSE 0
+        END as bounceRate,
+        CASE
+          WHEN COALESCE(SUM(CASE WHEN e.type = 'DELIVERED' THEN 1 ELSE 0 END), 0) > 0
+            THEN COALESCE(SUM(CASE WHEN e.type = 'UNSUBSCRIBED' THEN 1 ELSE 0 END), 0) * 100.0
+                 / NULLIF(SUM(CASE WHEN e.type = 'DELIVERED' THEN 1 ELSE 0 END), 0)
+          ELSE 0
+        END as unsubscribeRate
+      FROM "Event" e
+      INNER JOIN "Campaign" c ON c.id = e.campaignId
+      WHERE ${accessibleCampaignFilter.clause}
+      AND ${eventDateClause}
+    `,
+    [...accessibleCampaignFilter.params, ...eventDateParams],
+  );
+
+  const deliverabilityTrend = queryRows<DeliverabilityTrendPoint>(
+    `
+      SELECT
+        date(e.createdAt) as day,
+        COALESCE(SUM(CASE WHEN e.type = 'SENT' THEN 1 ELSE 0 END), 0) as sentCount,
+        COALESCE(SUM(CASE WHEN e.type = 'DELIVERED' THEN 1 ELSE 0 END), 0) as deliveredCount,
+        COALESCE(SUM(CASE WHEN e.type = 'OPENED' THEN 1 ELSE 0 END), 0) as openedCount,
+        COALESCE(SUM(CASE WHEN e.type = 'BOUNCED' THEN 1 ELSE 0 END), 0) as bouncedCount,
+        COALESCE(SUM(CASE WHEN e.type = 'UNSUBSCRIBED' THEN 1 ELSE 0 END), 0) as unsubscribedCount
+      FROM "Event" e
+      INNER JOIN "Campaign" c ON c.id = e.campaignId
+      WHERE ${accessibleCampaignFilter.clause}
+      AND ${eventDateClause}
+      GROUP BY date(e.createdAt)
+      ORDER BY day ASC
+    `,
+    [...accessibleCampaignFilter.params, ...eventDateParams],
+  );
+
   const totalTeams = queryRow<{ count: number }>(
     `SELECT COUNT(*) as count FROM "Team" t ${role === 'MANAGER' ? 'WHERE t.managerId = ?' : ''}`,
     role === 'MANAGER' ? [userId] : [],
@@ -493,5 +577,17 @@ export async function getResourceAnalyticsSummary(userId: string, role: Role, fr
     userBreakdown,
     teamBreakdown,
     campaignCorrelation,
+    deliverabilitySummary: deliverabilitySummary || {
+      sentCount: 0,
+      deliveredCount: 0,
+      openedCount: 0,
+      bouncedCount: 0,
+      unsubscribedCount: 0,
+      deliveryRate: 0,
+      openRate: 0,
+      bounceRate: 0,
+      unsubscribeRate: 0,
+    },
+    deliverabilityTrend,
   } satisfies ResourceAnalyticsSummary;
 }

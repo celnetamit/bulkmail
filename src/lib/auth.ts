@@ -83,10 +83,14 @@ export async function readSessionToken(token: string) {
 }
 
 async function getUserRecordFromSession() {
+  const token = cookies().get(SESSION_COOKIE)?.value;
+  return getUserRecordFromToken(token || null);
+}
+
+async function getUserRecordFromToken(token: string | null) {
   ensurePlatformSettingsSchema();
   startCampaignSendQueueWorker();
 
-  const token = cookies().get(SESSION_COOKIE)?.value;
   if (!token) return null;
 
   const session = await readSessionToken(token);
@@ -129,8 +133,24 @@ export async function getCurrentUserFromCookies() {
   return getUserRecordFromSession();
 }
 
+export async function getCurrentUserFromRequest(request: Request) {
+  const cookieHeader = request.headers.get('cookie') || '';
+  const match = cookieHeader.match(new RegExp(`(?:^|;\\s*)${SESSION_COOKIE}=([^;]+)`));
+  const token = match ? decodeURIComponent(match[1]) : null;
+  return getUserRecordFromToken(token);
+}
+
 export async function requireUserFromCookies(): Promise<{ user: AuthUser } | { error: NextResponse }> {
   const user = await getCurrentUserFromCookies();
+  if (!user) {
+    return { error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) };
+  }
+
+  return { user };
+}
+
+export async function requireUserFromRequest(request: Request): Promise<{ user: AuthUser } | { error: NextResponse }> {
+  const user = await getCurrentUserFromRequest(request);
   if (!user) {
     return { error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) };
   }

@@ -31,6 +31,11 @@ type UserRow = {
 };
 
 type SummaryResponse = {
+  viewer: {
+    userId: string;
+    email: string;
+    role: string;
+  };
   totals: {
     users: number;
     activeUsers: number;
@@ -56,6 +61,53 @@ type SummaryResponse = {
     metadata: Record<string, unknown> | null;
     createdAt: string;
   }>;
+  recentSystemEvents: Array<{
+    id: string;
+    level: 'INFO' | 'WARN' | 'ERROR';
+    source: string;
+    message: string;
+    userId: string | null;
+    campaignId: string | null;
+    details: Record<string, unknown> | null;
+    createdAt: string;
+  }>;
+  systemAlerts: Array<{
+    key: string;
+    level: 'critical' | 'warning' | 'info';
+    title: string;
+    detail: string;
+    action?: { label: string; href: string };
+  }>;
+  systemHealth: {
+    uptimeSeconds: number;
+    queue: {
+      queued: number;
+      running: number;
+      retrying: number;
+      failed: number;
+      skipped: number;
+    };
+    recentErrors24h: number;
+    recentWarnings24h: number;
+    lastError: {
+      message: string;
+      source: string;
+      createdAt: string;
+    } | null;
+    live: {
+      cpuUserMs: number;
+      cpuSystemMs: number;
+      memoryRssMb: number;
+      memoryHeapUsedMb: number;
+      memoryHeapTotalMb: number;
+      eventLoopUtilization: number;
+      activeHandles: number;
+      activeRequests: number;
+      loadAverage1m: number;
+      loadAverage5m: number;
+      loadAverage15m: number;
+    };
+  };
 };
 
 type Settings = {
@@ -88,6 +140,21 @@ function statusClass(status: ComplianceStatus) {
   return 'badge-warning';
 }
 
+function alertClass(level: 'critical' | 'warning' | 'info') {
+  if (level === 'critical') return 'badge-warning';
+  if (level === 'warning') return 'badge-info';
+  return 'badge-success';
+}
+
+function normalizeAlertFilter(value: string | null): 'all' | 'critical' | 'warning' | 'info' {
+  if (value === 'critical' || value === 'warning' || value === 'info') return value;
+  return 'all';
+}
+
+function normalizeDismissedAlerts(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === 'string') : [];
+}
+
 export default function AdminDashboardClient() {
   const [summary, setSummary] = useState<SummaryResponse | null>(null);
   const [settings, setSettings] = useState<Settings | null>(null);
@@ -99,6 +166,8 @@ export default function AdminDashboardClient() {
   const [imageUploadLimitKb, setImageUploadLimitKb] = useState('');
   const [savingId, setSavingId] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<Record<string, Partial<UserRow>>>({});
+  const [alertFilter, setAlertFilter] = useState<'all' | 'critical' | 'warning' | 'info'>('all');
+  const [dismissedAlertKeys, setDismissedAlertKeys] = useState<string[]>([]);
 
   async function load() {
     const [overviewResponse, settingsResponse] = await Promise.all([
@@ -132,6 +201,43 @@ export default function AdminDashboardClient() {
   useEffect(() => {
     load();
   }, []);
+
+  useEffect(() => {
+    if (!summary?.viewer?.userId) return;
+
+    const storageKey = `mailflow_admin_alerts:${summary.viewer.userId}`;
+    try {
+      const raw = sessionStorage.getItem(storageKey);
+      if (!raw) return;
+
+      const parsed = JSON.parse(raw) as {
+        filter?: string;
+        dismissed?: unknown;
+      };
+
+      setAlertFilter(normalizeAlertFilter(parsed.filter || null));
+      setDismissedAlertKeys(normalizeDismissedAlerts(parsed.dismissed));
+    } catch {
+      // Ignore malformed session state.
+    }
+  }, [summary?.viewer?.userId]);
+
+  useEffect(() => {
+    if (!summary?.viewer?.userId) return;
+
+    const storageKey = `mailflow_admin_alerts:${summary.viewer.userId}`;
+    try {
+      sessionStorage.setItem(
+        storageKey,
+        JSON.stringify({
+          filter: alertFilter,
+          dismissed: dismissedAlertKeys,
+        }),
+      );
+    } catch {
+      // Ignore storage failures in private browsing / storage-restricted modes.
+    }
+  }, [alertFilter, dismissedAlertKeys, summary?.viewer?.userId]);
 
   async function createUser(event: FormEvent) {
     event.preventDefault();
@@ -195,6 +301,14 @@ export default function AdminDashboardClient() {
   }
 
   const rows = useMemo(() => summary?.users || [], [summary]);
+  const visibleAlerts = useMemo(() => {
+    const alerts = summary?.systemAlerts || [];
+    return alerts.filter((alert) => {
+      if (dismissedAlertKeys.includes(alert.key)) return false;
+      if (alertFilter === 'all') return true;
+      return alert.level === alertFilter;
+    });
+  }, [summary, dismissedAlertKeys, alertFilter]);
   const compliance = useMemo<
     Array<{
       key: string;
@@ -305,6 +419,121 @@ export default function AdminDashboardClient() {
               </article>
             ))
           )}
+        </div>
+      </div>
+
+      <div className="card dashboard-panel" style={{ marginBottom: '1rem' }}>
+        <div className="help-panel__header">
+          <div>
+            <h2>System health</h2>
+            <p className="form-note">Queue pressure, live runtime metrics, and the latest error signals from the app.</p>
+          </div>
+        </div>
+        {(summary?.systemAlerts || []).length > 0 ? (
+          <>
+            <div className="alert-toolbar">
+              <div className="alert-filter-chips" role="tablist" aria-label="System alert filters">
+                {(['all', 'critical', 'warning', 'info'] as const).map((level) => {
+                  const active = alertFilter === level;
+                  return (
+                    <button
+                      key={level}
+                      type="button"
+                      className={`mini-btn ${active ? 'mini-btn--active' : ''}`}
+                      onClick={() => setAlertFilter(level)}
+                    >
+                      {level === 'all' ? 'All' : level.charAt(0).toUpperCase() + level.slice(1)}
+                    </button>
+                  );
+                })}
+              </div>
+              <button
+                type="button"
+                className="mini-btn"
+                onClick={() => setDismissedAlertKeys([])}
+                disabled={dismissedAlertKeys.length === 0}
+              >
+                Reset dismissed
+              </button>
+            </div>
+            <div className="system-alerts-grid" style={{ marginBottom: '1rem' }}>
+              {visibleAlerts.length > 0 ? (
+                visibleAlerts.map((alert) => (
+                  <article className={`system-alert-card system-alert-card--${alert.level}`} key={alert.key}>
+                    <div className="help-compliance-card__head">
+                      <div className="alert-card__head-row">
+                        <span className={`badge ${alertClass(alert.level)}`}>{alert.level === 'critical' ? 'Critical' : alert.level === 'warning' ? 'Warning' : 'Info'}</span>
+                        <button
+                          type="button"
+                          className="mini-btn"
+                          onClick={() =>
+                            setDismissedAlertKeys((current) =>
+                              current.includes(alert.key) ? current : [...current, alert.key],
+                            )
+                          }
+                        >
+                          Dismiss
+                        </button>
+                      </div>
+                      <h3>{alert.title}</h3>
+                    </div>
+                    <p>{alert.detail}</p>
+                    {alert.action ? (
+                      <Link className="mini-btn" href={alert.action.href}>
+                        {alert.action.label}
+                      </Link>
+                    ) : null}
+                  </article>
+                ))
+              ) : (
+                <div className="system-alert-empty">
+                  <p className="form-note">No visible alerts for this filter. Dismissed alerts stay hidden for this admin session until you reset them.</p>
+                </div>
+              )}
+            </div>
+          </>
+        ) : (
+          <p className="form-note" style={{ marginBottom: '1rem' }}>No active system alerts. The platform is below the current warning thresholds.</p>
+        )}
+        <div className="stats-grid dashboard-stats">
+          <div className="stat-card"><h3>Queued</h3><p className="stat-value">{summary?.systemHealth.queue.queued ?? 0}</p></div>
+          <div className="stat-card"><h3>Running</h3><p className="stat-value">{summary?.systemHealth.queue.running ?? 0}</p></div>
+          <div className="stat-card"><h3>Retrying</h3><p className="stat-value">{summary?.systemHealth.queue.retrying ?? 0}</p></div>
+          <div className="stat-card"><h3>Failed</h3><p className="stat-value text-red">{summary?.systemHealth.queue.failed ?? 0}</p></div>
+          <div className="stat-card"><h3>Errors 24h</h3><p className="stat-value text-red">{summary?.systemHealth.recentErrors24h ?? 0}</p></div>
+          <div className="stat-card"><h3>Warnings 24h</h3><p className="stat-value text-yellow">{summary?.systemHealth.recentWarnings24h ?? 0}</p></div>
+          <div className="stat-card"><h3>Memory RSS</h3><p className="stat-value">{summary?.systemHealth.live ? `${summary.systemHealth.live.memoryRssMb.toFixed(1)} MB` : '0 MB'}</p></div>
+          <div className="stat-card"><h3>Event Loop</h3><p className="stat-value">{summary?.systemHealth.live ? `${summary.systemHealth.live.eventLoopUtilization.toFixed(2)}%` : '0%'}</p></div>
+        </div>
+        <div className="audit-trail-list" style={{ marginTop: '1rem' }}>
+          {summary?.systemHealth.lastError ? (
+            <article className="audit-trail-item">
+              <div className="audit-trail-item__top">
+                <strong>Latest error</strong>
+                <span className="badge badge-warning">{summary.systemHealth.lastError.source}</span>
+              </div>
+              <div className="audit-trail-item__meta">
+                <span>{summary.systemHealth.lastError.createdAt ? new Date(summary.systemHealth.lastError.createdAt).toLocaleString() : '-'}</span>
+              </div>
+              <p className="form-note">{summary.systemHealth.lastError.message}</p>
+            </article>
+          ) : (
+            <p className="form-note">No error events recorded yet.</p>
+          )}
+          {(summary?.recentSystemEvents || []).length === 0 ? null : (summary?.recentSystemEvents || []).map((event) => (
+            <article className="audit-trail-item" key={event.id}>
+              <div className="audit-trail-item__top">
+                <strong>{event.source}</strong>
+                <span className={`badge ${event.level === 'ERROR' ? 'badge-warning' : event.level === 'WARN' ? 'badge-info' : ''}`}>{event.level}</span>
+              </div>
+              <div className="audit-trail-item__meta">
+                <span>{event.createdAt ? new Date(event.createdAt).toLocaleString() : '-'}</span>
+                {event.campaignId ? <span>Campaign {event.campaignId}</span> : null}
+                {event.userId ? <span>User {event.userId}</span> : null}
+              </div>
+              <p className="form-note">{event.message}</p>
+            </article>
+          ))}
         </div>
       </div>
 

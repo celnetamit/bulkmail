@@ -20,6 +20,7 @@ export async function GET(_: Request, { params }: Params) {
         c.bodyHtml,
         c.status,
         c.provider,
+        CASE WHEN COALESCE(c.isArchived, FALSE) THEN 1 ELSE 0 END as isArchived,
         c.totalRecipients,
         c.sentCount,
         c.failedCount,
@@ -82,11 +83,14 @@ export async function PATCH(request: Request, { params }: Params) {
   if (!ALLOWED_STATUSES.has(status)) return fail('Invalid status.', 400);
   if (listIds.length === 0) return fail('At least one list is required.', 400);
 
-  const existing = queryRow<{ id: string; listId: string; status: string }>(
-    'SELECT id, listId, status FROM "Campaign" WHERE id = ? AND userId = ? LIMIT 1',
+  const existing = queryRow<{ id: string; listId: string; status: string; isArchived: number | boolean }>(
+    'SELECT id, listId, status, CASE WHEN COALESCE(isArchived, FALSE) THEN 1 ELSE 0 END as isArchived FROM "Campaign" WHERE id = ? AND userId = ? LIMIT 1',
     [params.id, auth.user.userId],
   );
   if (!existing) return fail('Campaign not found.', 404);
+  if (existing.isArchived) {
+    return fail('Archived campaigns cannot be edited.', 409);
+  }
   if (existing.status === 'QUEUED' || existing.status === 'RETRYING' || existing.status === 'SENDING') {
     return fail('Queued or sending campaigns cannot be edited.', 409);
   }
@@ -156,6 +160,7 @@ export async function PATCH(request: Request, { params }: Params) {
         c.bodyHtml,
         c.status,
         c.provider,
+        CASE WHEN COALESCE(c.isArchived, FALSE) THEN 1 ELSE 0 END as isArchived,
         c.totalRecipients,
         c.sentCount,
         c.failedCount,

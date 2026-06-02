@@ -102,6 +102,7 @@ model List {
   description String?
   userId      String
   isDefaultTestList Boolean @default(false)
+  isArchived  Boolean   @default(false)
   user        User      @relation(fields: [userId], references: [id])
   contacts    Contact[]
   campaigns   Campaign[]
@@ -132,6 +133,7 @@ model Campaign {
   bodyHtml  String
   status    String   @default("DRAFT") // DRAFT, SCHEDULED, SENDING, SENT
   provider  String?
+  isArchived Boolean  @default(false)
   totalRecipients Int      @default(0)
   sentCount       Int      @default(0)
   failedCount     Int      @default(0)
@@ -211,6 +213,23 @@ model ResourceMetric {
   @@index([scopeType, createdAt])
   @@index([userId, createdAt])
   @@index([campaignId, createdAt])
+}
+
+model SystemEvent {
+  id          String   @id @default(cuid())
+  level       String
+  source      String
+  message     String
+  userId      String?
+  campaignId  String?
+  details     String?
+  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  campaign    Campaign? @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  createdAt   DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([level, createdAt])
+  @@index([source, createdAt])
 }
 
 model CampaignSendJob {

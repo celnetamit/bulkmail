@@ -1,6 +1,7 @@
 import { requireAdminFromCookies } from '@/lib/auth';
 import { listRecentAuditEvents } from '@/lib/audit';
 import { ok } from '@/lib/http';
+import { buildSystemHealthAlerts, getSystemHealthSnapshot, listRecentSystemEvents } from '@/lib/observability';
 import { startOfUtcDay } from '@/lib/quota';
 import { recordResourceMetric } from '@/lib/resource-analytics';
 import { queryRows, queryRow } from '@/lib/sqlite';
@@ -14,7 +15,7 @@ export async function GET() {
 
   const from = startOfUtcDay();
 
-  recordResourceMetric({
+  const live = recordResourceMetric({
     scopeType: 'GLOBAL',
     eventType: 'PAGE_VIEW',
     userId: auth.user.userId,
@@ -144,8 +145,29 @@ export async function GET() {
       }
     })(),
   }));
+  const recentSystemEvents = listRecentSystemEvents(8).map((entry) => ({
+    ...entry,
+    details: (() => {
+      if (!entry.details) return null;
+      try {
+        return JSON.parse(entry.details) as Record<string, unknown>;
+      } catch {
+        return null;
+      }
+    })(),
+  }));
+
+  const systemHealth = {
+    ...getSystemHealthSnapshot(),
+    live,
+  };
 
   return ok({
+    viewer: {
+      userId: auth.user.userId,
+      email: auth.user.email,
+      role: auth.user.role,
+    },
     totals: {
       users: users.length,
       activeUsers: users.filter((user) => Boolean(user.isActive)).length,
@@ -158,7 +180,10 @@ export async function GET() {
       bounceTotal,
       unsubscribeTotal,
     },
+    systemHealth,
+    systemAlerts: buildSystemHealthAlerts(systemHealth),
     users: usersWithStats,
     recentAudits,
+    recentSystemEvents,
   });
 }

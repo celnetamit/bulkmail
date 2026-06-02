@@ -18,6 +18,7 @@ function toPgSql(sql: string) {
 const postgresIdentifiersToQuote = [
   'isActive',
   'isDefaultTestList',
+  'isArchived',
   'userId',
   'teamId',
   'managerId',

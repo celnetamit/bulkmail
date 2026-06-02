@@ -94,6 +94,7 @@ CREATE TABLE IF NOT EXISTS "List" (
   "description" TEXT,
   "userId" TEXT NOT NULL,
   "isDefaultTestList" BOOLEAN NOT NULL DEFAULT FALSE,
+  "isArchived" BOOLEAN NOT NULL DEFAULT FALSE,
   "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   "updatedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   CONSTRAINT "List_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
@@ -120,6 +121,7 @@ CREATE TABLE IF NOT EXISTS "Campaign" (
   "bodyHtml" TEXT NOT NULL,
   "status" TEXT NOT NULL DEFAULT 'DRAFT',
   "provider" TEXT,
+  "isArchived" BOOLEAN NOT NULL DEFAULT FALSE,
   "totalRecipients" INTEGER NOT NULL DEFAULT 0,
   "sentCount" INTEGER NOT NULL DEFAULT 0,
   "failedCount" INTEGER NOT NULL DEFAULT 0,
@@ -224,6 +226,23 @@ CREATE INDEX IF NOT EXISTS "ResourceMetric_createdAt_idx" ON "ResourceMetric" ("
 CREATE INDEX IF NOT EXISTS "ResourceMetric_scopeType_createdAt_idx" ON "ResourceMetric" ("scopeType", "createdAt");
 CREATE INDEX IF NOT EXISTS "ResourceMetric_userId_createdAt_idx" ON "ResourceMetric" ("userId", "createdAt");
 CREATE INDEX IF NOT EXISTS "ResourceMetric_campaignId_createdAt_idx" ON "ResourceMetric" ("campaignId", "createdAt");
+
+CREATE TABLE IF NOT EXISTS "SystemEvent" (
+  "id" TEXT NOT NULL PRIMARY KEY,
+  "level" TEXT NOT NULL,
+  "source" TEXT NOT NULL,
+  "message" TEXT NOT NULL,
+  "userId" TEXT,
+  "campaignId" TEXT,
+  "details" TEXT,
+  "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT "SystemEvent_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE SET NULL ON UPDATE CASCADE,
+  CONSTRAINT "SystemEvent_campaignId_fkey" FOREIGN KEY ("campaignId") REFERENCES "Campaign" ("id") ON DELETE SET NULL ON UPDATE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS "SystemEvent_createdAt_idx" ON "SystemEvent" ("createdAt");
+CREATE INDEX IF NOT EXISTS "SystemEvent_level_createdAt_idx" ON "SystemEvent" ("level", "createdAt");
+CREATE INDEX IF NOT EXISTS "SystemEvent_source_createdAt_idx" ON "SystemEvent" ("source", "createdAt");
 
 CREATE TABLE IF NOT EXISTS "AiAgentProfile" (
   "id" TEXT NOT NULL PRIMARY KEY,
