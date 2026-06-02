@@ -1,8 +1,10 @@
 'use client';
 
+import { ChangeEvent, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { IconHelp, IconImport, IconPlus } from '@/components/dashboard-icons';
 
 type Campaign = {
   id: string;
@@ -11,6 +13,7 @@ type Campaign = {
   bodyHtml: string;
   status: string;
   provider: string | null;
+  isArchived?: number | boolean;
   totalRecipients: number;
   sentCount: number;
   failedCount: number;
@@ -30,6 +33,22 @@ type Campaign = {
   template: { id: string; name: string } | null;
 };
 
+type BulkCampaignResponse = {
+  error?: string;
+  success?: boolean;
+  action?: string;
+  campaignIds?: string[];
+  createdCampaignIds?: string[];
+  targetListIds?: string[];
+  campaigns?: Campaign[];
+};
+
+type ListOption = {
+  id: string;
+  name: string;
+  isArchived?: number | boolean;
+};
+
 function formatDuration(seconds: number | null | undefined) {
   if (seconds == null) return '-';
   if (seconds < 60) return `${seconds}s`;
@@ -44,16 +63,28 @@ function formatPercent(value: number) {
 
 export default function CampaignsPage() {
   const router = useRouter();
+  const campaignImportRef = useRef<HTMLInputElement | null>(null);
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
+  const [lists, setLists] = useState<ListOption[]>([]);
   const [message, setMessage] = useState('');
   const [sendingId, setSendingId] = useState<string | null>(null);
   const [testingId, setTestingId] = useState<string | null>(null);
+  const [selectedCampaignIds, setSelectedCampaignIds] = useState<string[]>([]);
+  const [showArchived, setShowArchived] = useState(false);
+  const [bulkLoading, setBulkLoading] = useState(false);
+  const [retargetListIds, setRetargetListIds] = useState<string[]>([]);
 
   const loadAll = useCallback(async () => {
-    const campaignsRes = await fetch('/api/campaigns', { cache: 'no-store' });
+    const [campaignsRes, listsRes] = await Promise.all([
+      fetch(`/api/campaigns${showArchived ? '?includeArchived=true' : ''}`, { cache: 'no-store' }),
+      fetch('/api/lists?all=true', { cache: 'no-store' }),
+    ]);
     const campaignsData = (await campaignsRes.json()) as { campaigns: Campaign[] };
+    const listsData = (await listsRes.json()) as { lists: ListOption[] };
     setCampaigns(campaignsData.campaigns || []);
-  }, []);
+    setLists(listsData.lists || []);
+    setSelectedCampaignIds([]);
+  }, [showArchived]);
 
   useEffect(() => {
     loadAll();
@@ -96,6 +127,107 @@ export default function CampaignsPage() {
         ? 6
         : 0
     : 0;
+
+  const selectedCampaignCount = selectedCampaignIds.length;
+  const allVisibleSelected = campaigns.length > 0 && campaigns.every((campaign) => selectedCampaignIds.includes(campaign.id));
+
+  function toggleSelectedCampaign(id: string) {
+    setSelectedCampaignIds((current) =>
+      current.includes(id) ? current.filter((entry) => entry !== id) : [...current, id],
+    );
+  }
+
+  function toggleSelectAllVisibleCampaigns() {
+    if (campaigns.length === 0) return;
+    const visibleIds = campaigns.map((campaign) => campaign.id);
+    const allSelected = visibleIds.every((id) => selectedCampaignIds.includes(id));
+    setSelectedCampaignIds(allSelected ? [] : visibleIds);
+  }
+
+  async function runBulkCampaignAction(action: 'archive' | 'unarchive' | 'duplicate' | 'retarget') {
+    if (selectedCampaignIds.length === 0) return;
+    if (action === 'retarget' && retargetListIds.length === 0) {
+      setMessage('Choose at least one retarget list first.');
+      return;
+    }
+
+    setBulkLoading(true);
+    setMessage('');
+    const response = await fetch('/api/campaigns/bulk', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        action,
+        campaignIds: selectedCampaignIds,
+        targetListIds: retargetListIds,
+      }),
+    });
+    const data = (await response.json()) as BulkCampaignResponse;
+    setBulkLoading(false);
+    if (!response.ok) {
+      setMessage(data.error || `Failed to ${action} campaigns.`);
+      return;
+    }
+
+    setSelectedCampaignIds([]);
+    setMessage(
+      action === 'duplicate'
+        ? `${data.createdCampaignIds?.length || selectedCampaignIds.length} campaign${(data.createdCampaignIds?.length || selectedCampaignIds.length) === 1 ? '' : 's'} duplicated.`
+        : action === 'retarget'
+          ? `${selectedCampaignIds.length} campaign${selectedCampaignIds.length === 1 ? '' : 's'} retargeted.`
+          : `${selectedCampaignIds.length} campaign${selectedCampaignIds.length === 1 ? '' : 's'} ${action === 'archive' ? 'archived' : 'restored'}.`,
+    );
+    await loadAll();
+  }
+
+  async function exportCampaigns(campaignIds: string[]) {
+    if (campaignIds.length === 0) return;
+    const response = await fetch(`/api/campaigns/export?campaignIds=${encodeURIComponent(campaignIds.join(','))}`, { cache: 'no-store' });
+    const data = await response.json();
+    if (!response.ok) {
+      setMessage(data.error || 'Failed to export campaigns.');
+      return;
+    }
+
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `campaigns-export-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+    setMessage(`Exported ${campaignIds.length} campaign${campaignIds.length === 1 ? '' : 's'}.`);
+  }
+
+  async function importCampaigns(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+
+    let payload: unknown;
+    try {
+      payload = JSON.parse(await file.text());
+    } catch {
+      setMessage('Import file must be valid JSON.');
+      return;
+    }
+
+    setBulkLoading(true);
+    const response = await fetch('/api/campaigns/import', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = (await response.json()) as BulkCampaignResponse;
+    setBulkLoading(false);
+    if (!response.ok) {
+      setMessage(data.error || 'Failed to import campaigns.');
+      return;
+    }
+
+    setMessage(`Imported ${data.createdCampaignIds?.length || 0} campaign${(data.createdCampaignIds?.length || 0) === 1 ? '' : 's'}.`);
+    await loadAll();
+  }
 
   async function updateStatus(campaign: Campaign, status: string) {
     const selectedListIds = (campaign.lists && campaign.lists.length > 0 ? campaign.lists : [campaign.list]).map((list) => list.id);
@@ -164,10 +296,18 @@ export default function CampaignsPage() {
             <p>Keep the campaign list readable, then jump into the dedicated builder when you are ready to create or edit.</p>
           </div>
           <div className="header-actions">
-            <button className="btn-secondary" type="button" onClick={() => router.push('/dashboard/campaigns/create')}>
+            <button className="btn-secondary btn-secondary--with-icon" type="button" onClick={() => router.push('/dashboard/campaigns/create')}>
+              <IconPlus className="btn-icon" aria-hidden="true" />
               New Campaign
             </button>
-            <Link className="btn-secondary" href="/dashboard/help">Help</Link>
+            <button className="btn-secondary btn-secondary--with-icon" type="button" onClick={() => campaignImportRef.current?.click()}>
+              <IconImport className="btn-icon" aria-hidden="true" />
+              Import
+            </button>
+            <Link className="btn-secondary btn-secondary--with-icon" href="/dashboard/help">
+              <IconHelp className="btn-icon" aria-hidden="true" />
+              Help
+            </Link>
           </div>
         </div>
       </header>
@@ -182,6 +322,14 @@ export default function CampaignsPage() {
         <div className="stat-card"><h3>Unsubscribed</h3><p className="stat-value text-yellow">{summary.unsubscribed}</p></div>
         <div className="stat-card"><h3>Avg Open Rate</h3><p className="stat-value">{formatPercent(summary.averageOpenRate)}</p></div>
       </div>
+
+      <input
+        ref={campaignImportRef}
+        type="file"
+        accept="application/json"
+        style={{ display: 'none' }}
+        onChange={importCampaigns}
+      />
 
       {activeCampaign ? (
         <div className="card" style={{ padding: '1rem', marginBottom: '1rem' }}>
@@ -203,92 +351,169 @@ export default function CampaignsPage() {
         </div>
       ) : null}
 
+      <div className="card" style={{ padding: '0.9rem 1rem', marginBottom: '1rem' }}>
+        <div className="bulk-action-bar" style={{ marginBottom: '0.75rem' }}>
+          <div className="bulk-action-bar__summary">
+            <strong>{selectedCampaignCount}</strong> selected
+          </div>
+          <div className="bulk-action-bar__actions">
+            <button className="mini-btn" type="button" onClick={() => runBulkCampaignAction('archive')} disabled={bulkLoading || selectedCampaignCount === 0}>
+              Archive
+            </button>
+            <button className="mini-btn" type="button" onClick={() => runBulkCampaignAction('unarchive')} disabled={bulkLoading || selectedCampaignCount === 0}>
+              Unarchive
+            </button>
+            <button className="mini-btn" type="button" onClick={() => runBulkCampaignAction('duplicate')} disabled={bulkLoading || selectedCampaignCount === 0}>
+              Duplicate
+            </button>
+            <button className="mini-btn" type="button" onClick={() => runBulkCampaignAction('retarget')} disabled={bulkLoading || selectedCampaignCount === 0 || retargetListIds.length === 0}>
+              Retarget
+            </button>
+            <button className="mini-btn" type="button" onClick={() => exportCampaigns(selectedCampaignIds)} disabled={bulkLoading || selectedCampaignCount === 0}>
+              Export
+            </button>
+            <button className="mini-btn danger" type="button" onClick={() => setSelectedCampaignIds([])} disabled={bulkLoading || selectedCampaignCount === 0}>
+              Clear
+            </button>
+          </div>
+        </div>
+        <div className="bulk-retarget-panel">
+          <label>
+            <span style={{ display: 'block', marginBottom: '0.35rem', color: '#cbd5e1' }}>Retarget to lists</span>
+            <select
+              multiple
+              size={Math.min(5, Math.max(2, lists.length || 2))}
+              className="status-select bulk-retarget-select"
+              value={retargetListIds}
+              onChange={(event) => setRetargetListIds(Array.from(event.target.selectedOptions).map((option) => option.value))}
+            >
+              {lists.length === 0 ? <option value="" disabled>No lists available</option> : null}
+              {lists.map((list) => (
+                <option key={list.id} value={list.id}>
+                  {list.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <p className="form-note" style={{ marginTop: '0.5rem' }}>
+            Choose one or more lists before retargeting the selected campaigns.
+          </p>
+        </div>
+      </div>
+
       <div className="card">
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>List</th>
-              <th>Status</th>
-              <th>Progress</th>
-              <th>Timing</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {campaigns.length === 0 ? <tr><td colSpan={6}>No campaigns yet.</td></tr> : campaigns.map((c) => (
-              <tr key={c.id}>
-                <td>{c.name}</td>
-                <td>
-                  <div>{c.list.name}</div>
-                  <div style={{ marginTop: '0.25rem' }}>
-                    <span className="badge" style={{ display: 'inline-flex' }}>
-                      {c.listCount || 1} list{(c.listCount || 1) === 1 ? '' : 's'} selected
-                    </span>
-                  </div>
-                  <div style={{ marginTop: '0.25rem', fontSize: '0.8rem', color: '#94a3b8' }}>
-                    {(c.lists || [c.list]).map((list) => list.name).join(', ')}
-                  </div>
-                </td>
-                <td>
-                  <div className={`badge ${c.status === 'SENT' ? 'badge-success' : c.status === 'FAILED' || c.status === 'QUEUED' || c.status === 'RETRYING' ? 'badge-warning' : ''}`} style={{ display: 'inline-flex', marginBottom: '0.35rem' }}>{c.status}</div>
-                  <div style={{ fontSize: '0.85rem', color: '#94a3b8' }}>{c.status === 'QUEUED' || c.status === 'RETRYING' ? c.status.toLowerCase() : c.provider || 'mock'}</div>
-                </td>
-                <td style={{ minWidth: '240px' }}>
-                  <div className="progress-track" aria-hidden="true">
-                    <div className="progress-bar" style={{ width: `${c.totalRecipients > 0 ? Math.min(100, (c.sentCount / c.totalRecipients) * 100) : 0}%` }} />
-                  </div>
-                  <div style={{ marginTop: '0.5rem', fontSize: '0.85rem', color: '#94a3b8' }}>
-                    {c.sentCount}/{c.totalRecipients} sent, {c.failedCount} failed, {c.skippedCount} skipped
-                  </div>
-                  <div style={{ marginTop: '0.3rem', fontSize: '0.8rem', color: '#cbd5e1' }}>
-                    {c.openedCount} opened, {c.bouncedCount} bounced, {c.unsubscribedCount} unsubscribed
-                  </div>
-                </td>
-                <td style={{ whiteSpace: 'nowrap', fontSize: '0.85rem', color: '#cbd5e1' }}>
-                  {c.startedAt ? `Started ${new Date(c.startedAt).toLocaleString()}` : '-'}
-                  <br />
-                  {c.finishedAt ? `Finished ${new Date(c.finishedAt).toLocaleString()}` : c.status === 'QUEUED' ? 'Queued' : c.status === 'RETRYING' ? 'Retrying' : c.status === 'SENDING' ? 'In progress' : '-'}
-                  <br />
-                  Duration: {formatDuration(c.durationSeconds)}
-                </td>
-                <td>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
-                    <button
-                      className="mini-btn"
-                      type="button"
-                      onClick={() => router.push(`/dashboard/campaigns/create?campaignId=${c.id}`)}
-                      disabled={c.status === 'QUEUED' || c.status === 'RETRYING' || c.status === 'SENDING'}
-                    >
-                      Edit Draft
-                    </button>
-                    <button className="mini-btn" type="button" onClick={() => duplicateCampaign(c.id)}>Copy</button>
-                    <button className="mini-btn" type="button" onClick={() => testCampaign(c.id)} disabled={testingId === c.id}>
-                      {testingId === c.id ? 'Testing...' : 'Test'}
-                    </button>
-                    <Link className="mini-btn" href={`/dashboard/analytics?campaignId=${c.id}`}>Stats</Link>
-                  </div>
-                  <div style={{ marginTop: '0.4rem' }}>
-                    <select className="status-select" value={c.status} onChange={(e) => updateStatus(c, e.target.value)} disabled={c.status === 'QUEUED' || c.status === 'RETRYING' || c.status === 'SENDING'}>
-                      <option>DRAFT</option><option>SCHEDULED</option><option>QUEUED</option><option>RETRYING</option><option>SENDING</option><option>SENT</option><option>FAILED</option><option>SKIPPED</option>
-                    </select>
-                  </div>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', marginTop: '0.4rem' }}>
-                    <button
-                      className="mini-btn"
-                      type="button"
-                      onClick={() => sendCampaign(c.id)}
-                      disabled={sendingId === c.id || c.status === 'QUEUED' || c.status === 'RETRYING' || c.status === 'SENDING'}
-                    >
-                      {sendingId === c.id ? 'Sending...' : c.status === 'QUEUED' || c.status === 'RETRYING' || c.status === 'SENDING' ? c.status : 'Send'}
-                    </button>
-                    <button className="mini-btn danger" type="button" onClick={() => deleteCampaign(c.id)} disabled={c.status === 'QUEUED' || c.status === 'RETRYING' || c.status === 'SENDING'}>Delete</button>
-                  </div>
-                </td>
+        <div className="table-topbar">
+          <label className="inline-toggle">
+            <input type="checkbox" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} />
+            <span>Show archived</span>
+          </label>
+        </div>
+        <div className="table-wrap">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th style={{ width: '40px' }}>
+                  <input
+                    type="checkbox"
+                    checked={allVisibleSelected}
+                    onChange={toggleSelectAllVisibleCampaigns}
+                    aria-label="Select all visible campaigns"
+                  />
+                </th>
+                <th>Name</th>
+                <th>List</th>
+                <th>Status</th>
+                <th>Progress</th>
+                <th>Timing</th>
+                <th>Actions</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {campaigns.length === 0 ? <tr><td colSpan={7}>No campaigns yet.</td></tr> : campaigns.map((c) => (
+                <tr key={c.id} className={selectedCampaignIds.includes(c.id) ? 'is-selected-row--bulk' : ''}>
+                  <td onClick={(event) => event.stopPropagation()}>
+                    <input
+                      type="checkbox"
+                      checked={selectedCampaignIds.includes(c.id)}
+                      onChange={() => toggleSelectedCampaign(c.id)}
+                      aria-label={`Select campaign ${c.name}`}
+                    />
+                  </td>
+                  <td>
+                    <div>{c.name}</div>
+                    {c.isArchived ? <div className="badge badge-warning" style={{ display: 'inline-flex', marginTop: '0.35rem' }}>Archived</div> : null}
+                  </td>
+                  <td>
+                    <div>{c.list.name}</div>
+                    <div style={{ marginTop: '0.25rem' }}>
+                      <span className="badge" style={{ display: 'inline-flex' }}>
+                        {c.listCount || 1} list{(c.listCount || 1) === 1 ? '' : 's'} selected
+                      </span>
+                    </div>
+                    <div style={{ marginTop: '0.25rem', fontSize: '0.8rem', color: '#94a3b8' }}>
+                      {(c.lists || [c.list]).map((list) => list.name).join(', ')}
+                    </div>
+                  </td>
+                  <td>
+                    <div className={`badge ${c.status === 'SENT' ? 'badge-success' : c.status === 'FAILED' || c.status === 'QUEUED' || c.status === 'RETRYING' ? 'badge-warning' : ''}`} style={{ display: 'inline-flex', marginBottom: '0.35rem' }}>{c.status}</div>
+                    <div style={{ fontSize: '0.85rem', color: '#94a3b8' }}>{c.status === 'QUEUED' || c.status === 'RETRYING' ? c.status.toLowerCase() : c.provider || 'mock'}</div>
+                  </td>
+                  <td style={{ minWidth: '240px' }}>
+                    <div className="progress-track" aria-hidden="true">
+                      <div className="progress-bar" style={{ width: `${c.totalRecipients > 0 ? Math.min(100, (c.sentCount / c.totalRecipients) * 100) : 0}%` }} />
+                    </div>
+                    <div style={{ marginTop: '0.5rem', fontSize: '0.85rem', color: '#94a3b8' }}>
+                      {c.sentCount}/{c.totalRecipients} sent, {c.failedCount} failed, {c.skippedCount} skipped
+                    </div>
+                    <div style={{ marginTop: '0.3rem', fontSize: '0.8rem', color: '#cbd5e1' }}>
+                      {c.openedCount} opened, {c.bouncedCount} bounced, {c.unsubscribedCount} unsubscribed
+                    </div>
+                  </td>
+                  <td style={{ whiteSpace: 'nowrap', fontSize: '0.85rem', color: '#cbd5e1' }}>
+                    {c.startedAt ? `Started ${new Date(c.startedAt).toLocaleString()}` : '-'}
+                    <br />
+                    {c.finishedAt ? `Finished ${new Date(c.finishedAt).toLocaleString()}` : c.status === 'QUEUED' ? 'Queued' : c.status === 'RETRYING' ? 'Retrying' : c.status === 'SENDING' ? 'In progress' : '-'}
+                    <br />
+                    Duration: {formatDuration(c.durationSeconds)}
+                  </td>
+                  <td>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
+                      <button
+                        className="mini-btn"
+                        type="button"
+                        onClick={() => router.push(`/dashboard/campaigns/create?campaignId=${c.id}`)}
+                        disabled={c.status === 'QUEUED' || c.status === 'RETRYING' || c.status === 'SENDING' || Boolean(c.isArchived)}
+                      >
+                        Edit Draft
+                      </button>
+                      <button className="mini-btn" type="button" onClick={() => duplicateCampaign(c.id)}>Copy</button>
+                      <button className="mini-btn" type="button" onClick={() => testCampaign(c.id)} disabled={testingId === c.id || Boolean(c.isArchived)}>
+                        {testingId === c.id ? 'Testing...' : 'Test'}
+                      </button>
+                      <Link className="mini-btn" href={`/dashboard/analytics?campaignId=${c.id}`}>Stats</Link>
+                    </div>
+                    <div style={{ marginTop: '0.4rem' }}>
+                      <select className="status-select" value={c.status} onChange={(e) => updateStatus(c, e.target.value)} disabled={c.status === 'QUEUED' || c.status === 'RETRYING' || c.status === 'SENDING' || Boolean(c.isArchived)}>
+                        <option>DRAFT</option><option>SCHEDULED</option><option>QUEUED</option><option>RETRYING</option><option>SENDING</option><option>SENT</option><option>FAILED</option><option>SKIPPED</option>
+                      </select>
+                    </div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', marginTop: '0.4rem' }}>
+                      <button
+                        className="mini-btn"
+                        type="button"
+                        onClick={() => sendCampaign(c.id)}
+                        disabled={sendingId === c.id || c.status === 'QUEUED' || c.status === 'RETRYING' || c.status === 'SENDING' || Boolean(c.isArchived)}
+                      >
+                        {sendingId === c.id ? 'Sending...' : c.status === 'QUEUED' || c.status === 'RETRYING' || c.status === 'SENDING' ? c.status : 'Send'}
+                      </button>
+                      <button className="mini-btn danger" type="button" onClick={() => deleteCampaign(c.id)} disabled={c.status === 'QUEUED' || c.status === 'RETRYING' || c.status === 'SENDING'}>Delete</button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );

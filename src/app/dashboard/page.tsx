@@ -2,6 +2,8 @@ import { getCurrentUserFromCookies } from '@/lib/auth';
 import { getUserAnalyticsSummary } from '@/lib/analytics';
 import { getUserQuotaStatus } from '@/lib/quota';
 import { recordResourceMetric } from '@/lib/resource-analytics';
+import { DashboardOverviewTabs } from '@/components/dashboard-overview-tabs';
+import { IconCampaign, IconList, IconPlus, IconTemplate } from '@/components/dashboard-icons';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 
@@ -30,9 +32,18 @@ export default async function DashboardOverview() {
             <p>Track activity, quotas, and the next best action without digging through every module.</p>
           </div>
           <div className="header-actions">
-            <Link href="/dashboard/lists" className="btn-secondary">Lists</Link>
-            <Link href="/dashboard/campaigns/create" className="btn-secondary">New Campaign</Link>
-            <Link href="/dashboard/templates/create" className="btn-secondary">New Template</Link>
+            <Link href="/dashboard/lists" className="btn-secondary btn-secondary--with-icon">
+              <IconList className="btn-icon" aria-hidden="true" />
+              Lists
+            </Link>
+            <Link href="/dashboard/campaigns/create" className="btn-secondary btn-secondary--with-icon">
+              <IconPlus className="btn-icon" aria-hidden="true" />
+              New Campaign
+            </Link>
+            <Link href="/dashboard/templates/create" className="btn-secondary btn-secondary--with-icon">
+              <IconTemplate className="btn-icon" aria-hidden="true" />
+              New Template
+            </Link>
           </div>
         </div>
       </header>
@@ -46,24 +57,7 @@ export default async function DashboardOverview() {
         <div className="stat-card"><h3>Remaining</h3><p className="stat-value">{quota.remainingToday}</p></div>
       </div>
 
-      <div className="dashboard-panels">
-        <section className="card dashboard-panel">
-          <h2>Next step</h2>
-          <p>Start with a list, then build the campaign, send a test, and watch delivery metrics land in Analytics.</p>
-        </section>
-        <section className="card dashboard-panel">
-          <h2>Today</h2>
-          <p>{quota.remainingToday} messages remain in your daily allowance.</p>
-        </section>
-        <section className="card dashboard-panel">
-          <h2>Quick actions</h2>
-          <div className="quick-actions">
-            <Link href="/dashboard/lists" className="mini-btn">Manage lists</Link>
-            <Link href="/dashboard/media-library" className="mini-btn">Open media</Link>
-            <Link href="/dashboard/help" className="mini-btn">Read guide</Link>
-          </div>
-        </section>
-      </div>
+      <DashboardOverviewTabs metrics={metrics} quota={quota} />
     </div>
   );
 }

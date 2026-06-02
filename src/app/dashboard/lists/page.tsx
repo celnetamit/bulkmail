@@ -1,31 +1,19 @@
 'use client';
 
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { ChangeEvent, FormEvent, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { IconHelp, IconImport, IconPlus } from '@/components/dashboard-icons';
 
 type ListItem = {
   id: string;
   name: string;
   description: string | null;
   isDefaultTestList?: number | boolean;
+  isArchived?: number | boolean;
   contactsCount: number;
   campaignsCount: number;
   createdAt?: string;
   updatedAt?: string;
-};
-
-type ListDetail = ListItem & {
-  userId: string;
-};
-
-type Contact = {
-  id: string;
-  email: string;
-  firstName: string | null;
-  lastName: string | null;
-  status: string;
-  listId?: string;
-  listName?: string;
 };
 
 type Pagination = {
@@ -43,10 +31,31 @@ type ListResponse = {
   pagination: Pagination;
 };
 
-type ContactsResponse = {
-  contacts: Contact[];
-  pagination: Pagination;
+type BulkListResponse = {
+  error?: string;
+  success?: boolean;
+  action?: string;
+  listIds?: string[];
+  createdListIds?: string[];
+  lists?: ListItem[];
 };
+
+async function readJsonResponse<T>(response: Response): Promise<T | null> {
+  const text = await response.text();
+  if (!text) return null;
+
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    return null;
+  }
+}
+
+async function readResponseMessage(response: Response, fallback: string) {
+  const data = (await readJsonResponse<{ error?: string }>(response)) || null;
+  if (response.ok) return data;
+  return { error: data?.error || fallback };
+}
 
 function formatRange(page: number, pageSize: number, total: number) {
   if (total === 0) return '0';
@@ -81,6 +90,7 @@ function PaginationControls({
 
 export default function ListsPage() {
   const router = useRouter();
+  const listImportRef = useRef<HTMLInputElement | null>(null);
   const [lists, setLists] = useState<ListItem[]>([]);
   const [listsPagination, setListsPagination] = useState<Pagination>({
     page: 1,
@@ -103,6 +113,9 @@ export default function ListsPage() {
   const [newListName, setNewListName] = useState('');
   const [newListDescription, setNewListDescription] = useState('');
   const [newListIsDefaultTestList, setNewListIsDefaultTestList] = useState(false);
+  const [selectedListIds, setSelectedListIds] = useState<string[]>([]);
+  const [showArchived, setShowArchived] = useState(false);
+  const [bulkLoading, setBulkLoading] = useState(false);
 
   async function loadLists() {
     const params = new URLSearchParams({
@@ -112,22 +125,39 @@ export default function ListsPage() {
       sort: listSort,
       order: listOrder,
     });
+    if (showArchived) {
+      params.set('includeArchived', 'true');
+    }
     const response = await fetch(`/api/lists?${params.toString()}`, { cache: 'no-store' });
-    const data = (await response.json()) as ListResponse;
+    const data = (await readJsonResponse<ListResponse & { error?: string }>(response)) || null;
+    if (!response.ok) {
+      setMessage(data?.error || 'Failed to load lists.');
+      return;
+    }
+
+    if (!data) {
+      setMessage('Failed to load lists.');
+      return;
+    }
     const nextLists = data.lists || [];
     setLists(nextLists);
     setListsPagination(data.pagination || listsPagination);
     setActiveMenuId('');
-
-    if (!selectedListId && nextLists.length) {
-      setSelectedListId(nextLists[0].id);
+    setSelectedListIds([]);
+    if (nextLists.length) {
+      const stillVisible = nextLists.some((list) => list.id === selectedListId);
+      if (!stillVisible) {
+        setSelectedListId(nextLists[0].id);
+      }
+    } else {
+      setSelectedListId('');
     }
   }
 
   useEffect(() => {
     loadLists();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [listPage, listPageSize, listSearch, listSort, listOrder]);
+  }, [listPage, listPageSize, listSearch, listSort, listOrder, showArchived]);
 
   async function createList(event: FormEvent) {
     event.preventDefault();
@@ -143,9 +173,9 @@ export default function ListsPage() {
       }),
     });
 
-    const data = await response.json();
+    const data = (await readJsonResponse<{ error?: string; list?: ListItem }>(response)) || {};
     if (!response.ok) {
-      setMessage(data.error || 'Failed to create list.');
+      setMessage(data?.error || 'Failed to create list.');
       return;
     }
 
@@ -170,9 +200,9 @@ export default function ListsPage() {
       body: JSON.stringify({ name, description }),
     });
 
-    const data = await response.json();
+    const data = await readResponseMessage(response, 'Failed to update list.');
     if (!response.ok) {
-      setMessage(data.error || 'Failed to update list.');
+      setMessage(data?.error || 'Failed to update list.');
       return;
     }
 
@@ -184,9 +214,9 @@ export default function ListsPage() {
     if (!confirm(`Delete list "${list.name}"?`)) return;
 
     const response = await fetch(`/api/lists/${list.id}`, { method: 'DELETE' });
-    const data = await response.json();
+    const data = await readResponseMessage(response, 'Failed to delete list.');
     if (!response.ok) {
-      setMessage(data.error || 'Failed to delete list.');
+      setMessage(data?.error || 'Failed to delete list.');
       return;
     }
 
@@ -194,9 +224,119 @@ export default function ListsPage() {
     await loadLists();
   }
 
+  async function archiveLists(listIds: string[], archived: boolean) {
+    if (listIds.length === 0) return;
+    setBulkLoading(true);
+    setMessage('');
+
+    const response = await fetch('/api/lists/bulk', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ action: archived ? 'archive' : 'unarchive', listIds }),
+    });
+
+    const data = (await readJsonResponse<BulkListResponse>(response)) || {};
+    setBulkLoading(false);
+    if (!response.ok) {
+      setMessage(data?.error || `Failed to ${archived ? 'archive' : 'restore'} lists.`);
+      return;
+    }
+
+    setSelectedListIds([]);
+    setMessage(`${listIds.length} list${listIds.length === 1 ? '' : 's'} ${archived ? 'archived' : 'restored'}.`);
+    await loadLists();
+  }
+
+  async function duplicateLists(listIds: string[]) {
+    if (listIds.length === 0) return;
+    setBulkLoading(true);
+    setMessage('');
+
+    const response = await fetch('/api/lists/bulk', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'duplicate', listIds }),
+    });
+
+    const data = (await readJsonResponse<BulkListResponse>(response)) || {};
+    setBulkLoading(false);
+    if (!response.ok) {
+      setMessage(data?.error || 'Failed to duplicate lists.');
+      return;
+    }
+
+    setSelectedListIds([]);
+    setMessage(`${data.createdListIds?.length || listIds.length} list${(data.createdListIds?.length || listIds.length) === 1 ? '' : 's'} duplicated.`);
+    await loadLists();
+  }
+
+  async function exportLists(listIds: string[]) {
+    if (listIds.length === 0) return;
+    const response = await fetch(`/api/lists/export?listIds=${encodeURIComponent(listIds.join(','))}`, { cache: 'no-store' });
+    const data = (await readJsonResponse<Record<string, unknown>>(response)) || null;
+    if (!response.ok) {
+      setMessage((data?.error as string) || 'Failed to export lists.');
+      return;
+    }
+
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `lists-export-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+    setMessage(`Exported ${listIds.length} list${listIds.length === 1 ? '' : 's'}.`);
+  }
+
+  async function importLists(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+
+    let payload: unknown;
+    try {
+      payload = JSON.parse(await file.text());
+    } catch {
+      setMessage('Import file must be valid JSON.');
+      return;
+    }
+
+    setBulkLoading(true);
+    const response = await fetch('/api/lists/import', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = (await readJsonResponse<BulkListResponse>(response)) || {};
+    setBulkLoading(false);
+
+    if (!response.ok) {
+      setMessage(data?.error || 'Failed to import lists.');
+      return;
+    }
+
+    setMessage(`Imported ${data.createdListIds?.length || 0} list${(data.createdListIds?.length || 0) === 1 ? '' : 's'}.`);
+    await loadLists();
+  }
+
+  function toggleSelectedList(id: string) {
+    setSelectedListIds((current) =>
+      current.includes(id) ? current.filter((entry) => entry !== id) : [...current, id],
+    );
+  }
+
+  function toggleSelectAllVisible() {
+    if (lists.length === 0) return;
+    const visibleIds = lists.map((list) => list.id);
+    const allSelected = visibleIds.every((id) => selectedListIds.includes(id));
+    setSelectedListIds(allSelected ? [] : visibleIds);
+  }
 
   const listTotal = listsPagination.total;
   const listCountOnPage = lists.length;
+  const selectedListCount = selectedListIds.length;
+  const allVisibleSelected = lists.length > 0 && lists.every((list) => selectedListIds.includes(list.id));
 
   return (
     <div className="overview">
@@ -207,10 +347,16 @@ export default function ListsPage() {
             <p>Keep list browsing light, then jump into a dedicated page when you need to work contacts and imports.</p>
           </div>
           <div className="header-actions">
-            <button className="btn-secondary" type="button" onClick={() => router.push('/dashboard/lists#create-list')}>
+            <button className="btn-secondary btn-secondary--with-icon" type="button" onClick={() => router.push('/dashboard/lists#create-list')}>
+              <IconPlus className="btn-icon" aria-hidden="true" />
               New list
             </button>
-            <button className="btn-secondary" type="button" onClick={() => router.push('/dashboard/help')}>
+            <button className="btn-secondary btn-secondary--with-icon" type="button" onClick={() => listImportRef.current?.click()}>
+              <IconImport className="btn-icon" aria-hidden="true" />
+              Import
+            </button>
+            <button className="btn-secondary btn-secondary--with-icon" type="button" onClick={() => router.push('/dashboard/help')}>
+              <IconHelp className="btn-icon" aria-hidden="true" />
               Help
             </button>
           </div>
@@ -233,6 +379,14 @@ export default function ListsPage() {
           <p className="stat-value">{listTotal}</p>
         </div>
       </div>
+
+      <input
+        ref={listImportRef}
+        type="file"
+        accept="application/json"
+        style={{ display: 'none' }}
+        onChange={importLists}
+      />
 
       <div id="create-list" className="card" style={{ padding: '1rem', marginBottom: '1rem' }}>
         <h2>Create List</h2>
@@ -295,6 +449,10 @@ export default function ListsPage() {
             </form>
 
             <div className="list-toolbar__filters">
+              <label className="inline-toggle">
+                <input type="checkbox" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} />
+                <span>Show archived</span>
+              </label>
               <select value={listSort} onChange={(e) => setListSort(e.target.value)} className="status-select">
                 <option value="createdAt">Created</option>
                 <option value="name">Name</option>
@@ -313,9 +471,42 @@ export default function ListsPage() {
             </div>
           </div>
 
+          {selectedListCount > 0 ? (
+            <div className="bulk-action-bar">
+              <div className="bulk-action-bar__summary">
+                <strong>{selectedListCount}</strong> selected
+              </div>
+              <div className="bulk-action-bar__actions">
+                <button className="mini-btn" type="button" onClick={() => archiveLists(selectedListIds, true)} disabled={bulkLoading}>
+                  Archive
+                </button>
+                <button className="mini-btn" type="button" onClick={() => archiveLists(selectedListIds, false)} disabled={bulkLoading}>
+                  Unarchive
+                </button>
+                <button className="mini-btn" type="button" onClick={() => duplicateLists(selectedListIds)} disabled={bulkLoading}>
+                  Duplicate
+                </button>
+                <button className="mini-btn" type="button" onClick={() => exportLists(selectedListIds)} disabled={bulkLoading}>
+                  Export
+                </button>
+                <button className="mini-btn danger" type="button" onClick={() => setSelectedListIds([])} disabled={bulkLoading}>
+                  Clear
+                </button>
+              </div>
+            </div>
+          ) : null}
+
           <table className="data-table">
             <thead>
               <tr>
+                <th style={{ width: '40px' }}>
+                  <input
+                    type="checkbox"
+                    checked={allVisibleSelected}
+                    onChange={toggleSelectAllVisible}
+                    aria-label="Select all visible lists"
+                  />
+                </th>
                 <th>Name</th>
                 <th>Description</th>
                 <th>Contacts</th>
@@ -325,19 +516,28 @@ export default function ListsPage() {
             </thead>
             <tbody>
               {lists.length === 0 ? (
-                <tr><td colSpan={5}>No lists yet.</td></tr>
+                <tr><td colSpan={6}>No lists yet.</td></tr>
               ) : (
                 lists.map((list) => (
                   <tr
                     key={list.id}
-                    className={selectedListId === list.id ? 'is-selected-row' : ''}
+                    className={`${selectedListId === list.id ? 'is-selected-row' : ''} ${selectedListIds.includes(list.id) ? 'is-selected-row--bulk' : ''}`}
                     onClick={() => setSelectedListId(list.id)}
                     >
+                      <td onClick={(event) => event.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          checked={selectedListIds.includes(list.id)}
+                          onChange={() => toggleSelectedList(list.id)}
+                          aria-label={`Select list ${list.name}`}
+                        />
+                      </td>
                       <td>
                         <button className="link-btn" type="button" onClick={(event) => { event.stopPropagation(); router.push(`/dashboard/lists/${list.id}`); }}>
                           {list.name}
                         </button>
                         {list.isDefaultTestList ? <div className="badge badge-success" style={{ display: 'inline-flex', marginTop: '0.35rem' }}>Default test list</div> : null}
+                        {list.isArchived ? <div className="badge badge-warning" style={{ display: 'inline-flex', marginTop: '0.35rem' }}>Archived</div> : null}
                       </td>
                     <td>{list.description || '-'}</td>
                     <td>{list.contactsCount}</td>
@@ -358,6 +558,10 @@ export default function ListsPage() {
                           <div className="row-menu" onClick={(event) => event.stopPropagation()}>
                             <button type="button" onClick={() => router.push(`/dashboard/lists/${list.id}`)}>Open</button>
                             <button type="button" onClick={() => updateList(list)}>Edit</button>
+                            <button type="button" onClick={() => archiveLists([list.id], !Boolean(list.isArchived))}>
+                              {list.isArchived ? 'Unarchive' : 'Archive'}
+                            </button>
+                            <button type="button" onClick={() => duplicateLists([list.id])}>Duplicate</button>
                             <button type="button" className="danger" onClick={() => deleteList(list)}>Delete</button>
                           </div>
                         ) : null}
