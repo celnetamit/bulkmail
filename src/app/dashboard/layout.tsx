@@ -27,6 +27,7 @@ export default async function DashboardLayout({
           <Link href="/dashboard/analytics" className="nav-link">Analytics</Link>
           <Link href="/dashboard/help" className="nav-link">Help</Link>
           <Link href="/dashboard/settings" className="nav-link">Settings</Link>
+          {['MANAGER', 'ADMIN'].includes(user.role) ? <Link href="/dashboard/manager" className="nav-link">Manager</Link> : null}
           {user.role === 'ADMIN' ? <Link href="/dashboard/admin" className="nav-link">Admin</Link> : null}
         </nav>
       </aside>

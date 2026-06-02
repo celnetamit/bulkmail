@@ -4,6 +4,9 @@ import { createProvisionedPasswordHash, isAdminEmailAllowed } from '@/lib/auth';
 import { isValidEmailAddress, normalizeEmailAddress } from '@/lib/email-address';
 import { executeSql, queryRow, queryRows } from '@/lib/sqlite';
 
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
+
 export async function GET() {
   const auth = await requireAdminFromCookies();
   if ('error' in auth) return auth.error;
@@ -38,7 +41,7 @@ export async function POST(request: Request) {
 
   if (!email) return fail('email is required.', 400);
   if (!isValidEmailAddress(email)) return fail('Invalid email address.', 400);
-  if (!['ADMIN', 'USER'].includes(role)) return fail('Invalid role.', 400);
+  if (!['ADMIN', 'MANAGER', 'USER'].includes(role)) return fail('Invalid role.', 400);
 
   const existing = queryRow<{ id: string }>('SELECT id FROM "User" WHERE email = ? LIMIT 1', [email]);
   if (existing) return fail('Email is already registered.', 409);

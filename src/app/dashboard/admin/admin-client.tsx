@@ -163,6 +163,7 @@ export default function AdminDashboardClient() {
           <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email" type="email" required />
           <select className="status-select" value={role} onChange={(e) => setRole(e.target.value)}>
             <option value="USER">USER</option>
+            <option value="MANAGER">MANAGER</option>
             <option value="ADMIN">ADMIN</option>
           </select>
           <input value={dailyEmailLimit} onChange={(e) => setDailyEmailLimit(e.target.value)} type="number" min={1} step={1} />
@@ -197,6 +198,7 @@ export default function AdminDashboardClient() {
                   <td style={{ minWidth: '220px' }}>
                     <select className="status-select" value={String(draft.role || user.role)} onChange={(e) => updateDraft(user.id, 'role', e.target.value)}>
                       <option value="USER">USER</option>
+                      <option value="MANAGER">MANAGER</option>
                       <option value="ADMIN">ADMIN</option>
                     </select>
                     <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.5rem', color: '#cbd5e1' }}>

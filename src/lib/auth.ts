@@ -140,6 +140,17 @@ export async function requireAdminFromCookies(): Promise<{ user: AuthUser } | { 
   return auth;
 }
 
+export async function requireManagerOrAdminFromCookies(): Promise<{ user: AuthUser } | { error: NextResponse }> {
+  const auth = await requireUserFromCookies();
+  if ('error' in auth) return auth;
+
+  if (!['MANAGER', 'ADMIN'].includes(auth.user.role)) {
+    return { error: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) };
+  }
+
+  return auth;
+}
+
 export function setSessionCookie(response: NextResponse, token: string) {
   response.cookies.set({
     name: SESSION_COOKIE,

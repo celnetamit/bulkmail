@@ -15,7 +15,7 @@ model User {
   email     String   @unique
   name      String?
   password  String
-  role      String   @default("USER") // ADMIN, USER
+  role      String   @default("USER") // ADMIN, MANAGER, USER
   isActive  Boolean   @default(true)
   dailyEmailLimit Int @default(100000)
   lastLoginAt DateTime?
@@ -25,6 +25,31 @@ model User {
   templates Template[]
   campaigns Campaign[]
   mailSettings MailSettings?
+  managedTeams Team[] @relation("ManagedTeams")
+  teamMembership TeamMember?
+}
+
+model Team {
+  id        String   @id @default(cuid())
+  name      String
+  description String?
+  dailyCreditLimit Int @default(100000)
+  managerId String
+  manager   User     @relation("ManagedTeams", fields: [managerId], references: [id])
+  members   TeamMember[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model TeamMember {
+  id        String   @id @default(cuid())
+  teamId    String
+  userId    String   @unique
+  allocatedDailyLimit Int @default(100000)
+  team      Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model MailSettings {

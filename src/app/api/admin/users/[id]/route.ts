@@ -4,6 +4,9 @@ import { executeSql, queryRow } from '@/lib/sqlite';
 
 type Params = { params: { id: string } };
 
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
+
 export async function PATCH(request: Request, { params }: Params) {
   const auth = await requireAdminFromCookies();
   if ('error' in auth) return auth.error;
@@ -28,7 +31,7 @@ export async function PATCH(request: Request, { params }: Params) {
   const data: Record<string, unknown> = {};
   if (name !== undefined) data.name = name || null;
   if (role !== undefined) {
-    if (!['ADMIN', 'USER'].includes(role)) return fail('Invalid role.', 400);
+    if (!['ADMIN', 'MANAGER', 'USER'].includes(role)) return fail('Invalid role.', 400);
     data.role = role;
   }
   if (isActive !== undefined) data.isActive = isActive;
