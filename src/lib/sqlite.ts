@@ -17,6 +17,7 @@ function toPgSql(sql: string) {
 
 const postgresIdentifiersToQuote = [
   'isActive',
+  'isDefaultTestList',
   'userId',
   'teamId',
   'managerId',
@@ -67,6 +68,19 @@ const postgresIdentifiersToQuote = [
   'webhookSharedSecretEncrypted',
   'providerEventId',
   'providerMessageId',
+  'agentKey',
+  'apiKeyEncrypted',
+  'systemPrompt',
+  'maxOutputTokens',
+  'isEnabled',
+  'conversationId',
+  'metadataJson',
+  'lastMessageAt',
+  'profileKey',
+  'baseUrl',
+  'temperature',
+  'label',
+  'description',
 ] as const;
 
 function quotePostgresIdentifiers(sql: string) {

@@ -1,6 +1,7 @@
 import { requireUserFromCookies } from '@/lib/auth';
 import { fail, ok } from '@/lib/http';
 import { executeSql, queryRow } from '@/lib/sqlite';
+import { getCampaignLists, replaceCampaignLists } from '@/lib/campaign-lists';
 
 type Params = { params: { id: string } };
 
@@ -33,6 +34,8 @@ export async function POST(_: Request, { params }: Params) {
   );
 
   if (!campaign) return fail('Campaign not found.', 404);
+  const campaignLists = getCampaignLists(campaign.id, auth.user.userId);
+  const listIds = campaignLists.length > 0 ? campaignLists.map((list) => list.id) : [campaign.listId];
 
   const id = crypto.randomUUID().replace(/-/g, '');
   const createdAt = new Date().toISOString();
@@ -61,12 +64,19 @@ export async function POST(_: Request, { params }: Params) {
       null,
       null,
       auth.user.userId,
-      campaign.listId,
+      listIds[0],
       campaign.templateId,
       createdAt,
       createdAt,
     ],
   );
+
+  try {
+    replaceCampaignLists(id, auth.user.userId, listIds);
+  } catch (error) {
+    executeSql('DELETE FROM "Campaign" WHERE id = ? AND userId = ?', [id, auth.user.userId]);
+    return fail(error instanceof Error ? error.message : 'Failed to duplicate campaign lists.', 400);
+  }
 
   const duplicated = queryRow(
     `
@@ -100,5 +110,14 @@ export async function POST(_: Request, { params }: Params) {
     [id, auth.user.userId],
   );
 
-  return ok({ campaign: duplicated }, 201);
+  const selectedLists = getCampaignLists(id, auth.user.userId);
+  return ok({
+    campaign: duplicated
+      ? {
+          ...duplicated,
+          list: selectedLists[0] ? { id: selectedLists[0].id, name: selectedLists[0].name } : { id: listIds[0], name: duplicated.listName },
+          lists: selectedLists,
+        }
+      : null,
+  }, 201);
 }

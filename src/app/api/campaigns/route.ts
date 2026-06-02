@@ -1,6 +1,7 @@
 import { requireUserFromCookies } from '@/lib/auth';
 import { fail, ok } from '@/lib/http';
 import { queryRow, queryRows, executeSql } from '@/lib/sqlite';
+import { getCampaignLists, replaceCampaignLists } from '@/lib/campaign-lists';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -77,18 +78,52 @@ export async function GET() {
     [auth.user.userId],
   );
 
+  const campaignListRows = queryRows<{
+    campaignId: string;
+    listId: string;
+    listName: string;
+    isDefaultTestList: number | boolean;
+  }>(
+    `
+      SELECT
+        cl.campaignId as campaignId,
+        cl.listId as listId,
+        l.name as listName,
+        CASE WHEN COALESCE(l.isDefaultTestList, FALSE) THEN 1 ELSE 0 END as isDefaultTestList
+      FROM "CampaignList" cl
+      INNER JOIN "Campaign" c ON c.id = cl.campaignId
+      INNER JOIN "List" l ON l.id = cl.listId
+      WHERE c.userId = ?
+      ORDER BY cl.createdAt ASC
+    `,
+    [auth.user.userId],
+  );
+
   const byCampaign = new Map<string, Record<string, number>>();
+  const listsByCampaign = new Map<string, { id: string; name: string; isDefaultTestList: number | boolean }[]>();
 
   for (const row of rows) {
     if (!byCampaign.has(row.campaignId)) byCampaign.set(row.campaignId, {});
     byCampaign.get(row.campaignId)![row.type] = row.count;
   }
 
+  for (const row of campaignListRows) {
+    if (!listsByCampaign.has(row.campaignId)) listsByCampaign.set(row.campaignId, []);
+    listsByCampaign.get(row.campaignId)!.push({
+      id: row.listId,
+      name: row.listName,
+      isDefaultTestList: row.isDefaultTestList,
+    });
+  }
+
   const campaignsWithStats = campaigns.map((campaign: any) => {
       const counts = byCampaign.get(campaign.id) || {};
+      const selectedLists = listsByCampaign.get(campaign.id) || [];
       return {
         ...campaign,
         list: { id: campaign.listId, name: campaign.listName },
+        lists: selectedLists.length > 0 ? selectedLists : [{ id: campaign.listId, name: campaign.listName, isDefaultTestList: false }],
+        listCount: selectedLists.length > 0 ? selectedLists.length : 1,
         template: campaign.templateId ? { id: campaign.templateId, name: campaign.templateName || '' } : null,
         openedCount: counts.OPENED || 0,
         deliveredCount: counts.DELIVERED || 0,
@@ -108,19 +143,31 @@ export async function POST(request: Request) {
   try { body = await request.json(); } catch { return fail('Invalid JSON body.', 400); }
 
   const name = typeof body === 'object' && body && 'name' in body ? String((body as Record<string, unknown>).name).trim() : '';
-  const listId = typeof body === 'object' && body && 'listId' in body ? String((body as Record<string, unknown>).listId).trim() : '';
   const subject = typeof body === 'object' && body && 'subject' in body ? String((body as Record<string, unknown>).subject).trim() : '';
   const bodyHtml = typeof body === 'object' && body && 'bodyHtml' in body ? String((body as Record<string, unknown>).bodyHtml).trim() : '';
   const templateIdRaw = typeof body === 'object' && body && 'templateId' in body ? String((body as Record<string, unknown>).templateId || '').trim() : '';
   const templateId = templateIdRaw || null;
+  const listIdsRaw = typeof body === 'object' && body && 'listIds' in body && Array.isArray((body as Record<string, unknown>).listIds)
+    ? ((body as Record<string, unknown>).listIds as unknown[])
+    : [];
+  const listIdFallback = typeof body === 'object' && body && 'listId' in body ? String((body as Record<string, unknown>).listId || '').trim() : '';
+  const listIds = Array.from(new Set([
+    ...listIdsRaw.map((value: unknown) => String(value).trim()).filter(Boolean),
+    ...(listIdFallback ? [listIdFallback] : []),
+  ]));
 
-  if (!name || !listId || !subject || !bodyHtml) return fail('name, listId, subject and bodyHtml are required.', 400);
+  if (!name || listIds.length === 0 || !subject || !bodyHtml) return fail('name, listIds, subject and bodyHtml are required.', 400);
 
-  const list = queryRow<{ id: string }>(
-    'SELECT id FROM "List" WHERE id = ? AND userId = ? LIMIT 1',
-    [listId, auth.user.userId],
+  const primaryListId = listIds[0];
+  const ownedLists = queryRows<{ id: string }>(
+    `
+      SELECT id
+      FROM "List"
+      WHERE userId = ? AND id IN (${listIds.map(() => '?').join(', ')})
+    `,
+    [auth.user.userId, ...listIds],
   );
-  if (!list) return fail('List not found.', 404);
+  if (ownedLists.length !== listIds.length) return fail('One or more lists were not found.', 404);
 
   if (templateId) {
     const template = queryRow<{ id: string }>(
@@ -158,12 +205,19 @@ export async function POST(request: Request) {
       null,
       null,
       auth.user.userId,
-      listId,
+      primaryListId,
       templateId,
       createdAt,
       updatedAt,
     ],
   );
+
+  try {
+    replaceCampaignLists(id, auth.user.userId, listIds);
+  } catch (error) {
+    executeSql('DELETE FROM "Campaign" WHERE id = ? AND userId = ?', [id, auth.user.userId]);
+    return fail(error instanceof Error ? error.message : 'Failed to create campaign lists.', 400);
+  }
 
   const campaign = queryRow<{
     id: string;
@@ -186,5 +240,15 @@ export async function POST(request: Request) {
     updatedAt: string;
   }>('SELECT * FROM "Campaign" WHERE id = ? LIMIT 1', [id]);
 
-  return ok({ campaign }, 201);
+  const selectedLists = getCampaignLists(id, auth.user.userId);
+
+  return ok({
+    campaign: campaign
+      ? {
+          ...campaign,
+          list: selectedLists[0] ? { id: selectedLists[0].id, name: selectedLists[0].name } : { id: primaryListId, name: '' },
+          lists: selectedLists,
+        }
+      : null,
+  }, 201);
 }

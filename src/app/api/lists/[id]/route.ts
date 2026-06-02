@@ -1,6 +1,7 @@
 import { requireUserFromCookies } from '@/lib/auth';
 import { fail, ok } from '@/lib/http';
 import { executeSql, queryRow } from '@/lib/sqlite';
+import { setDefaultTestList } from '@/lib/campaign-lists';
 
 type Params = { params: { id: string } };
 
@@ -13,6 +14,7 @@ export async function GET(_: Request, { params }: Params) {
     name: string;
     description: string | null;
     userId: string;
+    isDefaultTestList: number | boolean;
     createdAt: string;
     updatedAt: string;
     contactsCount: number;
@@ -24,10 +26,11 @@ export async function GET(_: Request, { params }: Params) {
         l.name,
         l.description,
         l.userId,
+        CASE WHEN COALESCE(l.isDefaultTestList, FALSE) THEN 1 ELSE 0 END as isDefaultTestList,
         l.createdAt,
         l.updatedAt,
         (SELECT COUNT(*) FROM "Contact" c WHERE c.listId = l.id) as contactsCount,
-        (SELECT COUNT(*) FROM "Campaign" ca WHERE ca.listId = l.id) as campaignsCount
+        (SELECT COUNT(*) FROM "CampaignList" cl WHERE cl.listId = l.id) as campaignsCount
       FROM "List" l
       WHERE l.id = ? AND l.userId = ?
       LIMIT 1
@@ -59,6 +62,9 @@ export async function PATCH(request: Request, { params }: Params) {
     typeof body === 'object' && body !== null && 'description' in body
       ? String((body as Record<string, unknown>).description || '').trim()
       : '';
+  const isDefaultTestList = typeof body === 'object' && body !== null && 'isDefaultTestList' in body
+    ? Boolean((body as Record<string, unknown>).isDefaultTestList)
+    : undefined;
 
   if (!name) return fail('List name is required.', 400);
 
@@ -73,6 +79,15 @@ export async function PATCH(request: Request, { params }: Params) {
     'UPDATE "List" SET name = ?, description = ?, updatedAt = CURRENT_TIMESTAMP WHERE id = ? AND userId = ?',
     [name, description || null, params.id, auth.user.userId],
   );
+
+  if (isDefaultTestList === true) {
+    setDefaultTestList(params.id, auth.user.userId);
+  } else if (isDefaultTestList === false) {
+    executeSql(
+      'UPDATE "List" SET isDefaultTestList = FALSE, updatedAt = CURRENT_TIMESTAMP WHERE id = ? AND userId = ?',
+      [params.id, auth.user.userId],
+    );
+  }
 
   const list = queryRow(
     'SELECT * FROM "List" WHERE id = ? AND userId = ? LIMIT 1',

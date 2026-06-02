@@ -1,6 +1,7 @@
 import { requireUserFromCookies } from '@/lib/auth';
 import { fail, ok } from '@/lib/http';
 import { executeSql, queryRow, queryRows } from '@/lib/sqlite';
+import { setDefaultTestList } from '@/lib/campaign-lists';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -26,7 +27,7 @@ function getSortClause(sort: string, order: 'asc' | 'desc') {
     createdAt: `l."createdAt" ${order.toUpperCase()}`,
     name: `LOWER(l.name) ${order.toUpperCase()}, l."createdAt" DESC`,
     contactsCount: `(SELECT COUNT(*) FROM "Contact" c WHERE c.listId = l.id) ${order.toUpperCase()}, l."createdAt" DESC`,
-    campaignsCount: `(SELECT COUNT(*) FROM "Campaign" ca WHERE ca.listId = l.id) ${order.toUpperCase()}, l."createdAt" DESC`,
+    campaignsCount: `(SELECT COUNT(*) FROM "CampaignList" cl WHERE cl.listId = l.id) ${order.toUpperCase()}, l."createdAt" DESC`,
   };
 
   return allowedSorts[sort] || allowedSorts.createdAt;
@@ -38,6 +39,7 @@ export async function GET(request: Request) {
 
   const url = new URL(request.url);
   const { page, pageSize, search, sort, order } = parsePagination(url);
+  const all = url.searchParams.get('all') === 'true' || url.searchParams.get('all') === '1';
   const offset = (page - 1) * pageSize;
   const searchTerm = search ? `%${search.toLowerCase()}%` : '';
   const searchClause = search
@@ -60,6 +62,7 @@ export async function GET(request: Request) {
     name: string;
     description: string | null;
     userId: string;
+    isDefaultTestList: number | boolean;
     createdAt: string;
     updatedAt: string;
     contactsCount: number;
@@ -71,28 +74,35 @@ export async function GET(request: Request) {
         l.name,
         l.description,
         l.userId,
+        CASE WHEN COALESCE(l.isDefaultTestList, FALSE) THEN 1 ELSE 0 END as isDefaultTestList,
         l.createdAt,
         l.updatedAt,
         (SELECT COUNT(*) FROM "Contact" c WHERE c.listId = l.id) as contactsCount,
-        (SELECT COUNT(*) FROM "Campaign" ca WHERE ca.listId = l.id) as campaignsCount
+        (SELECT COUNT(*) FROM "CampaignList" cl WHERE cl.listId = l.id) as campaignsCount
       FROM "List" l
       WHERE l.userId = ?
       ${searchClause}
       ORDER BY ${getSortClause(sort, order)}
-      LIMIT ? OFFSET ?
+      ${all ? '' : 'LIMIT ? OFFSET ?'}
     `,
-    search
-      ? [auth.user.userId, searchTerm, searchTerm, pageSize, offset]
-      : [auth.user.userId, pageSize, offset],
+    all
+      ? search
+        ? [auth.user.userId, searchTerm, searchTerm]
+        : [auth.user.userId]
+      : search
+        ? [auth.user.userId, searchTerm, searchTerm, pageSize, offset]
+        : [auth.user.userId, pageSize, offset],
   );
+
+  const effectivePageSize = all ? Math.max(1, totalRow?.total ?? lists.length ?? 1) : pageSize;
 
   return ok({
     lists,
     pagination: {
       page,
-      pageSize,
+      pageSize: effectivePageSize,
       total: totalRow?.total ?? 0,
-      totalPages: Math.max(1, Math.ceil((totalRow?.total ?? 0) / pageSize)),
+      totalPages: Math.max(1, Math.ceil((totalRow?.total ?? 0) / effectivePageSize)),
       search,
       sort,
       order,
@@ -120,6 +130,10 @@ export async function POST(request: Request) {
     typeof body === 'object' && body !== null && 'description' in body
       ? String((body as Record<string, unknown>).description || '').trim()
       : '';
+  const isDefaultTestList =
+    typeof body === 'object' && body !== null && 'isDefaultTestList' in body
+      ? Boolean((body as Record<string, unknown>).isDefaultTestList)
+      : false;
 
   if (!name) {
     return fail('List name is required.', 400);
@@ -129,9 +143,13 @@ export async function POST(request: Request) {
   const createdAt = new Date().toISOString();
 
   executeSql(
-    'INSERT INTO "List" (id, name, description, userId, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?)',
-    [id, name, description || null, auth.user.userId, createdAt, createdAt],
+    'INSERT INTO "List" (id, name, description, userId, isDefaultTestList, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    [id, name, description || null, auth.user.userId, isDefaultTestList, createdAt, createdAt],
   );
+
+  if (isDefaultTestList) {
+    setDefaultTestList(id, auth.user.userId);
+  }
 
   const list = queryRow(
     'SELECT * FROM "List" WHERE id = ? AND userId = ? LIMIT 1',

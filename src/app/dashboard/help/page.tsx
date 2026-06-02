@@ -7,7 +7,7 @@ export const dynamic = 'force-dynamic';
 const steps = [
   {
     title: 'Start with a list',
-    body: 'Create one list for a segment of people you want to email. Add contacts manually or import a CSV, then clean duplicates and invalid addresses before sending anything.',
+    body: 'Create the customer lists you want to email, plus one default test list for preview sends. Add contacts manually or import a CSV, then clean duplicates and invalid addresses before sending anything.',
     action: { label: 'Open Lists', href: '/dashboard/lists' },
   },
   {
@@ -17,12 +17,12 @@ const steps = [
   },
   {
     title: 'Create a campaign draft',
-    body: 'A campaign connects a list to a message. Pick the right list, choose a template if you have one, and write a focused subject line and body.',
+    body: 'A campaign connects one message to one or more customer lists. Pick the right lists, choose a template if you have one, and write a focused subject line and body.',
     action: { label: 'Open Campaigns', href: '/dashboard/campaigns' },
   },
   {
     title: 'Send a test first',
-    body: 'Before you send at scale, use the Settings screen to send a test email to yourself or a teammate. Check the subject, layout, links, and unsubscribe footer.',
+    body: 'Before you send at scale, use your default test list or the one-click test option on a campaign. Check the subject, layout, links, and unsubscribe footer.',
     action: { label: 'Open Settings', href: '/dashboard/settings' },
   },
   {
@@ -63,7 +63,10 @@ export default async function HelpPage() {
             <h1>Help</h1>
             <p>A guided walkthrough for getting comfortable with MailFlow, one step at a time.</p>
           </div>
-          <Link className="btn-secondary" href="/dashboard">Back to Overview</Link>
+          <div className="header-actions">
+            <Link className="btn-secondary" href="/dashboard">Back to Overview</Link>
+            <Link className="btn-secondary" href="/dashboard/campaigns/create">Create Campaign</Link>
+          </div>
         </div>
       </header>
 
@@ -101,6 +104,7 @@ export default async function HelpPage() {
           <h2>Quick checklist</h2>
           <ul className="help-checklist">
             <li>Confirm your contact list is clean and up to date.</li>
+            <li>Mark one list as the default test list before using one-click tests.</li>
             <li>Use the template editor if the layout will be reused.</li>
             <li>Send one test email before bulk sending.</li>
             <li>Check Analytics after the first send batch.</li>

@@ -9,6 +9,7 @@ type ListDetail = {
   name: string;
   description: string | null;
   userId: string;
+  isDefaultTestList: number | boolean;
   contactsCount: number;
   campaignsCount: number;
 };
@@ -167,6 +168,29 @@ export function ListDetailClient({ listId }: { listId: string }) {
     await refresh();
   }
 
+  async function makeDefaultTestList() {
+    if (!list) return;
+
+    const response = await fetch(`/api/lists/${list.id}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        name: list.name,
+        description: list.description || '',
+        isDefaultTestList: true,
+      }),
+    });
+
+    const data = await response.json();
+    if (!response.ok) {
+      setMessage(data.error || 'Failed to set default test list.');
+      return;
+    }
+
+    setMessage('Default test list updated.');
+    await refresh();
+  }
+
   async function deleteList() {
     if (!list) return;
     if (!confirm(`Delete list "${list.name}"?`)) return;
@@ -300,6 +324,10 @@ export function ListDetailClient({ listId }: { listId: string }) {
           </div>
 
           <div className="detail-actions" style={{ marginBottom: '1rem' }}>
+            {list.isDefaultTestList ? <span className="badge badge-success">Default test list</span> : null}
+            <button className="mini-btn" type="button" onClick={makeDefaultTestList} disabled={Boolean(list.isDefaultTestList)}>
+              {list.isDefaultTestList ? 'Default list' : 'Set default test list'}
+            </button>
             <button className="mini-btn" type="button" onClick={updateList}>Edit list</button>
             <button className="mini-btn danger" type="button" onClick={deleteList}>Delete list</button>
           </div>

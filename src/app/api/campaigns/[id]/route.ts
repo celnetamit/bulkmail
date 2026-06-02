@@ -1,6 +1,7 @@
 import { requireUserFromCookies } from '@/lib/auth';
 import { fail, ok } from '@/lib/http';
 import { executeSql, queryRow } from '@/lib/sqlite';
+import { getCampaignLists, replaceCampaignLists } from '@/lib/campaign-lists';
 
 type Params = { params: { id: string } };
 const ALLOWED_STATUSES = new Set(['DRAFT', 'SCHEDULED', 'SENDING', 'SENT', 'FAILED']);
@@ -42,11 +43,13 @@ export async function GET(_: Request, { params }: Params) {
   );
 
   if (!campaign) return fail('Campaign not found.', 404);
+  const selectedLists = getCampaignLists(params.id, auth.user.userId);
 
   return ok({
     campaign: {
       ...campaign,
-      list: { id: campaign.listId, name: campaign.listName },
+      list: selectedLists[0] ? { id: selectedLists[0].id, name: selectedLists[0].name } : { id: campaign.listId, name: campaign.listName },
+      lists: selectedLists.length > 0 ? selectedLists : [{ id: campaign.listId, name: campaign.listName, isDefaultTestList: false }],
       template: campaign.templateId ? { id: campaign.templateId, name: campaign.templateName || '' } : null,
     },
   });
@@ -63,23 +66,37 @@ export async function PATCH(request: Request, { params }: Params) {
   const subject = typeof body === 'object' && body && 'subject' in body ? String((body as Record<string, unknown>).subject).trim() : '';
   const bodyHtml = typeof body === 'object' && body && 'bodyHtml' in body ? String((body as Record<string, unknown>).bodyHtml).trim() : '';
   const status = typeof body === 'object' && body && 'status' in body ? String((body as Record<string, unknown>).status).trim().toUpperCase() : '';
-  const listId = typeof body === 'object' && body && 'listId' in body ? String((body as Record<string, unknown>).listId || '').trim() : '';
   const templateIdRaw = typeof body === 'object' && body && 'templateId' in body ? String((body as Record<string, unknown>).templateId || '').trim() : '';
   const templateId = templateIdRaw || null;
+  const listIdsRaw = typeof body === 'object' && body && 'listIds' in body && Array.isArray((body as Record<string, unknown>).listIds)
+    ? ((body as Record<string, unknown>).listIds as unknown[])
+    : [];
+  const listIdFallback = typeof body === 'object' && body && 'listId' in body ? String((body as Record<string, unknown>).listId || '').trim() : '';
+  const listIds = Array.from(new Set([
+    ...listIdsRaw.map((value: unknown) => String(value).trim()).filter(Boolean),
+    ...(listIdFallback ? [listIdFallback] : []),
+  ]));
 
   if (!name || !subject || !bodyHtml || !status) return fail('name, subject, bodyHtml and status are required.', 400);
   if (!ALLOWED_STATUSES.has(status)) return fail('Invalid status.', 400);
+  if (listIds.length === 0) return fail('At least one list is required.', 400);
 
-  const existing = queryRow<{ id: string }>(
-    'SELECT id FROM "Campaign" WHERE id = ? AND userId = ? LIMIT 1',
+  const existing = queryRow<{ id: string; listId: string }>(
+    'SELECT id, listId FROM "Campaign" WHERE id = ? AND userId = ? LIMIT 1',
     [params.id, auth.user.userId],
   );
   if (!existing) return fail('Campaign not found.', 404);
+  const previousListId = existing.listId;
 
-  if (listId) {
-    const list = queryRow<{ id: string }>('SELECT id FROM "List" WHERE id = ? AND userId = ? LIMIT 1', [listId, auth.user.userId]);
-    if (!list) return fail('List not found.', 404);
-  }
+  const ownedLists = queryRow<{ total: number }>(
+    `
+      SELECT COUNT(*) as total
+      FROM "List"
+      WHERE userId = ? AND id IN (${listIds.map(() => '?').join(', ')})
+    `,
+    [auth.user.userId, ...listIds],
+  );
+  if ((ownedLists?.total || 0) !== listIds.length) return fail('One or more lists were not found.', 404);
 
   if (templateId) {
     const template = queryRow<{ id: string }>('SELECT id FROM "Template" WHERE id = ? AND userId = ? LIMIT 1', [templateId, auth.user.userId]);
@@ -89,10 +106,8 @@ export async function PATCH(request: Request, { params }: Params) {
   const assignments = ['"name" = ?', '"subject" = ?', '"bodyHtml" = ?', '"status" = ?'];
   const paramsList: unknown[] = [name, subject, bodyHtml, status];
 
-  if (listId) {
-    assignments.push('"listId" = ?');
-    paramsList.push(listId);
-  }
+  assignments.push('"listId" = ?');
+  paramsList.push(listIds[0]);
 
   assignments.push('"templateId" = ?');
   paramsList.push(templateId);
@@ -101,6 +116,16 @@ export async function PATCH(request: Request, { params }: Params) {
     `UPDATE "Campaign" SET ${assignments.join(', ')}, "updatedAt" = CURRENT_TIMESTAMP WHERE id = ? AND userId = ?`,
     [...paramsList, params.id, auth.user.userId],
   );
+
+  try {
+    replaceCampaignLists(params.id, auth.user.userId, listIds);
+  } catch (error) {
+    executeSql(
+      'UPDATE "Campaign" SET listId = ?, updatedAt = CURRENT_TIMESTAMP WHERE id = ? AND userId = ?',
+      [previousListId, params.id, auth.user.userId],
+    );
+    return fail(error instanceof Error ? error.message : 'Failed to update campaign lists.', 400);
+  }
 
   const campaign = queryRow(
     `
@@ -134,7 +159,15 @@ export async function PATCH(request: Request, { params }: Params) {
     [params.id, auth.user.userId],
   );
 
-  return ok({ campaign });
+  const updatedLists = getCampaignLists(params.id, auth.user.userId);
+  return ok({
+    campaign: {
+      ...campaign,
+      list: updatedLists[0] ? { id: updatedLists[0].id, name: updatedLists[0].name } : { id: listIds[0], name: '' },
+      lists: updatedLists,
+      template: campaign?.templateId ? { id: campaign.templateId, name: campaign.templateName || '' } : null,
+    },
+  });
 }
 
 export async function DELETE(_: Request, { params }: Params) {

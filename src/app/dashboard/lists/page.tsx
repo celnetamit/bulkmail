@@ -7,6 +7,7 @@ type ListItem = {
   id: string;
   name: string;
   description: string | null;
+  isDefaultTestList?: number | boolean;
   contactsCount: number;
   campaignsCount: number;
   createdAt?: string;
@@ -101,6 +102,7 @@ export default function ListsPage() {
   const [activeMenuId, setActiveMenuId] = useState('');
   const [newListName, setNewListName] = useState('');
   const [newListDescription, setNewListDescription] = useState('');
+  const [newListIsDefaultTestList, setNewListIsDefaultTestList] = useState(false);
 
   async function loadLists() {
     const params = new URLSearchParams({
@@ -134,7 +136,11 @@ export default function ListsPage() {
     const response = await fetch('/api/lists', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ name: newListName, description: newListDescription }),
+      body: JSON.stringify({
+        name: newListName,
+        description: newListDescription,
+        isDefaultTestList: newListIsDefaultTestList,
+      }),
     });
 
     const data = await response.json();
@@ -145,6 +151,7 @@ export default function ListsPage() {
 
     setNewListName('');
     setNewListDescription('');
+    setNewListIsDefaultTestList(false);
     setMessage('List created.');
     await loadLists();
     if (data.list?.id) {
@@ -194,13 +201,25 @@ export default function ListsPage() {
   return (
     <div className="overview">
       <header className="page-header">
-        <h1>Lists</h1>
-        <p>Search, segment, and manage subscribers with a split master-detail layout.</p>
+        <div className="page-header__row">
+          <div>
+            <h1>Lists</h1>
+            <p>Keep list browsing light, then jump into a dedicated page when you need to work contacts and imports.</p>
+          </div>
+          <div className="header-actions">
+            <button className="btn-secondary" type="button" onClick={() => router.push('/dashboard/lists#create-list')}>
+              New list
+            </button>
+            <button className="btn-secondary" type="button" onClick={() => router.push('/dashboard/help')}>
+              Help
+            </button>
+          </div>
+        </div>
       </header>
 
       {message ? <p className="form-note">{message}</p> : null}
 
-      <div className="stats-grid" style={{ marginBottom: '1rem' }}>
+      <div className="stats-grid dashboard-stats">
         <div className="stat-card">
           <h3>Total Lists</h3>
           <p className="stat-value">{listTotal}</p>
@@ -210,16 +229,24 @@ export default function ListsPage() {
           <p className="stat-value">{listCountOnPage}</p>
         </div>
         <div className="stat-card">
-          <h3>Detail Pages</h3>
+          <h3>Workspace</h3>
           <p className="stat-value">{listTotal}</p>
         </div>
       </div>
 
-      <div className="card" style={{ padding: '1rem', marginBottom: '1rem' }}>
+      <div id="create-list" className="card" style={{ padding: '1rem', marginBottom: '1rem' }}>
         <h2>Create List</h2>
         <form className="list-create-form" onSubmit={createList}>
           <input value={newListName} onChange={(e) => setNewListName(e.target.value)} placeholder="List name" required />
           <input value={newListDescription} onChange={(e) => setNewListDescription(e.target.value)} placeholder="Description" />
+          <label className="inline-toggle">
+            <input
+              type="checkbox"
+              checked={newListIsDefaultTestList}
+              onChange={(e) => setNewListIsDefaultTestList(e.target.checked)}
+            />
+            <span>Default test list</span>
+          </label>
           <button className="btn-primary" type="submit">Create</button>
         </form>
       </div>
@@ -229,7 +256,7 @@ export default function ListsPage() {
           <div className="section-header">
             <div>
               <h2>All Lists</h2>
-              <p>Pick a list to manage its contacts and actions in the panel on the right.</p>
+              <p>Browse the archive here. Open a list to work the full contact view.</p>
             </div>
             <PaginationControls
               pagination={listsPagination}
@@ -305,12 +332,13 @@ export default function ListsPage() {
                     key={list.id}
                     className={selectedListId === list.id ? 'is-selected-row' : ''}
                     onClick={() => setSelectedListId(list.id)}
-                  >
-                    <td>
-                      <button className="link-btn" type="button" onClick={(event) => { event.stopPropagation(); router.push(`/dashboard/lists/${list.id}`); }}>
-                        {list.name}
-                      </button>
-                    </td>
+                    >
+                      <td>
+                        <button className="link-btn" type="button" onClick={(event) => { event.stopPropagation(); router.push(`/dashboard/lists/${list.id}`); }}>
+                          {list.name}
+                        </button>
+                        {list.isDefaultTestList ? <div className="badge badge-success" style={{ display: 'inline-flex', marginTop: '0.35rem' }}>Default test list</div> : null}
+                      </td>
                     <td>{list.description || '-'}</td>
                     <td>{list.contactsCount}</td>
                     <td>{list.campaignsCount}</td>
@@ -348,7 +376,7 @@ export default function ListsPage() {
               <div className="section-header">
                 <div>
                   <h2>Open list workspace</h2>
-                  <p>Move into a dedicated page for the contacts, imports, and list actions.</p>
+                  <p>Contacts, imports, editing, and bulk work all live on the detail page.</p>
                 </div>
                 <div className="detail-actions">
                   <button className="mini-btn" type="button" onClick={() => router.push(`/dashboard/lists/${selectedListId}`)}>Open page</button>
@@ -361,17 +389,17 @@ export default function ListsPage() {
                   <strong>{selectedListId.slice(0, 8)}</strong>
                 </div>
                 <div>
-                  <span>Current page</span>
-                  <strong>{listPage}</strong>
+                  <span>Working mode</span>
+                  <strong>Detail</strong>
                 </div>
               </div>
 
-              <p className="form-note">The full contact manager is now on the list detail page for a cleaner workflow.</p>
+              <p className="form-note">The page stays deliberately narrow so the list table doesn’t turn into a control dump.</p>
             </>
           ) : (
             <div className="detail-empty">
               <h2>Select a list</h2>
-              <p>Choose a list from the table to open its detail page.</p>
+              <p>Choose a list from the table to open its dedicated workspace.</p>
             </div>
           )}
         </aside>

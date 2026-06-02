@@ -25,6 +25,8 @@ type Campaign = {
   listId: string;
   templateId: string | null;
   list: { id: string; name: string };
+  listCount: number;
+  lists?: { id: string; name: string; isDefaultTestList: number | boolean }[];
   template: { id: string; name: string } | null;
 };
 
@@ -45,6 +47,7 @@ export default function CampaignsPage() {
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [message, setMessage] = useState('');
   const [sendingId, setSendingId] = useState<string | null>(null);
+  const [testingId, setTestingId] = useState<string | null>(null);
 
   const loadAll = useCallback(async () => {
     const campaignsRes = await fetch('/api/campaigns', { cache: 'no-store' });
@@ -83,6 +86,7 @@ export default function CampaignsPage() {
   }, [sentCampaigns]);
 
   async function updateStatus(campaign: Campaign, status: string) {
+    const selectedListIds = (campaign.lists && campaign.lists.length > 0 ? campaign.lists : [campaign.list]).map((list) => list.id);
     const res = await fetch(`/api/campaigns/${campaign.id}`, {
       method: 'PATCH',
       headers: { 'content-type': 'application/json' },
@@ -91,7 +95,8 @@ export default function CampaignsPage() {
         subject: campaign.subject,
         bodyHtml: campaign.bodyHtml,
         status,
-        listId: campaign.list?.id || null,
+        listIds: selectedListIds,
+        listId: selectedListIds[0] || null,
         templateId: campaign.template?.id || null,
       }),
     });
@@ -114,6 +119,15 @@ export default function CampaignsPage() {
     await loadAll();
   }
 
+  async function testCampaign(id: string) {
+    setTestingId(id);
+    const res = await fetch(`/api/campaigns/${id}/test`, { method: 'POST' });
+    const data = (await res.json()) as { error?: string; sentCount?: number; failedCount?: number; testList?: { name?: string } };
+    setTestingId(null);
+    if (!res.ok) return setMessage(data.error || 'Failed to send test campaign.');
+    setMessage(`Test sent to ${data.testList?.name || 'your test list'}. Sent: ${data.sentCount ?? 0}, Failed: ${data.failedCount ?? 0}.`);
+  }
+
   async function sendCampaign(id: string) {
     setSendingId(id);
     const res = await fetch(`/api/campaigns/${id}/send`, { method: 'POST' });
@@ -131,17 +145,20 @@ export default function CampaignsPage() {
         <div className="page-header__row">
           <div>
             <h1>Campaigns</h1>
-            <p>Create drafts on a separate page, duplicate sent campaigns, and track performance.</p>
+            <p>Keep the campaign list readable, then jump into the dedicated builder when you are ready to create or edit.</p>
           </div>
-          <button className="btn-secondary" type="button" onClick={() => router.push('/dashboard/campaigns/create')}>
-            New Campaign
-          </button>
+          <div className="header-actions">
+            <button className="btn-secondary" type="button" onClick={() => router.push('/dashboard/campaigns/create')}>
+              New Campaign
+            </button>
+            <Link className="btn-secondary" href="/dashboard/help">Help</Link>
+          </div>
         </div>
       </header>
 
       {message ? <p className="form-note">{message}</p> : null}
 
-      <div className="stats-grid" style={{ marginBottom: '1rem' }}>
+      <div className="stats-grid dashboard-stats">
         <div className="stat-card"><h3>Sent Campaigns</h3><p className="stat-value">{summary.sentCampaigns}</p></div>
         <div className="stat-card"><h3>Total Sent</h3><p className="stat-value">{summary.sent}</p></div>
         <div className="stat-card"><h3>Opened</h3><p className="stat-value">{summary.opened}</p></div>
@@ -176,7 +193,17 @@ export default function CampaignsPage() {
             {campaigns.length === 0 ? <tr><td colSpan={6}>No campaigns yet.</td></tr> : campaigns.map((c) => (
               <tr key={c.id}>
                 <td>{c.name}</td>
-                <td>{c.list.name}</td>
+                <td>
+                  <div>{c.list.name}</div>
+                  <div style={{ marginTop: '0.25rem' }}>
+                    <span className="badge" style={{ display: 'inline-flex' }}>
+                      {c.listCount || 1} list{(c.listCount || 1) === 1 ? '' : 's'} selected
+                    </span>
+                  </div>
+                  <div style={{ marginTop: '0.25rem', fontSize: '0.8rem', color: '#94a3b8' }}>
+                    {(c.lists || [c.list]).map((list) => list.name).join(', ')}
+                  </div>
+                </td>
                 <td>
                   <div className={`badge ${c.status === 'SENT' ? 'badge-success' : c.status === 'FAILED' ? 'badge-warning' : ''}`} style={{ display: 'inline-flex', marginBottom: '0.35rem' }}>{c.status}</div>
                   <div style={{ fontSize: '0.85rem', color: '#94a3b8' }}>{c.provider || 'mock'}</div>
@@ -203,6 +230,9 @@ export default function CampaignsPage() {
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
                     <button className="mini-btn" type="button" onClick={() => router.push(`/dashboard/campaigns/create?campaignId=${c.id}`)}>Edit Draft</button>
                     <button className="mini-btn" type="button" onClick={() => duplicateCampaign(c.id)}>Copy</button>
+                    <button className="mini-btn" type="button" onClick={() => testCampaign(c.id)} disabled={testingId === c.id}>
+                      {testingId === c.id ? 'Testing...' : 'Test'}
+                    </button>
                     <Link className="mini-btn" href={`/dashboard/analytics?campaignId=${c.id}`}>Stats</Link>
                   </div>
                   <div style={{ marginTop: '0.4rem' }}>

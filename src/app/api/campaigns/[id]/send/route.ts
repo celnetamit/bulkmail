@@ -3,6 +3,7 @@ import { fail, ok } from '@/lib/http';
 import { dispatchCampaignEmails } from '@/lib/providers/email';
 import { getAppOrigin } from '@/lib/google-oauth';
 import { executeSql, queryRow, queryRows } from '@/lib/sqlite';
+import { getCampaignLists } from '@/lib/campaign-lists';
 
 type Params = { params: { id: string } };
 
@@ -65,8 +66,12 @@ export async function POST(request: Request, { params }: Params) {
     return fail('Only DRAFT or SCHEDULED campaigns can be sent.', 400);
   }
 
+  const selectedLists = getCampaignLists(campaign.id, auth.user.userId);
+  const listIds = selectedLists.length > 0 ? selectedLists.map((list) => list.id) : [campaign.listId];
+
   executeSql('UPDATE "Campaign" SET status = ?, updatedAt = CURRENT_TIMESTAMP WHERE id = ?', ['SENDING', campaign.id]);
 
+  const listPlaceholders = listIds.map(() => '?').join(', ');
   const contacts = queryRows<{
     id: string;
     email: string;
@@ -76,10 +81,10 @@ export async function POST(request: Request, { params }: Params) {
       SELECT c.id, c.email, c.status
       FROM "Contact" c
       INNER JOIN "List" l ON l.id = c.listId
-      WHERE l.id = ? AND l.userId = ?
+      WHERE l.id IN (${listPlaceholders}) AND l.userId = ?
       ORDER BY c.createdAt ASC
     `,
-    [campaign.listId, auth.user.userId],
+    [...listIds, auth.user.userId],
   );
 
   try {

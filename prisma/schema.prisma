@@ -29,6 +29,7 @@ model User {
   managedTeams Team[] @relation("ManagedTeams")
   teamMembership TeamMember?
   resourceMetrics ResourceMetric[]
+  agentConversations AgentConversation[]
 }
 
 model Team {
@@ -95,9 +96,11 @@ model List {
   name        String
   description String?
   userId      String
+  isDefaultTestList Boolean @default(false)
   user        User      @relation(fields: [userId], references: [id])
   contacts    Contact[]
   campaigns   Campaign[]
+  campaignLists CampaignList[]
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 }
@@ -135,6 +138,7 @@ model Campaign {
   user      User     @relation(fields: [userId], references: [id])
   listId    String
   list      List     @relation(fields: [listId], references: [id])
+  campaignLists CampaignList[]
   templateId String?
   template  Template? @relation(fields: [templateId], references: [id], onDelete: SetNull)
   events    Event[]
@@ -154,6 +158,20 @@ model Event {
   campaignId String
   campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   createdAt  DateTime @default(now())
+}
+
+model CampaignList {
+  id         String   @id @default(cuid())
+  campaignId String
+  listId     String
+  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  list       List     @relation(fields: [listId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([campaignId, listId])
+  @@index([campaignId])
+  @@index([listId])
 }
 
 model ResourceMetric {
@@ -187,4 +205,47 @@ model ResourceMetric {
   @@index([scopeType, createdAt])
   @@index([userId, createdAt])
   @@index([campaignId, createdAt])
+}
+
+model AiAgentProfile {
+  id              String   @id @default(cuid())
+  agentKey        String   @unique
+  label           String
+  description     String?
+  provider        String   @default("openrouter")
+  model           String
+  baseUrl         String?
+  apiKeyEncrypted String?
+  systemPrompt    String
+  temperature     Float    @default(0.4)
+  maxOutputTokens Int      @default(1200)
+  isEnabled       Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model AgentConversation {
+  id           String        @id @default(cuid())
+  agentKey     String
+  title        String?
+  userId       String
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages     AgentMessage[]
+  lastMessageAt DateTime?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  @@index([userId, agentKey, updatedAt])
+}
+
+model AgentMessage {
+  id             String            @id @default(cuid())
+  conversationId String
+  role           String
+  content        String
+  metadataJson   String?
+  conversation   AgentConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  createdAt      DateTime          @default(now())
+
+  @@index([conversationId, createdAt])
 }
