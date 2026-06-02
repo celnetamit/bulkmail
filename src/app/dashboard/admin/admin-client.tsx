@@ -44,13 +44,35 @@ type SummaryResponse = {
   users: UserRow[];
 };
 
+type Settings = {
+  provider: 'mock' | 'resend' | 'aws-ses';
+  awsFromEmail: string;
+  resendFromEmail: string;
+  hasWebhookSharedSecret: boolean;
+  source: 'database' | 'env';
+};
+
 function percent(part: number, total: number) {
   if (total <= 0) return 0;
   return Math.min(100, (part / total) * 100);
 }
 
+type ComplianceStatus = 'ready' | 'manual' | 'action';
+
+function statusLabel(status: ComplianceStatus) {
+  if (status === 'ready') return 'Ready';
+  if (status === 'manual') return 'Manual check';
+  return 'Needs action';
+}
+
+function statusClass(status: ComplianceStatus) {
+  if (status === 'ready') return 'badge-success';
+  return 'badge-warning';
+}
+
 export default function AdminDashboardClient() {
   const [summary, setSummary] = useState<SummaryResponse | null>(null);
+  const [settings, setSettings] = useState<Settings | null>(null);
   const [message, setMessage] = useState('');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -61,9 +83,20 @@ export default function AdminDashboardClient() {
   const [drafts, setDrafts] = useState<Record<string, Partial<UserRow>>>({});
 
   async function load() {
-    const response = await fetch('/api/admin/overview', { cache: 'no-store' });
-    const data = (await response.json()) as SummaryResponse;
+    const [overviewResponse, settingsResponse] = await Promise.all([
+      fetch('/api/admin/overview', { cache: 'no-store' }),
+      fetch('/api/settings', { cache: 'no-store' }),
+    ]);
+
+    const data = (await overviewResponse.json()) as SummaryResponse;
     setSummary(data);
+
+    if (settingsResponse.ok) {
+      const settingsData = (await settingsResponse.json()) as { settings?: Settings };
+      setSettings(settingsData.settings || null);
+    } else {
+      setSettings(null);
+    }
 
     const nextDrafts: Record<string, Partial<UserRow>> = {};
     for (const user of data.users || []) {
@@ -144,6 +177,56 @@ export default function AdminDashboardClient() {
   }
 
   const rows = useMemo(() => summary?.users || [], [summary]);
+  const compliance = useMemo<
+    Array<{
+      title: string;
+      detail: string;
+      status: ComplianceStatus;
+      action: { label: string; href: string };
+    }>
+  >(
+    () => [
+      {
+        title: 'Sender identity configured',
+        detail:
+          settings?.provider === 'aws-ses' && settings.awsFromEmail
+            ? `AWS SES sender set to ${settings.awsFromEmail}.`
+            : settings?.provider === 'resend' && settings.resendFromEmail
+              ? `Resend sender set to ${settings.resendFromEmail}.`
+              : 'Set a real sender address before launching live mail.',
+        status:
+          (settings?.provider === 'aws-ses' && settings.awsFromEmail) ||
+          (settings?.provider === 'resend' && settings.resendFromEmail)
+            ? 'ready'
+            : 'action',
+        action: { label: 'Settings', href: '/dashboard/settings' },
+      },
+      {
+        title: 'Bounce and complaint handling',
+        detail:
+          settings?.provider === 'mock'
+            ? 'Connect a real provider and enable webhook handling.'
+            : settings?.hasWebhookSharedSecret
+              ? 'Webhook secret is stored. Make sure provider webhooks point at this app.'
+              : 'Store the webhook secret in Settings before wiring provider webhooks.',
+        status: settings?.provider !== 'mock' && settings?.hasWebhookSharedSecret ? 'ready' : 'action',
+        action: { label: 'Settings', href: '/dashboard/settings' },
+      },
+      {
+        title: 'Default test list',
+        detail: 'Keep one list marked as the default test list before using one-click test sends.',
+        status: 'manual',
+        action: { label: 'Help', href: '/dashboard/help' },
+      },
+      {
+        title: 'SPF, DKIM, DMARC',
+        detail: 'Publish SPF, DKIM, and DMARC for your sending domain to reduce spam placement and spoofing risk.',
+        status: 'manual',
+        action: { label: 'Help', href: '/dashboard/help' },
+      },
+    ],
+    [settings],
+  );
 
   return (
     <div className="overview">
@@ -169,6 +252,30 @@ export default function AdminDashboardClient() {
         <div className="stat-card"><h3>Today Sent</h3><p className="stat-value">{summary?.totals.sentToday ?? 0}</p></div>
         <div className="stat-card"><h3>Opened</h3><p className="stat-value">{summary?.totals.openTotal ?? 0}</p></div>
         <div className="stat-card"><h3>Bounced</h3><p className="stat-value text-red">{summary?.totals.bounceTotal ?? 0}</p></div>
+      </div>
+
+      <div className="card dashboard-panel" style={{ marginBottom: '1rem' }}>
+        <div className="help-panel__header">
+          <div>
+            <h2>Compliance snapshot</h2>
+            <p className="form-note">A short operator view of the send-safety basics. Help has the full walkthrough.</p>
+          </div>
+          <Link className="mini-btn" href="/dashboard/help">Open Help</Link>
+        </div>
+        <div className="admin-compliance-grid">
+          {compliance.map((item) => (
+            <article className="admin-compliance-card" key={item.title}>
+              <div className="help-compliance-card__head">
+                <span className={`badge ${statusClass(item.status)}`}>{statusLabel(item.status)}</span>
+                <h3>{item.title}</h3>
+              </div>
+              <p>{item.detail}</p>
+              <Link className="mini-btn" href={item.action.href}>
+                {item.action.label}
+              </Link>
+            </article>
+          ))}
+        </div>
       </div>
 
       <div className="card dashboard-panel" style={{ marginBottom: '1rem' }}>

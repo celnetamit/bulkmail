@@ -58,7 +58,7 @@ function isActive(pathname: string, item: NavItem) {
 }
 
 export function DashboardNav({ role }: { role: 'USER' | 'MANAGER' | 'ADMIN' }) {
-  const pathname = usePathname();
+  const pathname = usePathname() || '';
 
   return (
     <nav className="nav-menu" aria-label="Dashboard">

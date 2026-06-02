@@ -6,6 +6,9 @@ import { getAppOrigin, getGoogleClientId, getGoogleClientSecret, getGoogleRedire
 
 const GOOGLE_JWKS = createRemoteJWKSet(new URL('https://www.googleapis.com/oauth2/v3/certs'));
 
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
+
 function redirectToLogin(request: Request, error: string) {
   return NextResponse.redirect(new URL(`/login?error=${error}`, getAppOrigin(request)));
 }

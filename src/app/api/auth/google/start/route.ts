@@ -2,6 +2,9 @@ import { randomUUID } from 'node:crypto';
 import { NextResponse } from 'next/server';
 import { getAppOrigin, getGoogleClientId, getGoogleClientSecret, getGoogleRedirectUri, sanitizeNextPath } from '@/lib/google-oauth';
 
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
+
 export async function GET(request: Request) {
   const clientId = getGoogleClientId();
   const clientSecret = getGoogleClientSecret();
