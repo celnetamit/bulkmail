@@ -1,5 +1,5 @@
 import { requireManagerOrAdminFromCookies } from '@/lib/auth';
-import { ok } from '@/lib/http';
+import { fail, ok } from '@/lib/http';
 import { getResourceAnalyticsSummary, recordResourceMetric } from '@/lib/resource-analytics';
 
 export const dynamic = 'force-dynamic';
@@ -30,6 +30,15 @@ export async function GET(request: Request) {
     note: `resource_analytics:${auth.user.role}`,
   });
 
-  const summary = await getResourceAnalyticsSummary(auth.user.userId, auth.user.role as 'ADMIN' | 'MANAGER' | 'USER', from, to);
-  return ok(summary);
+  try {
+    const summary = await getResourceAnalyticsSummary(auth.user.userId, auth.user.role as 'ADMIN' | 'MANAGER' | 'USER', from, to);
+    return ok(summary);
+  } catch (error) {
+    console.error('resource_analytics_summary_failed', {
+      userId: auth.user.userId,
+      role: auth.user.role,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return fail(error instanceof Error ? error.message : 'Failed to load resource analytics.', 500);
+  }
 }

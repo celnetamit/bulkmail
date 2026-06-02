@@ -266,6 +266,14 @@ export async function getResourceAnalyticsSummary(userId: string, role: Role, fr
   const dateClause = to ? 'rm.createdAt BETWEEN ? AND ?' : 'rm.createdAt >= ?';
 
   const live = captureResourceSnapshot();
+  const totalsParams = [
+    ...accessibleUserFilter.params,
+    ...dateParams,
+    ...accessibleUserFilter.params,
+    ...dateParams,
+    ...accessibleUserFilter.params,
+    ...dateParams,
+  ];
 
   const totals = queryRow<{
     samples: number;
@@ -339,7 +347,7 @@ export async function getResourceAnalyticsSummary(userId: string, role: Role, fr
       WHERE ${accessibleUserFilter.clause}
       AND ${dateClause}
     `,
-    [...accessibleUserFilter.params, ...dateParams],
+    totalsParams,
   );
 
   const dailyPeaks = queryRows<ResourceTrendPoint>(

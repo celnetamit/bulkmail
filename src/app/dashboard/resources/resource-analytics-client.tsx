@@ -314,10 +314,21 @@ export default function ResourceAnalyticsClient({ role }: { role: string }) {
     if (to) params.set('to', to);
 
     const response = await fetch(`/api/resource-analytics/summary?${params.toString()}`, { cache: 'no-store' });
-    const data = (await response.json()) as ResourceAnalyticsSummary & { error?: string };
+    const text = await response.text();
+    let data: (ResourceAnalyticsSummary & { error?: string }) | null = null;
+    try {
+      data = text ? (JSON.parse(text) as ResourceAnalyticsSummary & { error?: string }) : null;
+    } catch {
+      data = null;
+    }
     setLoading(false);
     if (!response.ok) {
-      setMessage(data.error || 'Failed to load resource analytics.');
+      setMessage(data?.error || text || 'Failed to load resource analytics.');
+      return;
+    }
+
+    if (!data) {
+      setMessage('Failed to load resource analytics.');
       return;
     }
 
