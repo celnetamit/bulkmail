@@ -1,6 +1,7 @@
 import { requireUserFromCookies } from '@/lib/auth';
 import { fail, ok } from '@/lib/http';
 import { dispatchCampaignEmails } from '@/lib/providers/email';
+import { getAppOrigin } from '@/lib/google-oauth';
 import { executeSql, queryRow, queryRows } from '@/lib/sqlite';
 
 type Params = { params: { id: string } };
@@ -88,7 +89,7 @@ export async function POST(request: Request, { params }: Params) {
       campaignName: campaign.name,
       subject: campaign.subject,
       bodyHtml: campaign.bodyHtml,
-      appUrl: new URL(request.url).origin,
+      appUrl: getAppOrigin(request),
       contacts,
     });
 
