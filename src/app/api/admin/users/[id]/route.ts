@@ -1,4 +1,5 @@
 import { requireAdminFromCookies, hashPassword } from '@/lib/auth';
+import { recordAuditEvent } from '@/lib/audit';
 import { fail, ok } from '@/lib/http';
 import { executeSql, queryRow } from '@/lib/sqlite';
 
@@ -67,6 +68,24 @@ export async function PATCH(request: Request, { params }: Params) {
     `UPDATE "User" SET ${assignments.join(', ')}, "updatedAt" = CURRENT_TIMESTAMP WHERE id = ?`,
     [...paramsList, params.id],
   );
+
+  await recordAuditEvent({
+    actorUserId: auth.user.userId,
+    actorEmail: auth.user.email,
+    actorRole: auth.user.role,
+    action: 'user_update',
+    entityType: 'User',
+    entityId: params.id,
+    scopeType: 'GLOBAL',
+    metadata: {
+      changedFields: Object.keys(data),
+      role: data.role,
+      isActive: data.isActive,
+      dailyEmailLimit: data.dailyEmailLimit,
+      imageUploadLimitKb: data.imageUploadLimitKb,
+      passwordChanged: Boolean(data.password),
+    },
+  });
 
   const user = queryRow(
     'SELECT id, email, name, role, isActive, dailyEmailLimit, imageUploadLimitKb, createdAt, lastLoginAt FROM "User" WHERE id = ? LIMIT 1',

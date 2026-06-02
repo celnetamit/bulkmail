@@ -1,4 +1,5 @@
 import { requireUserFromCookies } from '@/lib/auth';
+import { getCapabilities } from '@/lib/permissions';
 import { ok } from '@/lib/http';
 
 export const dynamic = 'force-dynamic';
@@ -15,6 +16,7 @@ export async function GET() {
       role: auth.user.role,
       isActive: auth.user.isActive,
       imageUploadLimitKb: auth.user.imageUploadLimitKb,
+      capabilities: getCapabilities(auth.user.role),
     },
   });
 }

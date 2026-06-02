@@ -1,4 +1,5 @@
 import { requireUserFromCookies } from '@/lib/auth';
+import { recordAuditEvent } from '@/lib/audit';
 import { fail, ok } from '@/lib/http';
 import { queueCampaignSendJob } from '@/lib/campaign-send-queue';
 
@@ -10,6 +11,20 @@ export async function POST(_: Request, { params }: Params) {
 
   try {
     const job = queueCampaignSendJob(auth.user.userId, params.id);
+    await recordAuditEvent({
+      actorUserId: auth.user.userId,
+      actorEmail: auth.user.email,
+      actorRole: auth.user.role,
+      action: 'campaign_send',
+      entityType: 'Campaign',
+      entityId: params.id,
+      scopeType: 'SELF',
+      metadata: {
+        jobId: job.jobId,
+        status: job.status,
+        listCount: job.listCount,
+      },
+    });
     return ok(
       {
         success: true,
@@ -29,4 +44,3 @@ export async function POST(_: Request, { params }: Params) {
     return fail(error instanceof Error ? error.message : 'Campaign send failed.', 400);
   }
 }
-

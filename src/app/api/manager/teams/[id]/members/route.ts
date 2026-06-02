@@ -1,4 +1,5 @@
 import { createProvisionedPasswordHash } from '@/lib/auth';
+import { recordAuditEvent } from '@/lib/audit';
 import { fail, ok } from '@/lib/http';
 import { isValidEmailAddress, normalizeEmailAddress } from '@/lib/email-address';
 import { ensureManagerSchema, requireManagerOrAdminFromCookies } from '@/lib/manager';
@@ -99,6 +100,21 @@ export async function POST(request: Request, { params }: Params) {
     `,
     [crypto.randomUUID().replace(/-/g, ''), team.id, userId, dailyEmailLimit, now, now],
   );
+
+  await recordAuditEvent({
+    actorUserId: auth.user.userId,
+    actorEmail: auth.user.email,
+    actorRole: auth.user.role,
+    action: 'team_member_assign',
+    entityType: 'TeamMember',
+    entityId: userId,
+    scopeType: 'TEAM',
+    metadata: {
+      teamId: team.id,
+      email,
+      dailyEmailLimit,
+    },
+  });
 
   const member = queryRow(
     `

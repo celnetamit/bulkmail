@@ -1,4 +1,5 @@
 import { requireAdminFromCookies } from '@/lib/auth';
+import { recordAuditEvent } from '@/lib/audit';
 import { fail, ok } from '@/lib/http';
 import { ensureAiAgentsSchema, getAiAgentProfiles, saveAiAgentProfiles } from '@/lib/ai-agents';
 
@@ -60,6 +61,19 @@ export async function PUT(request: Request) {
     maxOutputTokens?: number;
     isEnabled?: boolean;
   }>);
+
+  await recordAuditEvent({
+    actorUserId: auth.user.userId,
+    actorEmail: auth.user.email,
+    actorRole: auth.user.role,
+    action: 'ai_agent_update',
+    entityType: 'AiAgentProfile',
+    entityId: 'bulk',
+    scopeType: 'GLOBAL',
+    metadata: {
+      agentKeys: profiles.map((profile) => profile.agentKey),
+    },
+  });
 
   const nextProfiles = await getAiAgentProfiles();
   return ok({ profiles: nextProfiles });

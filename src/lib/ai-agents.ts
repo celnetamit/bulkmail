@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
+import { recordAuditEvent } from '@/lib/audit';
 import { decryptSecret, encryptSecret } from '@/lib/crypto';
 import { dispatchCampaignEmails, sendTestEmail } from '@/lib/providers/email';
 import { recordResourceMetric, getResourceAnalyticsSummary } from '@/lib/resource-analytics';
@@ -855,7 +856,10 @@ function normalizeCompletion(raw: string, agentKey: AiAgentKey): NormalizedCompl
   }
 }
 
-async function createEntityFromAction(userId: string, action: AgentAction) {
+async function createEntityFromAction(
+  actor: { userId: string; email: string; role: AgentRole },
+  action: AgentAction,
+) {
   const now = new Date().toISOString();
   switch (action.type) {
     case 'create_list': {
@@ -865,29 +869,62 @@ async function createEntityFromAction(userId: string, action: AgentAction) {
           INSERT INTO "List" ("id", "name", "description", "userId", "createdAt", "updatedAt")
           VALUES (?, ?, ?, ?, ?, ?)
         `,
-        [id, action.name.trim(), action.description || null, userId, now, now],
+        [id, action.name.trim(), action.description || null, actor.userId, now, now],
       );
+      await recordAuditEvent({
+        actorUserId: actor.userId,
+        actorEmail: actor.email,
+        actorRole: actor.role,
+        action: 'agent_create_list',
+        entityType: 'List',
+        entityId: id,
+        scopeType: 'SELF',
+        metadata: { name: action.name, description: action.description || null, agent: 'worker' },
+      });
       return `Created list "${action.name}".`;
     }
     case 'update_list': {
-      const existing = queryRow<{ id: string }>('SELECT id FROM "List" WHERE id = ? AND userId = ? LIMIT 1', [action.listId, userId]);
+      const existing = queryRow<{ id: string }>('SELECT id FROM "List" WHERE id = ? AND userId = ? LIMIT 1', [action.listId, actor.userId]);
       if (!existing) return `List ${action.listId} was not found or is not owned by the user.`;
       const assignments: string[] = [];
       const params: unknown[] = [];
+      const changedFields: string[] = [];
       if (action.name !== undefined) {
         assignments.push('"name" = ?');
         params.push(action.name?.trim() || null);
+        changedFields.push('name');
       }
       if (action.description !== undefined) {
         assignments.push('"description" = ?');
         params.push(action.description || null);
+        changedFields.push('description');
       }
       if (!assignments.length) return `No list changes were requested.`;
-      executeSql(`UPDATE "List" SET ${assignments.join(', ')}, "updatedAt" = CURRENT_TIMESTAMP WHERE id = ? AND userId = ?`, [...params, action.listId, userId]);
+      executeSql(`UPDATE "List" SET ${assignments.join(', ')}, "updatedAt" = CURRENT_TIMESTAMP WHERE id = ? AND userId = ?`, [...params, action.listId, actor.userId]);
+      await recordAuditEvent({
+        actorUserId: actor.userId,
+        actorEmail: actor.email,
+        actorRole: actor.role,
+        action: 'agent_update_list',
+        entityType: 'List',
+        entityId: action.listId,
+        scopeType: 'SELF',
+        metadata: { changedFields, agent: 'worker' },
+      });
       return `Updated list ${action.listId}.`;
     }
     case 'delete_list': {
-      executeSql('DELETE FROM "List" WHERE id = ? AND userId = ?', [action.listId, userId]);
+      executeSql('DELETE FROM "List" WHERE id = ? AND userId = ?', [action.listId, actor.userId]);
+      await recordAuditEvent({
+        actorUserId: actor.userId,
+        actorEmail: actor.email,
+        actorRole: actor.role,
+        action: 'agent_delete_list',
+        entityType: 'List',
+        entityId: action.listId,
+        scopeType: 'SELF',
+        metadata: { agent: 'worker' },
+      });
       return `Deleted list ${action.listId}.`;
     }
     case 'create_template': {
@@ -897,33 +934,67 @@ async function createEntityFromAction(userId: string, action: AgentAction) {
           INSERT INTO "Template" ("id", "name", "subject", "bodyHtml", "userId", "createdAt", "updatedAt")
           VALUES (?, ?, ?, ?, ?, ?, ?)
         `,
-        [id, action.name.trim(), action.subject.trim(), action.bodyHtml, userId, now, now],
+        [id, action.name.trim(), action.subject.trim(), action.bodyHtml, actor.userId, now, now],
       );
+      await recordAuditEvent({
+        actorUserId: actor.userId,
+        actorEmail: actor.email,
+        actorRole: actor.role,
+        action: 'agent_create_template',
+        entityType: 'Template',
+        entityId: id,
+        scopeType: 'SELF',
+        metadata: { name: action.name, subject: action.subject, agent: 'worker' },
+      });
       return `Created template "${action.name}".`;
     }
     case 'update_template': {
-      const existing = queryRow<{ id: string }>('SELECT id FROM "Template" WHERE id = ? AND userId = ? LIMIT 1', [action.templateId, userId]);
+      const existing = queryRow<{ id: string }>('SELECT id FROM "Template" WHERE id = ? AND userId = ? LIMIT 1', [action.templateId, actor.userId]);
       if (!existing) return `Template ${action.templateId} was not found or is not owned by the user.`;
       const assignments: string[] = [];
       const params: unknown[] = [];
+      const changedFields: string[] = [];
       if (action.name !== undefined) {
         assignments.push('"name" = ?');
         params.push(action.name?.trim() || null);
+        changedFields.push('name');
       }
       if (action.subject !== undefined) {
         assignments.push('"subject" = ?');
         params.push(action.subject?.trim() || null);
+        changedFields.push('subject');
       }
       if (action.bodyHtml !== undefined) {
         assignments.push('"bodyHtml" = ?');
         params.push(action.bodyHtml);
+        changedFields.push('bodyHtml');
       }
       if (!assignments.length) return `No template changes were requested.`;
-      executeSql(`UPDATE "Template" SET ${assignments.join(', ')}, "updatedAt" = CURRENT_TIMESTAMP WHERE id = ? AND userId = ?`, [...params, action.templateId, userId]);
+      executeSql(`UPDATE "Template" SET ${assignments.join(', ')}, "updatedAt" = CURRENT_TIMESTAMP WHERE id = ? AND userId = ?`, [...params, action.templateId, actor.userId]);
+      await recordAuditEvent({
+        actorUserId: actor.userId,
+        actorEmail: actor.email,
+        actorRole: actor.role,
+        action: 'agent_update_template',
+        entityType: 'Template',
+        entityId: action.templateId,
+        scopeType: 'SELF',
+        metadata: { changedFields, agent: 'worker' },
+      });
       return `Updated template ${action.templateId}.`;
     }
     case 'delete_template': {
-      executeSql('DELETE FROM "Template" WHERE id = ? AND userId = ?', [action.templateId, userId]);
+      executeSql('DELETE FROM "Template" WHERE id = ? AND userId = ?', [action.templateId, actor.userId]);
+      await recordAuditEvent({
+        actorUserId: actor.userId,
+        actorEmail: actor.email,
+        actorRole: actor.role,
+        action: 'agent_delete_template',
+        entityType: 'Template',
+        entityId: action.templateId,
+        scopeType: 'SELF',
+        metadata: { agent: 'worker' },
+      });
       return `Deleted template ${action.templateId}.`;
     }
     case 'create_campaign': {
@@ -933,51 +1004,88 @@ async function createEntityFromAction(userId: string, action: AgentAction) {
           INSERT INTO "Campaign" ("id", "name", "subject", "bodyHtml", "status", "provider", "userId", "listId", "templateId", "createdAt", "updatedAt")
           VALUES (?, ?, ?, ?, 'DRAFT', NULL, ?, ?, ?, ?, ?)
         `,
-        [id, action.name.trim(), action.subject.trim(), action.bodyHtml, userId, action.listId, action.templateId || null, now, now],
+        [id, action.name.trim(), action.subject.trim(), action.bodyHtml, actor.userId, action.listId, action.templateId || null, now, now],
       );
+      await recordAuditEvent({
+        actorUserId: actor.userId,
+        actorEmail: actor.email,
+        actorRole: actor.role,
+        action: 'agent_create_campaign',
+        entityType: 'Campaign',
+        entityId: id,
+        scopeType: 'SELF',
+        metadata: { listId: action.listId, templateId: action.templateId || null, agent: 'worker' },
+      });
       return `Created campaign "${action.name}".`;
     }
     case 'update_campaign': {
-      const existing = queryRow<{ id: string }>('SELECT id FROM "Campaign" WHERE id = ? AND userId = ? LIMIT 1', [action.campaignId, userId]);
+      const existing = queryRow<{ id: string }>('SELECT id FROM "Campaign" WHERE id = ? AND userId = ? LIMIT 1', [action.campaignId, actor.userId]);
       if (!existing) return `Campaign ${action.campaignId} was not found or is not owned by the user.`;
       const assignments: string[] = [];
       const params: unknown[] = [];
+      const changedFields: string[] = [];
       if (action.name !== undefined) {
         assignments.push('"name" = ?');
         params.push(action.name?.trim() || null);
+        changedFields.push('name');
       }
       if (action.subject !== undefined) {
         assignments.push('"subject" = ?');
         params.push(action.subject?.trim() || null);
+        changedFields.push('subject');
       }
       if (action.bodyHtml !== undefined) {
         assignments.push('"bodyHtml" = ?');
         params.push(action.bodyHtml);
+        changedFields.push('bodyHtml');
       }
       if (action.listId !== undefined) {
         assignments.push('"listId" = ?');
         params.push(action.listId);
+        changedFields.push('listId');
       }
       if (action.templateId !== undefined) {
         assignments.push('"templateId" = ?');
         params.push(action.templateId || null);
+        changedFields.push('templateId');
       }
       if (action.status !== undefined) {
         assignments.push('"status" = ?');
         params.push(action.status);
+        changedFields.push('status');
       }
       if (!assignments.length) return `No campaign changes were requested.`;
-      executeSql(`UPDATE "Campaign" SET ${assignments.join(', ')}, "updatedAt" = CURRENT_TIMESTAMP WHERE id = ? AND userId = ?`, [...params, action.campaignId, userId]);
+      executeSql(`UPDATE "Campaign" SET ${assignments.join(', ')}, "updatedAt" = CURRENT_TIMESTAMP WHERE id = ? AND userId = ?`, [...params, action.campaignId, actor.userId]);
+      await recordAuditEvent({
+        actorUserId: actor.userId,
+        actorEmail: actor.email,
+        actorRole: actor.role,
+        action: 'agent_update_campaign',
+        entityType: 'Campaign',
+        entityId: action.campaignId,
+        scopeType: 'SELF',
+        metadata: { changedFields, agent: 'worker' },
+      });
       return `Updated campaign ${action.campaignId}.`;
     }
     case 'delete_campaign': {
-      executeSql('DELETE FROM "Campaign" WHERE id = ? AND userId = ?', [action.campaignId, userId]);
+      executeSql('DELETE FROM "Campaign" WHERE id = ? AND userId = ?', [action.campaignId, actor.userId]);
+      await recordAuditEvent({
+        actorUserId: actor.userId,
+        actorEmail: actor.email,
+        actorRole: actor.role,
+        action: 'agent_delete_campaign',
+        entityType: 'Campaign',
+        entityId: action.campaignId,
+        scopeType: 'SELF',
+        metadata: { agent: 'worker' },
+      });
       return `Deleted campaign ${action.campaignId}.`;
     }
     case 'add_contact': {
       const email = action.email?.trim().toLowerCase();
       if (!email) return 'Contact email is required.';
-      const list = queryRow<{ id: string }>('SELECT id FROM "List" WHERE id = ? AND userId = ? LIMIT 1', [action.listId, userId]);
+      const list = queryRow<{ id: string }>('SELECT id FROM "List" WHERE id = ? AND userId = ? LIMIT 1', [action.listId, actor.userId]);
       if (!list) return `List ${action.listId} was not found or is not owned by the user.`;
       const id = randomUUID().replace(/-/g, '');
       executeSql(
@@ -987,6 +1095,16 @@ async function createEntityFromAction(userId: string, action: AgentAction) {
         `,
         [id, email, action.firstName || null, action.lastName || null, email, action.listId, action.listId, now, now],
       );
+      await recordAuditEvent({
+        actorUserId: actor.userId,
+        actorEmail: actor.email,
+        actorRole: actor.role,
+        action: 'agent_add_contact',
+        entityType: 'Contact',
+        entityId: id,
+        scopeType: 'SELF',
+        metadata: { listId: action.listId, email, agent: 'worker' },
+      });
       return `Upserted contact ${email}.`;
     }
     case 'update_contact': {
@@ -998,7 +1116,7 @@ async function createEntityFromAction(userId: string, action: AgentAction) {
           WHERE c.id = ? AND l.userId = ?
           LIMIT 1
         `,
-        [action.contactId, userId],
+        [action.contactId, actor.userId],
       );
       if (!existing) return `Contact ${action.contactId} was not found or is not owned by the user.`;
       const assignments: string[] = [];
@@ -1023,6 +1141,16 @@ async function createEntityFromAction(userId: string, action: AgentAction) {
       }
       if (!assignments.length) return `No contact changes were requested.`;
       executeSql(`UPDATE "Contact" SET ${assignments.join(', ')}, "updatedAt" = CURRENT_TIMESTAMP WHERE id = ?`, [...params, action.contactId]);
+      await recordAuditEvent({
+        actorUserId: actor.userId,
+        actorEmail: actor.email,
+        actorRole: actor.role,
+        action: 'agent_update_contact',
+        entityType: 'Contact',
+        entityId: action.contactId,
+        scopeType: 'SELF',
+        metadata: { changedFields: Object.keys(assignments), agent: 'worker' },
+      });
       return `Updated contact ${action.contactId}.`;
     }
     case 'delete_contact': {
@@ -1036,8 +1164,18 @@ async function createEntityFromAction(userId: string, action: AgentAction) {
             WHERE c.id = ? AND l.userId = ?
           )
         `,
-        [action.contactId, userId],
+        [action.contactId, actor.userId],
       );
+      await recordAuditEvent({
+        actorUserId: actor.userId,
+        actorEmail: actor.email,
+        actorRole: actor.role,
+        action: 'agent_delete_contact',
+        entityType: 'Contact',
+        entityId: action.contactId,
+        scopeType: 'SELF',
+        metadata: { agent: 'worker' },
+      });
       return `Deleted contact ${action.contactId}.`;
     }
     case 'send_campaign': {
@@ -1055,7 +1193,7 @@ async function createEntityFromAction(userId: string, action: AgentAction) {
           WHERE c.id = ? AND c.userId = ?
           LIMIT 1
         `,
-        [action.campaignId, userId],
+        [action.campaignId, actor.userId],
       );
       if (!campaign) return `Campaign ${action.campaignId} was not found or is not owned by the user.`;
       if (campaign.status !== 'DRAFT' && campaign.status !== 'SCHEDULED') {
@@ -1069,11 +1207,11 @@ async function createEntityFromAction(userId: string, action: AgentAction) {
           WHERE l.id = ? AND l.userId = ?
           ORDER BY c.createdAt ASC
         `,
-        [campaign.listId, userId],
+        [campaign.listId, actor.userId],
       );
 
-      const result = await dispatchCampaignEmails(userId, {
-        userId,
+      const result = await dispatchCampaignEmails(actor.userId, {
+        userId: actor.userId,
         campaignId: campaign.id,
         campaignName: campaign.name,
         subject: campaign.subject,
@@ -1081,13 +1219,33 @@ async function createEntityFromAction(userId: string, action: AgentAction) {
         appUrl: process.env.APP_URL || process.env.PUBLIC_APP_URL || 'http://localhost:3000',
         contacts,
       });
+      await recordAuditEvent({
+        actorUserId: actor.userId,
+        actorEmail: actor.email,
+        actorRole: actor.role,
+        action: 'agent_send_campaign',
+        entityType: 'Campaign',
+        entityId: campaign.id,
+        scopeType: 'SELF',
+        metadata: { sentCount: result.sentCount, failedCount: result.failedCount, skippedCount: result.skippedCount, agent: 'worker' },
+      });
       return `Sent campaign ${campaign.name}: ${result.sentCount} sent, ${result.failedCount} failed, ${result.skippedCount} skipped.`;
     }
     case 'send_test_email': {
-      const result = await sendTestEmail(userId, {
+      const result = await sendTestEmail(actor.userId, {
         toEmail: action.toEmail,
         subject: action.subject,
         bodyHtml: action.bodyHtml,
+      });
+      await recordAuditEvent({
+        actorUserId: actor.userId,
+        actorEmail: actor.email,
+        actorRole: actor.role,
+        action: 'agent_send_test_email',
+        entityType: 'Email',
+        entityId: action.toEmail,
+        scopeType: 'SELF',
+        metadata: { subject: action.subject, provider: result.provider, agent: 'worker' },
       });
       return `Test email sent to ${action.toEmail} using ${result.provider}.`;
     }
@@ -1128,8 +1286,18 @@ export async function runAgentChat(user: { userId: string; email: string; role: 
     const parsedActions = latestAssistant?.metadataJson ? safeJsonParse(latestAssistant.metadataJson).actions : [];
     const actions = Array.isArray(parsedActions) ? (parsedActions.filter(Boolean) as AgentAction[]) : [];
     const executed: Array<{ type: string; result: string }> = [];
+    await recordAuditEvent({
+      actorUserId: user.userId,
+      actorEmail: user.email,
+      actorRole: user.role,
+      action: 'agent_execute_actions',
+      entityType: 'AgentConversation',
+      entityId: conversationId,
+      scopeType: 'SELF',
+      metadata: { actionCount: actions.length, agent: input.agentKey },
+    });
     for (const action of actions) {
-      const result = await createEntityFromAction(user.userId, action);
+      const result = await createEntityFromAction(user, action);
       executed.push({ type: action.type, result });
     }
 
@@ -1216,7 +1384,7 @@ export async function runAgentChat(user: { userId: string; email: string; role: 
   let executed: Array<{ type: string; result: string }> = [];
   if (input.agentKey === 'worker' && input.executeActions && normalized.actions.length) {
     for (const action of normalized.actions) {
-      const result = await createEntityFromAction(user.userId, action);
+      const result = await createEntityFromAction(user, action);
       executed.push({ type: action.type, result });
     }
 

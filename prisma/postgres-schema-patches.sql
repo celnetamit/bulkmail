@@ -7,6 +7,11 @@ ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "dailyEmailLimit" INTEGER NOT NULL D
 ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "imageUploadLimitKb" INTEGER;
 ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "lastLoginAt" TIMESTAMPTZ;
 
+ALTER TABLE "PlatformSettings" ADD COLUMN IF NOT EXISTS "sendingDomain" TEXT;
+ALTER TABLE "PlatformSettings" ADD COLUMN IF NOT EXISTS "spfVerified" BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE "PlatformSettings" ADD COLUMN IF NOT EXISTS "dkimVerified" BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE "PlatformSettings" ADD COLUMN IF NOT EXISTS "dmarcVerified" BOOLEAN NOT NULL DEFAULT FALSE;
+
 ALTER TABLE "Campaign" ADD COLUMN IF NOT EXISTS "templateId" TEXT;
 ALTER TABLE "Campaign" ADD COLUMN IF NOT EXISTS "provider" TEXT;
 ALTER TABLE "Campaign" ADD COLUMN IF NOT EXISTS "totalRecipients" INTEGER NOT NULL DEFAULT 0;
@@ -25,6 +30,34 @@ ALTER TABLE "List" ADD COLUMN IF NOT EXISTS "isDefaultTestList" BOOLEAN NOT NULL
 
 CREATE UNIQUE INDEX IF NOT EXISTS "MailSettings_userId_key" ON "MailSettings" ("userId");
 CREATE UNIQUE INDEX IF NOT EXISTS "Event_providerEventId_key" ON "Event" ("providerEventId");
+
+CREATE TABLE IF NOT EXISTS "CampaignSendJob" (
+  "id" TEXT NOT NULL PRIMARY KEY,
+  "campaignId" TEXT NOT NULL,
+  "userId" TEXT NOT NULL,
+  "status" TEXT NOT NULL DEFAULT 'QUEUED',
+  "attempts" INTEGER NOT NULL DEFAULT 0,
+  "provider" TEXT,
+  "totalRecipients" INTEGER NOT NULL DEFAULT 0,
+  "sentCount" INTEGER NOT NULL DEFAULT 0,
+  "failedCount" INTEGER NOT NULL DEFAULT 0,
+  "skippedCount" INTEGER NOT NULL DEFAULT 0,
+  "quotaSkippedCount" INTEGER NOT NULL DEFAULT 0,
+  "remainingToday" INTEGER NOT NULL DEFAULT 0,
+  "requestedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  "startedAt" TIMESTAMPTZ,
+  "nextRunAt" TIMESTAMPTZ,
+  "finishedAt" TIMESTAMPTZ,
+  "lastError" TEXT,
+  "skipReason" TEXT,
+  "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  "updatedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT "CampaignSendJob_campaignId_fkey" FOREIGN KEY ("campaignId") REFERENCES "Campaign" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT "CampaignSendJob_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS "CampaignSendJob_status_requestedAt_idx" ON "CampaignSendJob" ("status", "requestedAt");
+CREATE INDEX IF NOT EXISTS "CampaignSendJob_campaignId_idx" ON "CampaignSendJob" ("campaignId");
 
 INSERT INTO "CampaignList" ("id", "campaignId", "listId", "createdAt", "updatedAt")
 SELECT

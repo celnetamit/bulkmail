@@ -1,4 +1,5 @@
 import { requireAdminFromCookies } from '@/lib/auth';
+import { recordAuditEvent } from '@/lib/audit';
 import { fail, ok } from '@/lib/http';
 import { createProvisionedPasswordHash, isAdminEmailAllowed } from '@/lib/auth';
 import { isValidEmailAddress, normalizeEmailAddress } from '@/lib/email-address';
@@ -64,6 +65,22 @@ export async function POST(request: Request) {
     `,
     [id, email, name || null, passwordHash, effectiveRole, 1, dailyEmailLimit, imageUploadLimitKb, null, createdAt, createdAt],
   );
+
+  await recordAuditEvent({
+    actorUserId: auth.user.userId,
+    actorEmail: auth.user.email,
+    actorRole: auth.user.role,
+    action: 'user_create',
+    entityType: 'User',
+    entityId: id,
+    scopeType: 'GLOBAL',
+    metadata: {
+      email,
+      role: effectiveRole,
+      dailyEmailLimit,
+      imageUploadLimitKb,
+    },
+  });
 
   const user = queryRow(
     'SELECT id, email, name, role, isActive, dailyEmailLimit, createdAt, lastLoginAt FROM "User" WHERE id = ? LIMIT 1',

@@ -1,4 +1,5 @@
 import { requireUserFromCookies } from '@/lib/auth';
+import { recordAuditEvent } from '@/lib/audit';
 import { fail, ok } from '@/lib/http';
 import { sendTestEmail } from '@/lib/providers/email';
 import { queryRow, queryRows } from '@/lib/sqlite';
@@ -70,6 +71,23 @@ export async function POST(_: Request, { params }: Params) {
       failedCount += 1;
     }
   }
+
+  await recordAuditEvent({
+    actorUserId: auth.user.userId,
+    actorEmail: auth.user.email,
+    actorRole: auth.user.role,
+    action: 'campaign_test',
+    entityType: 'Campaign',
+    entityId: campaign.id,
+    scopeType: 'SELF',
+    metadata: {
+      testListId: testList.id,
+      testListName: testList.name,
+      sentCount,
+      failedCount,
+      provider,
+    },
+  });
 
   return ok({
     success: true,

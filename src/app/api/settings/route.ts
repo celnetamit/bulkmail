@@ -1,7 +1,9 @@
 import { requireUserFromCookies } from '@/lib/auth';
+import { recordAuditEvent } from '@/lib/audit';
 import { fail, ok } from '@/lib/http';
 import { getMailSettings, saveMailSettings } from '@/lib/mail-settings';
 import { getPlatformSettings, savePlatformSettings } from '@/lib/platform-settings';
+import { hasCapability } from '@/lib/permissions';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -10,20 +12,30 @@ export async function GET() {
   const auth = await requireUserFromCookies();
   if ('error' in auth) return auth.error;
 
-  if (auth.user.role !== 'ADMIN') {
+  if (!hasCapability(auth.user.role, 'manage_settings')) {
     return fail('Mail Provider settings are admin-only.', 403);
   }
 
   const settings = await getMailSettings(auth.user.userId);
   const platformSettings = await getPlatformSettings();
-  return ok({ settings: { ...settings, imageUploadLimitKb: platformSettings.imageUploadLimitKb, imageUploadSource: platformSettings.source } });
+  return ok({
+    settings: {
+      ...settings,
+      imageUploadLimitKb: platformSettings.imageUploadLimitKb,
+      imageUploadSource: platformSettings.source,
+      sendingDomain: platformSettings.sendingDomain,
+      spfVerified: platformSettings.spfVerified,
+      dkimVerified: platformSettings.dkimVerified,
+      dmarcVerified: platformSettings.dmarcVerified,
+    },
+  });
 }
 
 export async function PUT(request: Request) {
   const auth = await requireUserFromCookies();
   if ('error' in auth) return auth.error;
 
-  if (auth.user.role !== 'ADMIN') {
+  if (!hasCapability(auth.user.role, 'manage_settings')) {
     return fail('Mail Provider settings are admin-only.', 403);
   }
 
@@ -54,12 +66,60 @@ export async function PUT(request: Request) {
   });
 
   const imageUploadLimitKbRaw = 'imageUploadLimitKb' in body ? Number((body as Record<string, unknown>).imageUploadLimitKb) : undefined;
+  const sendingDomain = 'sendingDomain' in body ? String((body as Record<string, unknown>).sendingDomain || '').trim() : undefined;
+  const spfVerified = 'spfVerified' in body ? Boolean((body as Record<string, unknown>).spfVerified) : undefined;
+  const dkimVerified = 'dkimVerified' in body ? Boolean((body as Record<string, unknown>).dkimVerified) : undefined;
+  const dmarcVerified = 'dmarcVerified' in body ? Boolean((body as Record<string, unknown>).dmarcVerified) : undefined;
   if (imageUploadLimitKbRaw !== undefined) {
     const imageUploadLimitKb = Number.isFinite(imageUploadLimitKbRaw) && imageUploadLimitKbRaw > 0 ? Math.floor(imageUploadLimitKbRaw) : 50;
-    await savePlatformSettings({ imageUploadLimitKb });
+    await savePlatformSettings({
+      imageUploadLimitKb,
+      sendingDomain,
+      spfVerified,
+      dkimVerified,
+      dmarcVerified,
+    });
+  } else if (sendingDomain !== undefined || spfVerified !== undefined || dkimVerified !== undefined || dmarcVerified !== undefined) {
+    const platformSettings = await getPlatformSettings();
+    await savePlatformSettings({
+      imageUploadLimitKb: platformSettings.imageUploadLimitKb,
+      sendingDomain,
+      spfVerified,
+      dkimVerified,
+      dmarcVerified,
+    });
   }
+
+  await recordAuditEvent({
+    actorUserId: auth.user.userId,
+    actorEmail: auth.user.email,
+    actorRole: auth.user.role,
+    action: 'settings_update',
+    entityType: 'PlatformSettings',
+    entityId: 'global',
+    scopeType: 'GLOBAL',
+    metadata: {
+      provider,
+      imageUploadLimitKb: imageUploadLimitKbRaw,
+      sendingDomain,
+      spfVerified,
+      dkimVerified,
+      dmarcVerified,
+    },
+  });
 
   const settings = await getMailSettings(auth.user.userId);
   const platformSettings = await getPlatformSettings();
-  return ok({ settings: { ...settings, imageUploadLimitKb: platformSettings.imageUploadLimitKb, imageUploadSource: platformSettings.source }, saved: provider });
+  return ok({
+    settings: {
+      ...settings,
+      imageUploadLimitKb: platformSettings.imageUploadLimitKb,
+      imageUploadSource: platformSettings.source,
+      sendingDomain: platformSettings.sendingDomain,
+      spfVerified: platformSettings.spfVerified,
+      dkimVerified: platformSettings.dkimVerified,
+      dmarcVerified: platformSettings.dmarcVerified,
+    },
+    saved: provider,
+  });
 }

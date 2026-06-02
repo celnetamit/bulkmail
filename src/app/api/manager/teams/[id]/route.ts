@@ -1,5 +1,6 @@
 import { fail, ok } from '@/lib/http';
 import { ensureManagerSchema, requireManagerOrAdminFromCookies } from '@/lib/manager';
+import { recordAuditEvent } from '@/lib/audit';
 import { executeSql, queryRow } from '@/lib/sqlite';
 
 type Params = { params: { id: string } };
@@ -88,6 +89,23 @@ export async function PATCH(request: Request, { params }: Params) {
     [...paramsList, params.id, auth.user.userId],
   );
 
+  await recordAuditEvent({
+    actorUserId: auth.user.userId,
+    actorEmail: auth.user.email,
+    actorRole: auth.user.role,
+    action: 'team_update',
+    entityType: 'Team',
+    entityId: params.id,
+    scopeType: 'TEAM',
+    metadata: {
+      changedFields: [
+        ...(name !== undefined ? ['name'] : []),
+        ...(description !== undefined ? ['description'] : []),
+        ...(dailyCreditLimit !== undefined ? ['dailyCreditLimit'] : []),
+      ],
+    },
+  });
+
   const updated = loadTeam(params.id, auth.user.userId);
   return ok({ team: updated });
 }
@@ -115,6 +133,19 @@ export async function DELETE(request: Request, { params }: Params) {
 
   executeSql('DELETE FROM "TeamMember" WHERE teamId = ?', [team.id]);
   executeSql('DELETE FROM "Team" WHERE id = ? AND managerId = ?', [params.id, auth.user.userId]);
+
+  await recordAuditEvent({
+    actorUserId: auth.user.userId,
+    actorEmail: auth.user.email,
+    actorRole: auth.user.role,
+    action: 'team_delete',
+    entityType: 'Team',
+    entityId: params.id,
+    scopeType: 'TEAM',
+    metadata: {
+      memberCount: team.memberCount,
+    },
+  });
 
   return ok({ success: true });
 }

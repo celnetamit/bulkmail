@@ -1,4 +1,5 @@
 import { requireUserFromCookies } from '@/lib/auth';
+import { recordAuditEvent } from '@/lib/audit';
 import { fail, ok } from '@/lib/http';
 import { queryRow, queryRows, executeSql } from '@/lib/sqlite';
 import { getCampaignLists, replaceCampaignLists } from '@/lib/campaign-lists';
@@ -213,11 +214,28 @@ export async function POST(request: Request) {
   );
 
   try {
-    replaceCampaignLists(id, auth.user.userId, listIds);
+  replaceCampaignLists(id, auth.user.userId, listIds);
   } catch (error) {
     executeSql('DELETE FROM "Campaign" WHERE id = ? AND userId = ?', [id, auth.user.userId]);
     return fail(error instanceof Error ? error.message : 'Failed to create campaign lists.', 400);
   }
+
+  await recordAuditEvent({
+    actorUserId: auth.user.userId,
+    actorEmail: auth.user.email,
+    actorRole: auth.user.role,
+    action: 'campaign_create',
+    entityType: 'Campaign',
+    entityId: id,
+    scopeType: 'SELF',
+    metadata: {
+      name,
+      subject,
+      listIds,
+      templateId,
+      status: 'DRAFT',
+    },
+  });
 
   const campaign = queryRow<{
     id: string;

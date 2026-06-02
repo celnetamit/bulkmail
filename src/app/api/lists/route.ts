@@ -1,4 +1,5 @@
 import { requireUserFromCookies } from '@/lib/auth';
+import { recordAuditEvent } from '@/lib/audit';
 import { fail, ok } from '@/lib/http';
 import { executeSql, queryRow, queryRows } from '@/lib/sqlite';
 import { setDefaultTestList } from '@/lib/campaign-lists';
@@ -150,6 +151,21 @@ export async function POST(request: Request) {
   if (isDefaultTestList) {
     setDefaultTestList(id, auth.user.userId);
   }
+
+  await recordAuditEvent({
+    actorUserId: auth.user.userId,
+    actorEmail: auth.user.email,
+    actorRole: auth.user.role,
+    action: 'list_create',
+    entityType: 'List',
+    entityId: id,
+    scopeType: 'SELF',
+    metadata: {
+      name,
+      description: description || null,
+      isDefaultTestList,
+    },
+  });
 
   const list = queryRow(
     'SELECT * FROM "List" WHERE id = ? AND userId = ? LIMIT 1',

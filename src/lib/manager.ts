@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { AuthUser, requireUserFromCookies } from '@/lib/auth';
+import { hasCapability } from '@/lib/permissions';
 import { executeSql } from '@/lib/sqlite';
 
 let managerSchemaInitialized = false;
@@ -41,7 +42,7 @@ export async function requireManagerOrAdminFromCookies(): Promise<{ user: AuthUs
   const auth = await requireUserFromCookies();
   if ('error' in auth) return auth;
 
-  if (!['MANAGER', 'ADMIN'].includes(auth.user.role)) {
+  if (!hasCapability(auth.user.role, 'manage_teams')) {
     return { error: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) };
   }
 

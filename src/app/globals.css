@@ -1626,6 +1626,39 @@ p {
   font-size: 0.92rem;
 }
 
+.audit-trail-list {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.audit-trail-item {
+  padding: 0.85rem 0.9rem;
+  border: 1px solid var(--border-color);
+  border-radius: 0.85rem;
+  background: rgba(15, 23, 42, 0.42);
+  display: grid;
+  gap: 0.45rem;
+}
+
+.audit-trail-item__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.audit-trail-item__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem 0.85rem;
+  color: #94a3b8;
+  font-size: 0.84rem;
+}
+
+.audit-trail-item__meta span {
+  white-space: nowrap;
+}
+
 .help-tips {
   display: grid;
   gap: 0.85rem;

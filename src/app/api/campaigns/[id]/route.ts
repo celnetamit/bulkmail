@@ -1,10 +1,11 @@
 import { requireUserFromCookies } from '@/lib/auth';
+import { recordAuditEvent } from '@/lib/audit';
 import { fail, ok } from '@/lib/http';
 import { executeSql, queryRow } from '@/lib/sqlite';
 import { getCampaignLists, replaceCampaignLists } from '@/lib/campaign-lists';
 
 type Params = { params: { id: string } };
-const ALLOWED_STATUSES = new Set(['DRAFT', 'SCHEDULED', 'QUEUED', 'SENDING', 'SENT', 'FAILED']);
+const ALLOWED_STATUSES = new Set(['DRAFT', 'SCHEDULED', 'QUEUED', 'RETRYING', 'SENDING', 'SENT', 'FAILED', 'SKIPPED']);
 
 export async function GET(_: Request, { params }: Params) {
   const auth = await requireUserFromCookies();
@@ -86,7 +87,7 @@ export async function PATCH(request: Request, { params }: Params) {
     [params.id, auth.user.userId],
   );
   if (!existing) return fail('Campaign not found.', 404);
-  if (existing.status === 'QUEUED' || existing.status === 'SENDING') {
+  if (existing.status === 'QUEUED' || existing.status === 'RETRYING' || existing.status === 'SENDING') {
     return fail('Queued or sending campaigns cannot be edited.', 409);
   }
   const previousListId = existing.listId;
@@ -129,6 +130,22 @@ export async function PATCH(request: Request, { params }: Params) {
     );
     return fail(error instanceof Error ? error.message : 'Failed to update campaign lists.', 400);
   }
+
+  await recordAuditEvent({
+    actorUserId: auth.user.userId,
+    actorEmail: auth.user.email,
+    actorRole: auth.user.role,
+    action: 'campaign_update',
+    entityType: 'Campaign',
+    entityId: params.id,
+    scopeType: 'SELF',
+    metadata: {
+      changedFields: ['name', 'subject', 'bodyHtml', 'status', 'listIds', 'templateId'],
+      status,
+      listIds,
+      templateId,
+    },
+  });
 
   const campaign = queryRow(
     `
@@ -182,10 +199,19 @@ export async function DELETE(_: Request, { params }: Params) {
     [params.id, auth.user.userId],
   );
   if (!existing) return fail('Campaign not found.', 404);
-  if (existing.status === 'QUEUED' || existing.status === 'SENDING') {
+  if (existing.status === 'QUEUED' || existing.status === 'RETRYING' || existing.status === 'SENDING') {
     return fail('Queued or sending campaigns cannot be deleted.', 409);
   }
 
   executeSql('DELETE FROM "Campaign" WHERE id = ? AND userId = ?', [params.id, auth.user.userId]);
+  await recordAuditEvent({
+    actorUserId: auth.user.userId,
+    actorEmail: auth.user.email,
+    actorRole: auth.user.role,
+    action: 'campaign_delete',
+    entityType: 'Campaign',
+    entityId: params.id,
+    scopeType: 'SELF',
+  });
   return ok({ success: true });
 }

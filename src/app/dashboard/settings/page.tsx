@@ -14,6 +14,10 @@ type Settings = {
   resendFromEmail: string;
   hasWebhookSharedSecret: boolean;
   imageUploadLimitKb: number;
+  sendingDomain: string;
+  spfVerified: boolean;
+  dkimVerified: boolean;
+  dmarcVerified: boolean;
   source: 'database' | 'env';
 };
 
@@ -21,6 +25,7 @@ type CurrentUser = {
   role: 'ADMIN' | 'MANAGER' | 'USER';
   email: string;
   name: string | null;
+  capabilities: string[];
 };
 
 export default function SettingsPage() {
@@ -40,6 +45,10 @@ export default function SettingsPage() {
   const [resendFromEmail, setResendFromEmail] = useState('');
   const [webhookSharedSecret, setWebhookSharedSecret] = useState('');
   const [imageUploadLimitKb, setImageUploadLimitKb] = useState('50');
+  const [sendingDomain, setSendingDomain] = useState('');
+  const [spfVerified, setSpfVerified] = useState(false);
+  const [dkimVerified, setDkimVerified] = useState(false);
+  const [dmarcVerified, setDmarcVerified] = useState(false);
 
   const [testToEmail, setTestToEmail] = useState('');
   const [testSubject, setTestSubject] = useState('MailFlow test email');
@@ -56,7 +65,7 @@ export default function SettingsPage() {
 
     setCurrentUser(meData.user);
 
-    if (meData.user.role !== 'ADMIN') {
+    if (!meData.user.capabilities?.includes('manage_settings')) {
       setSettings(null);
       return;
     }
@@ -75,6 +84,10 @@ export default function SettingsPage() {
     setAwsFromEmail(data.settings.awsFromEmail);
     setResendFromEmail(data.settings.resendFromEmail);
     setImageUploadLimitKb(String(data.settings.imageUploadLimitKb || 50));
+    setSendingDomain(data.settings.sendingDomain || '');
+    setSpfVerified(Boolean(data.settings.spfVerified));
+    setDkimVerified(Boolean(data.settings.dkimVerified));
+    setDmarcVerified(Boolean(data.settings.dmarcVerified));
   }
 
   useEffect(() => {
@@ -83,7 +96,7 @@ export default function SettingsPage() {
 
   async function saveSettings(event: FormEvent) {
     event.preventDefault();
-    if (currentUser?.role !== 'ADMIN') {
+    if (!currentUser?.capabilities?.includes('manage_settings')) {
       setMessage('Mail Provider settings are admin-only.');
       return;
     }
@@ -104,6 +117,10 @@ export default function SettingsPage() {
         resendFromEmail,
         webhookSharedSecret,
         imageUploadLimitKb: Number(imageUploadLimitKb),
+        sendingDomain,
+        spfVerified,
+        dkimVerified,
+        dmarcVerified,
       }),
     });
 
@@ -115,9 +132,10 @@ export default function SettingsPage() {
     setMessage('Settings saved.');
     setAwsAccessKeyId('');
     setAwsSecretAccessKey('');
-    setAwsSessionToken('');
+      setAwsSessionToken('');
       setResendApiKey('');
       setWebhookSharedSecret('');
+      setSendingDomain(data.settings?.sendingDomain || '');
       await loadSessionAndSettings();
   }
 
@@ -160,7 +178,7 @@ export default function SettingsPage() {
 
       {message ? <p className="form-note">{message}</p> : null}
 
-      {currentUser?.role === 'ADMIN' ? (
+      {currentUser?.capabilities?.includes('manage_settings') ? (
         <div className="card dashboard-panel" style={{ marginBottom: '1rem' }}>
           <h2>Mail Provider</h2>
           <form className="auth-form" onSubmit={saveSettings}>
@@ -210,6 +228,37 @@ export default function SettingsPage() {
           <p className="form-note">Image upload limits are also controlled by admins, with per-user overrides where assigned.</p>
         </div>
       )}
+
+      {currentUser?.capabilities?.includes('manage_settings') ? (
+        <div className="card dashboard-panel" style={{ marginBottom: '1rem' }}>
+          <h2>Compliance Automation</h2>
+          <form className="auth-form" onSubmit={saveSettings}>
+            <input value={sendingDomain} onChange={(e) => setSendingDomain(e.target.value)} placeholder="Sending domain, e.g. mail.example.com" />
+
+            <label className="inline-toggle">
+              <input type="checkbox" checked={spfVerified} onChange={(e) => setSpfVerified(e.target.checked)} />
+              <span>SPF verified</span>
+            </label>
+
+            <label className="inline-toggle">
+              <input type="checkbox" checked={dkimVerified} onChange={(e) => setDkimVerified(e.target.checked)} />
+              <span>DKIM verified</span>
+            </label>
+
+            <label className="inline-toggle">
+              <input type="checkbox" checked={dmarcVerified} onChange={(e) => setDmarcVerified(e.target.checked)} />
+              <span>DMARC verified</span>
+            </label>
+
+            <p className="form-note">
+              These flags feed the Help and Admin compliance checks. We can show live readiness from the app, while DNS verification itself still happens outside MailFlow.
+            </p>
+            <button className="btn-primary" type="submit" disabled={saving}>
+              {saving ? 'Saving...' : 'Save Compliance'}
+            </button>
+          </form>
+        </div>
+      ) : null}
 
       <div className="card dashboard-panel">
         <h2>Send Test Email</h2>

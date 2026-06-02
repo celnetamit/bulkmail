@@ -43,12 +43,16 @@ CREATE INDEX IF NOT EXISTS "TeamMember_teamId_idx" ON "TeamMember" ("teamId");
 CREATE TABLE IF NOT EXISTS "PlatformSettings" (
   "id" TEXT NOT NULL PRIMARY KEY,
   "imageUploadLimitKb" INTEGER NOT NULL DEFAULT 50,
+  "sendingDomain" TEXT,
+  "spfVerified" BOOLEAN NOT NULL DEFAULT FALSE,
+  "dkimVerified" BOOLEAN NOT NULL DEFAULT FALSE,
+  "dmarcVerified" BOOLEAN NOT NULL DEFAULT FALSE,
   "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   "updatedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-INSERT INTO "PlatformSettings" ("id", "imageUploadLimitKb")
-VALUES ('global', 50)
+INSERT INTO "PlatformSettings" ("id", "imageUploadLimitKb", "sendingDomain", "spfVerified", "dkimVerified", "dmarcVerified")
+VALUES ('global', 50, NULL, FALSE, FALSE, FALSE)
 ON CONFLICT ("id") DO NOTHING;
 
 CREATE TABLE IF NOT EXISTS "MailSettings" (
@@ -143,8 +147,10 @@ CREATE TABLE IF NOT EXISTS "CampaignSendJob" (
   "remainingToday" INTEGER NOT NULL DEFAULT 0,
   "requestedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   "startedAt" TIMESTAMPTZ,
+  "nextRunAt" TIMESTAMPTZ,
   "finishedAt" TIMESTAMPTZ,
   "lastError" TEXT,
+  "skipReason" TEXT,
   "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   "updatedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   CONSTRAINT "CampaignSendJob_campaignId_fkey" FOREIGN KEY ("campaignId") REFERENCES "Campaign" ("id") ON DELETE CASCADE ON UPDATE CASCADE,

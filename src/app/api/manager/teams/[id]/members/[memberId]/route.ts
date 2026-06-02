@@ -1,4 +1,5 @@
 import { fail, ok } from '@/lib/http';
+import { recordAuditEvent } from '@/lib/audit';
 import { ensureManagerSchema, requireManagerOrAdminFromCookies } from '@/lib/manager';
 import { executeSql, queryRow } from '@/lib/sqlite';
 
@@ -119,6 +120,24 @@ export async function PATCH(request: Request, { params }: Params) {
     );
   }
 
+  await recordAuditEvent({
+    actorUserId: auth.user.userId,
+    actorEmail: auth.user.email,
+    actorRole: auth.user.role,
+    action: 'team_member_update',
+    entityType: 'TeamMember',
+    entityId: params.memberId,
+    scopeType: 'TEAM',
+    metadata: {
+      teamId: params.id,
+      changedFields: [
+        ...(name !== undefined ? ['name'] : []),
+        ...(isActive !== undefined ? ['isActive'] : []),
+        ...(dailyEmailLimit !== undefined ? ['dailyEmailLimit'] : []),
+      ],
+    },
+  });
+
   const updated = loadMember(params.id, params.memberId);
   return ok({ member: updated });
 }
@@ -145,6 +164,19 @@ export async function DELETE(request: Request, { params }: Params) {
     [params.memberId],
   );
   executeSql('DELETE FROM "TeamMember" WHERE teamId = ? AND userId = ?', [params.id, params.memberId]);
+
+  await recordAuditEvent({
+    actorUserId: auth.user.userId,
+    actorEmail: auth.user.email,
+    actorRole: auth.user.role,
+    action: 'team_member_remove',
+    entityType: 'TeamMember',
+    entityId: params.memberId,
+    scopeType: 'TEAM',
+    metadata: {
+      teamId: params.id,
+    },
+  });
 
   return ok({ success: true });
 }

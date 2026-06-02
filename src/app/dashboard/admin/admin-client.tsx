@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { buildComplianceItems } from '@/lib/compliance';
 
 type UserRow = {
   id: string;
@@ -36,12 +37,25 @@ type SummaryResponse = {
     campaigns: number;
     lists: number;
     contacts: number;
+    suppressedContacts: number;
     sentToday: number;
     openTotal: number;
     bounceTotal: number;
     unsubscribeTotal: number;
   };
   users: UserRow[];
+  recentAudits: Array<{
+    id: string;
+    actorUserId: string;
+    actorEmail: string;
+    actorRole: string;
+    action: string;
+    entityType: string;
+    entityId: string | null;
+    scopeType: string;
+    metadata: Record<string, unknown> | null;
+    createdAt: string;
+  }>;
 };
 
 type Settings = {
@@ -49,6 +63,10 @@ type Settings = {
   awsFromEmail: string;
   resendFromEmail: string;
   hasWebhookSharedSecret: boolean;
+  sendingDomain: string;
+  spfVerified: boolean;
+  dkimVerified: boolean;
+  dmarcVerified: boolean;
   source: 'database' | 'env';
 };
 
@@ -179,6 +197,7 @@ export default function AdminDashboardClient() {
   const rows = useMemo(() => summary?.users || [], [summary]);
   const compliance = useMemo<
     Array<{
+      key: string;
       title: string;
       detail: string;
       status: ComplianceStatus;
@@ -186,46 +205,24 @@ export default function AdminDashboardClient() {
     }>
   >(
     () => [
-      {
-        title: 'Sender identity configured',
-        detail:
-          settings?.provider === 'aws-ses' && settings.awsFromEmail
-            ? `AWS SES sender set to ${settings.awsFromEmail}.`
-            : settings?.provider === 'resend' && settings.resendFromEmail
-              ? `Resend sender set to ${settings.resendFromEmail}.`
-              : 'Set a real sender address before launching live mail.',
-        status:
-          (settings?.provider === 'aws-ses' && settings.awsFromEmail) ||
-          (settings?.provider === 'resend' && settings.resendFromEmail)
-            ? 'ready'
-            : 'action',
-        action: { label: 'Settings', href: '/dashboard/settings' },
-      },
-      {
-        title: 'Bounce and complaint handling',
-        detail:
-          settings?.provider === 'mock'
-            ? 'Connect a real provider and enable webhook handling.'
-            : settings?.hasWebhookSharedSecret
-              ? 'Webhook secret is stored. Make sure provider webhooks point at this app.'
-              : 'Store the webhook secret in Settings before wiring provider webhooks.',
-        status: settings?.provider !== 'mock' && settings?.hasWebhookSharedSecret ? 'ready' : 'action',
-        action: { label: 'Settings', href: '/dashboard/settings' },
-      },
-      {
-        title: 'Default test list',
-        detail: 'Keep one list marked as the default test list before using one-click test sends.',
-        status: 'manual',
-        action: { label: 'Help', href: '/dashboard/help' },
-      },
-      {
-        title: 'SPF, DKIM, DMARC',
-        detail: 'Publish SPF, DKIM, and DMARC for your sending domain to reduce spam placement and spoofing risk.',
-        status: 'manual',
-        action: { label: 'Help', href: '/dashboard/help' },
-      },
+      ...(settings
+        ? buildComplianceItems({
+            provider: settings.provider,
+            awsFromEmail: settings.awsFromEmail,
+            resendFromEmail: settings.resendFromEmail,
+            hasWebhookSharedSecret: settings.hasWebhookSharedSecret,
+            sendingDomain: settings.sendingDomain,
+            spfVerified: settings.spfVerified,
+            dkimVerified: settings.dkimVerified,
+            dmarcVerified: settings.dmarcVerified,
+            suppressedContacts: summary?.totals.suppressedContacts ?? 0,
+          }).map((item) => ({
+            ...item,
+            action: item.action ?? { label: 'Settings', href: '/dashboard/settings' },
+          }))
+        : []),
     ],
-    [settings],
+    [settings, summary],
   );
 
   return (
@@ -275,6 +272,39 @@ export default function AdminDashboardClient() {
               </Link>
             </article>
           ))}
+        </div>
+      </div>
+
+      <div className="card dashboard-panel" style={{ marginBottom: '1rem' }}>
+        <div className="help-panel__header">
+          <div>
+            <h2>Recent audit trail</h2>
+            <p className="form-note">Recent access, settings, campaign, list, team, and agent actions from across the platform.</p>
+          </div>
+          <Link className="mini-btn" href="/dashboard/help">Help</Link>
+        </div>
+        <div className="audit-trail-list">
+          {(summary?.recentAudits || []).length === 0 ? (
+            <p className="form-note">No audit events yet.</p>
+          ) : (
+            (summary?.recentAudits || []).map((event) => (
+              <article className="audit-trail-item" key={event.id}>
+                <div className="audit-trail-item__top">
+                  <strong>{event.action}</strong>
+                  <span className="badge">{event.scopeType}</span>
+                </div>
+                <div className="audit-trail-item__meta">
+                  <span>{event.actorEmail}</span>
+                  <span>{event.actorRole}</span>
+                  <span>{event.entityType}</span>
+                  <span>{event.createdAt ? new Date(event.createdAt).toLocaleString() : '-'}</span>
+                </div>
+                <p className="form-note">
+                  {event.entityId ? `Entity ${event.entityId}` : 'No entity id'}{event.metadata ? ` · ${JSON.stringify(event.metadata)}` : ''}
+                </p>
+              </article>
+            ))
+          )}
         </div>
       </div>
 

@@ -1,4 +1,5 @@
 import { requireAdminFromCookies } from '@/lib/auth';
+import { listRecentAuditEvents } from '@/lib/audit';
 import { ok } from '@/lib/http';
 import { startOfUtcDay } from '@/lib/quota';
 import { recordResourceMetric } from '@/lib/resource-analytics';
@@ -56,6 +57,13 @@ export async function GET() {
   const campaigns = queryRow<{ count: number }>('SELECT COUNT(*) as count FROM "Campaign"')?.count || 0;
   const lists = queryRow<{ count: number }>('SELECT COUNT(*) as count FROM "List"')?.count || 0;
   const contacts = queryRow<{ count: number }>('SELECT COUNT(*) as count FROM "Contact"')?.count || 0;
+  const suppressedContacts = queryRow<{ count: number }>(
+    `
+      SELECT COUNT(*) as count
+      FROM "Contact"
+      WHERE status IN ('UNSUBSCRIBED', 'BOUNCED')
+    `,
+  )?.count || 0;
   const contactRows = queryRows<{ userId: string; count: number }>(
     `
       SELECT l.userId as userId, COUNT(*) as count
@@ -125,6 +133,17 @@ export async function GET() {
   const openTotal = eventRows.filter((row) => row.type === 'OPENED').reduce((sum, row) => sum + row.count, 0);
   const bounceTotal = eventRows.filter((row) => row.type === 'BOUNCED').reduce((sum, row) => sum + row.count, 0);
   const unsubscribeTotal = eventRows.filter((row) => row.type === 'UNSUBSCRIBED').reduce((sum, row) => sum + row.count, 0);
+  const recentAudits = listRecentAuditEvents(10).map((entry) => ({
+    ...entry,
+    metadata: (() => {
+      if (!entry.metadataJson) return null;
+      try {
+        return JSON.parse(entry.metadataJson) as Record<string, unknown>;
+      } catch {
+        return null;
+      }
+    })(),
+  }));
 
   return ok({
     totals: {
@@ -133,11 +152,13 @@ export async function GET() {
       campaigns,
       lists,
       contacts,
+      suppressedContacts,
       sentToday: sentTodayTotal,
       openTotal,
       bounceTotal,
       unsubscribeTotal,
     },
     users: usersWithStats,
+    recentAudits,
   });
 }

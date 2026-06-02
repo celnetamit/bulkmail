@@ -35,8 +35,10 @@ type CampaignSendJobRow = {
   remainingToday: number;
   requestedAt: string;
   startedAt: string | null;
+  nextRunAt: string | null;
   finishedAt: string | null;
   lastError: string | null;
+  skipReason: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -52,6 +54,7 @@ type CampaignSendJobResult = {
 };
 
 const SENDABLE_STATUSES = new Set(['DRAFT', 'SCHEDULED']);
+const MAX_RETRY_ATTEMPTS = 3;
 const WORKER_INTERVAL_MS = 1500;
 
 let campaignSendQueueSchemaInitialized = false;
@@ -109,8 +112,10 @@ export function ensureCampaignSendQueueSchema() {
       "remainingToday" INTEGER NOT NULL DEFAULT 0,
       "requestedAt" TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       "startedAt" TEXT,
+      "nextRunAt" TEXT,
       "finishedAt" TEXT,
       "lastError" TEXT,
+      "skipReason" TEXT,
       "createdAt" TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       "updatedAt" TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       CONSTRAINT "CampaignSendJob_campaignId_fkey" FOREIGN KEY ("campaignId") REFERENCES "Campaign" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
@@ -169,6 +174,29 @@ function loadCampaignRecipients(campaign: CampaignRow, userId: string) {
   );
 }
 
+function getRetryDelayMs(attemptNumber: number) {
+  const baseDelay = 2000;
+  const capped = Math.min(60000, baseDelay * (2 ** Math.max(0, attemptNumber - 1)));
+  return capped;
+}
+
+function isRetryableSendError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error || '');
+  return /timeout|timed out|econnreset|econnrefused|429|rate limit|temporarily|socket hang up|network|fetch failed|5\d{2}/i.test(message);
+}
+
+function getCampaignFinalStatus(result: CampaignSendJobResult) {
+  if (result.sentCount === 0 && result.failedCount === 0 && result.skippedCount > 0) {
+    return 'SKIPPED';
+  }
+
+  if (result.failedCount > 0 && result.sentCount === 0) {
+    return 'FAILED';
+  }
+
+  return 'SENT';
+}
+
 export function queueCampaignSendJob(userId: string, campaignId: string) {
   ensureCampaignSendQueueSchema();
 
@@ -185,7 +213,7 @@ export function queueCampaignSendJob(userId: string, campaignId: string) {
     `
       SELECT id, status
       FROM "CampaignSendJob"
-      WHERE campaignId = ? AND status IN ('QUEUED', 'RUNNING')
+      WHERE campaignId = ? AND status IN ('QUEUED', 'RUNNING', 'RETRYING')
       LIMIT 1
     `,
     [campaignId],
@@ -203,8 +231,8 @@ export function queueCampaignSendJob(userId: string, campaignId: string) {
         id, campaignId, userId, status, attempts, provider,
         totalRecipients, sentCount, failedCount, skippedCount,
         quotaSkippedCount, remainingToday, requestedAt, startedAt,
-        finishedAt, lastError, createdAt, updatedAt
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        nextRunAt, finishedAt, lastError, skipReason, createdAt, updatedAt
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
     [
       jobId,
@@ -219,6 +247,8 @@ export function queueCampaignSendJob(userId: string, campaignId: string) {
       0,
       0,
       0,
+      timestamp,
+      null,
       timestamp,
       null,
       null,
@@ -239,6 +269,7 @@ export function queueCampaignSendJob(userId: string, campaignId: string) {
         failedCount = 0,
         skippedCount = 0,
         startedAt = NULL,
+        nextRunAt = NULL,
         finishedAt = NULL,
         durationSeconds = NULL,
         updatedAt = CURRENT_TIMESTAMP
@@ -263,16 +294,17 @@ async function processQueuedCampaignSendJob(job: CampaignSendJobRow) {
     executeSql(
       `
         UPDATE "CampaignSendJob"
-        SET status = ?, lastError = ?, finishedAt = CURRENT_TIMESTAMP, updatedAt = CURRENT_TIMESTAMP
+        SET status = ?, lastError = ?, skipReason = ?, nextRunAt = NULL, finishedAt = CURRENT_TIMESTAMP, updatedAt = CURRENT_TIMESTAMP
         WHERE id = ?
       `,
-      ['FAILED', 'Campaign not found.', job.id],
+      ['SKIPPED', 'Campaign not found.', 'Campaign was removed before sending.', job.id],
     );
     return;
   }
 
   const contacts = loadCampaignRecipients(campaign, job.userId);
   const appUrl = getBackgroundAppOrigin();
+  const startedAt = job.startedAt ? new Date(job.startedAt) : new Date();
 
   executeSql(
     `
@@ -288,11 +320,12 @@ async function processQueuedCampaignSendJob(job: CampaignSendJobRow) {
         quotaSkippedCount = 0,
         remainingToday = 0,
         startedAt = COALESCE(startedAt, CURRENT_TIMESTAMP),
+        nextRunAt = NULL,
         updatedAt = CURRENT_TIMESTAMP,
         lastError = NULL
-      WHERE id = ? AND status = ?
+      WHERE id = ? AND status IN ('QUEUED', 'RETRYING')
     `,
-    ['RUNNING', campaign.provider, contacts.length, job.id, 'QUEUED'],
+    ['RUNNING', campaign.provider, contacts.length, job.id],
   );
 
   try {
@@ -306,6 +339,9 @@ async function processQueuedCampaignSendJob(job: CampaignSendJobRow) {
       contacts,
     });
 
+    const finalStatus = getCampaignFinalStatus(result);
+    const skipReason = finalStatus === 'SKIPPED' ? 'No sendable recipients were available for this job.' : null;
+
     executeSql(
       `
         UPDATE "CampaignSendJob"
@@ -318,13 +354,15 @@ async function processQueuedCampaignSendJob(job: CampaignSendJobRow) {
           skippedCount = ?,
           quotaSkippedCount = ?,
           remainingToday = ?,
+          nextRunAt = NULL,
           finishedAt = CURRENT_TIMESTAMP,
           updatedAt = CURRENT_TIMESTAMP,
-          lastError = NULL
+          lastError = NULL,
+          skipReason = ?
         WHERE id = ?
       `,
       [
-        'SUCCEEDED',
+        finalStatus,
         result.provider,
         result.totalRecipients,
         result.sentCount,
@@ -332,20 +370,78 @@ async function processQueuedCampaignSendJob(job: CampaignSendJobRow) {
         result.skippedCount,
         result.quotaSkippedCount,
         result.remainingToday,
+        skipReason,
         job.id,
+      ],
+    );
+
+    executeSql(
+      `
+        UPDATE "Campaign"
+        SET
+          status = ?,
+          provider = ?,
+          totalRecipients = ?,
+          sentCount = ?,
+          failedCount = ?,
+          skippedCount = ?,
+          startedAt = ?,
+          finishedAt = CURRENT_TIMESTAMP,
+          durationSeconds = ?,
+          updatedAt = CURRENT_TIMESTAMP
+        WHERE id = ? AND userId = ?
+      `,
+      [
+        finalStatus,
+        result.provider,
+        result.totalRecipients,
+        result.sentCount,
+        result.failedCount,
+        result.skippedCount,
+        startedAt.toISOString(),
+        Math.max(0, Math.round((Date.now() - startedAt.getTime()) / 1000)),
+        job.campaignId,
+        job.userId,
       ],
     );
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    const retryable = isRetryableSendError(error);
+    const currentAttempt = job.attempts + 1;
+    const shouldRetry = retryable && currentAttempt < MAX_RETRY_ATTEMPTS;
+    const nextRunAt = shouldRetry ? new Date(Date.now() + getRetryDelayMs(currentAttempt)).toISOString() : null;
+    const nextStatus = shouldRetry ? 'RETRYING' : 'FAILED';
+
     executeSql(
       `
         UPDATE "CampaignSendJob"
-        SET status = ?, finishedAt = CURRENT_TIMESTAMP, updatedAt = CURRENT_TIMESTAMP, lastError = ?
+        SET status = ?, nextRunAt = ?, finishedAt = ?, updatedAt = CURRENT_TIMESTAMP, lastError = ?, skipReason = ?
         WHERE id = ?
       `,
-      ['FAILED', message, job.id],
+      [
+        nextStatus,
+        nextRunAt,
+        shouldRetry ? null : new Date().toISOString(),
+        message,
+        shouldRetry ? null : 'Campaign send failed after retries.',
+        job.id,
+      ],
     );
-    throw error;
+
+    executeSql(
+      `
+        UPDATE "Campaign"
+        SET
+          status = ?,
+          updatedAt = CURRENT_TIMESTAMP
+        WHERE id = ? AND userId = ?
+      `,
+      [nextStatus, job.campaignId, job.userId],
+    );
+
+    if (!shouldRetry) {
+      throw error;
+    }
   }
 }
 
@@ -363,12 +459,14 @@ async function drainCampaignSendQueue() {
             id, campaignId, userId, status, attempts, provider,
             totalRecipients, sentCount, failedCount, skippedCount,
             quotaSkippedCount, remainingToday, requestedAt, startedAt,
-            finishedAt, lastError, createdAt, updatedAt
+            nextRunAt, finishedAt, lastError, skipReason, createdAt, updatedAt
           FROM "CampaignSendJob"
-          WHERE status = 'QUEUED'
+          WHERE status IN ('QUEUED', 'RETRYING')
+            AND COALESCE(nextRunAt, requestedAt) <= ?
           ORDER BY requestedAt ASC, createdAt ASC
           LIMIT 1
         `,
+        [new Date().toISOString()],
       );
 
       if (!nextJob) break;
@@ -377,9 +475,9 @@ async function drainCampaignSendQueue() {
         `
           UPDATE "CampaignSendJob"
           SET status = ?, startedAt = COALESCE(startedAt, CURRENT_TIMESTAMP), attempts = attempts + 1, updatedAt = CURRENT_TIMESTAMP
-          WHERE id = ? AND status = ?
+          WHERE id = ? AND status IN ('QUEUED', 'RETRYING')
         `,
-        ['RUNNING', nextJob.id, 'QUEUED'],
+        ['RUNNING', nextJob.id],
       );
 
       if ((claimed.changes || 0) !== 1) continue;

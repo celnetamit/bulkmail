@@ -1,4 +1,5 @@
 import { requireUserFromCookies } from '@/lib/auth';
+import { recordAuditEvent } from '@/lib/audit';
 import { fail, ok } from '@/lib/http';
 import { executeSql, queryRow } from '@/lib/sqlite';
 import { setDefaultTestList } from '@/lib/campaign-lists';
@@ -89,6 +90,22 @@ export async function PATCH(request: Request, { params }: Params) {
     );
   }
 
+  await recordAuditEvent({
+    actorUserId: auth.user.userId,
+    actorEmail: auth.user.email,
+    actorRole: auth.user.role,
+    action: 'list_update',
+    entityType: 'List',
+    entityId: params.id,
+    scopeType: 'SELF',
+    metadata: {
+      changedFields: ['name', 'description', 'isDefaultTestList'].filter((field) =>
+        field === 'name' ? true : field === 'description' ? description !== undefined : isDefaultTestList !== undefined,
+      ),
+      isDefaultTestList,
+    },
+  });
+
   const list = queryRow(
     'SELECT * FROM "List" WHERE id = ? AND userId = ? LIMIT 1',
     [params.id, auth.user.userId],
@@ -109,5 +126,14 @@ export async function DELETE(_: Request, { params }: Params) {
   if (!existing) return fail('List not found.', 404);
 
   executeSql('DELETE FROM "List" WHERE id = ? AND userId = ?', [params.id, auth.user.userId]);
+  await recordAuditEvent({
+    actorUserId: auth.user.userId,
+    actorEmail: auth.user.email,
+    actorRole: auth.user.role,
+    action: 'list_delete',
+    entityType: 'List',
+    entityId: params.id,
+    scopeType: 'SELF',
+  });
   return ok({ success: true });
 }

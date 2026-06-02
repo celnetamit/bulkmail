@@ -5,6 +5,7 @@ import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 import { startCampaignSendQueueWorker } from '@/lib/campaign-send-queue';
 import { ensurePlatformSettingsSchema } from '@/lib/platform-settings';
+import { hasCapability } from '@/lib/permissions';
 import { executeSql, queryRow } from '@/lib/sqlite';
 
 const SESSION_COOKIE = 'mailflow_session';
@@ -141,7 +142,7 @@ export async function requireAdminFromCookies(): Promise<{ user: AuthUser } | { 
   const auth = await requireUserFromCookies();
   if ('error' in auth) return auth;
 
-  if (auth.user.role !== 'ADMIN') {
+  if (!hasCapability(auth.user.role, 'manage_users')) {
     return { error: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) };
   }
 
@@ -152,7 +153,7 @@ export async function requireManagerOrAdminFromCookies(): Promise<{ user: AuthUs
   const auth = await requireUserFromCookies();
   if ('error' in auth) return auth;
 
-  if (!['MANAGER', 'ADMIN'].includes(auth.user.role)) {
+  if (!hasCapability(auth.user.role, 'manage_teams')) {
     return { error: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) };
   }
 

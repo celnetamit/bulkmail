@@ -60,7 +60,7 @@ export default function CampaignsPage() {
   }, [loadAll]);
 
   const activeCampaign = useMemo(
-    () => campaigns.find((campaign) => campaign.status === 'QUEUED' || campaign.status === 'SENDING') || null,
+    () => campaigns.find((campaign) => campaign.status === 'QUEUED' || campaign.status === 'RETRYING' || campaign.status === 'SENDING') || null,
     [campaigns],
   );
   useEffect(() => {
@@ -91,6 +91,8 @@ export default function CampaignsPage() {
     ? activeCampaign.totalRecipients > 0
       ? Math.min(100, (activeCampaign.sentCount / activeCampaign.totalRecipients) * 100)
       : activeCampaign.status === 'QUEUED'
+        ? 6
+        : activeCampaign.status === 'RETRYING'
         ? 6
         : 0
     : 0;
@@ -183,9 +185,17 @@ export default function CampaignsPage() {
 
       {activeCampaign ? (
         <div className="card" style={{ padding: '1rem', marginBottom: '1rem' }}>
-          <h2 style={{ marginBottom: '0.5rem' }}>{activeCampaign.status === 'QUEUED' ? 'Queued for Send' : 'Sending Now'}</h2>
+          <h2 style={{ marginBottom: '0.5rem' }}>
+            {activeCampaign.status === 'QUEUED' ? 'Queued for Send' : activeCampaign.status === 'RETRYING' ? 'Retrying Send' : 'Sending Now'}
+          </h2>
           <p className="form-note" style={{ marginBottom: '0.75rem' }}>
-            {activeCampaign.name} is {activeCampaign.status === 'QUEUED' ? 'queued to send' : `sending ${activeCampaign.sentCount}/${activeCampaign.totalRecipients} emails`}.
+            {activeCampaign.name} is {
+              activeCampaign.status === 'QUEUED'
+                ? 'queued to send'
+                : activeCampaign.status === 'RETRYING'
+                  ? 'waiting for a retry'
+                  : `sending ${activeCampaign.sentCount}/${activeCampaign.totalRecipients} emails`
+            }.
           </p>
           <div className="progress-track" aria-hidden="true">
             <div className="progress-bar" style={{ width: `${activeCampaignProgress}%` }} />
@@ -221,8 +231,8 @@ export default function CampaignsPage() {
                   </div>
                 </td>
                 <td>
-                  <div className={`badge ${c.status === 'SENT' ? 'badge-success' : c.status === 'FAILED' || c.status === 'QUEUED' ? 'badge-warning' : ''}`} style={{ display: 'inline-flex', marginBottom: '0.35rem' }}>{c.status}</div>
-                  <div style={{ fontSize: '0.85rem', color: '#94a3b8' }}>{c.status === 'QUEUED' ? 'queued' : c.provider || 'mock'}</div>
+                  <div className={`badge ${c.status === 'SENT' ? 'badge-success' : c.status === 'FAILED' || c.status === 'QUEUED' || c.status === 'RETRYING' ? 'badge-warning' : ''}`} style={{ display: 'inline-flex', marginBottom: '0.35rem' }}>{c.status}</div>
+                  <div style={{ fontSize: '0.85rem', color: '#94a3b8' }}>{c.status === 'QUEUED' || c.status === 'RETRYING' ? c.status.toLowerCase() : c.provider || 'mock'}</div>
                 </td>
                 <td style={{ minWidth: '240px' }}>
                   <div className="progress-track" aria-hidden="true">
@@ -238,7 +248,7 @@ export default function CampaignsPage() {
                 <td style={{ whiteSpace: 'nowrap', fontSize: '0.85rem', color: '#cbd5e1' }}>
                   {c.startedAt ? `Started ${new Date(c.startedAt).toLocaleString()}` : '-'}
                   <br />
-                  {c.finishedAt ? `Finished ${new Date(c.finishedAt).toLocaleString()}` : c.status === 'QUEUED' ? 'Queued' : c.status === 'SENDING' ? 'In progress' : '-'}
+                  {c.finishedAt ? `Finished ${new Date(c.finishedAt).toLocaleString()}` : c.status === 'QUEUED' ? 'Queued' : c.status === 'RETRYING' ? 'Retrying' : c.status === 'SENDING' ? 'In progress' : '-'}
                   <br />
                   Duration: {formatDuration(c.durationSeconds)}
                 </td>
@@ -248,7 +258,7 @@ export default function CampaignsPage() {
                       className="mini-btn"
                       type="button"
                       onClick={() => router.push(`/dashboard/campaigns/create?campaignId=${c.id}`)}
-                      disabled={c.status === 'QUEUED' || c.status === 'SENDING'}
+                      disabled={c.status === 'QUEUED' || c.status === 'RETRYING' || c.status === 'SENDING'}
                     >
                       Edit Draft
                     </button>
@@ -259,8 +269,8 @@ export default function CampaignsPage() {
                     <Link className="mini-btn" href={`/dashboard/analytics?campaignId=${c.id}`}>Stats</Link>
                   </div>
                   <div style={{ marginTop: '0.4rem' }}>
-                    <select className="status-select" value={c.status} onChange={(e) => updateStatus(c, e.target.value)} disabled={c.status === 'QUEUED' || c.status === 'SENDING'}>
-                      <option>DRAFT</option><option>SCHEDULED</option><option>QUEUED</option><option>SENDING</option><option>SENT</option><option>FAILED</option>
+                    <select className="status-select" value={c.status} onChange={(e) => updateStatus(c, e.target.value)} disabled={c.status === 'QUEUED' || c.status === 'RETRYING' || c.status === 'SENDING'}>
+                      <option>DRAFT</option><option>SCHEDULED</option><option>QUEUED</option><option>RETRYING</option><option>SENDING</option><option>SENT</option><option>FAILED</option><option>SKIPPED</option>
                     </select>
                   </div>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', marginTop: '0.4rem' }}>
@@ -268,11 +278,11 @@ export default function CampaignsPage() {
                       className="mini-btn"
                       type="button"
                       onClick={() => sendCampaign(c.id)}
-                      disabled={sendingId === c.id || c.status === 'QUEUED' || c.status === 'SENDING'}
+                      disabled={sendingId === c.id || c.status === 'QUEUED' || c.status === 'RETRYING' || c.status === 'SENDING'}
                     >
-                      {sendingId === c.id ? 'Sending...' : c.status === 'QUEUED' || c.status === 'SENDING' ? 'Queued' : 'Send'}
+                      {sendingId === c.id ? 'Sending...' : c.status === 'QUEUED' || c.status === 'RETRYING' || c.status === 'SENDING' ? c.status : 'Send'}
                     </button>
-                    <button className="mini-btn danger" type="button" onClick={() => deleteCampaign(c.id)} disabled={c.status === 'QUEUED' || c.status === 'SENDING'}>Delete</button>
+                    <button className="mini-btn danger" type="button" onClick={() => deleteCampaign(c.id)} disabled={c.status === 'QUEUED' || c.status === 'RETRYING' || c.status === 'SENDING'}>Delete</button>
                   </div>
                 </td>
               </tr>

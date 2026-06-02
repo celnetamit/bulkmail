@@ -1,4 +1,5 @@
 import { requireUserFromCookies } from '@/lib/auth';
+import { recordAuditEvent } from '@/lib/audit';
 import { fail, ok } from '@/lib/http';
 import { executeSql, queryRow } from '@/lib/sqlite';
 import { getCampaignLists, replaceCampaignLists } from '@/lib/campaign-lists';
@@ -111,6 +112,20 @@ export async function POST(_: Request, { params }: Params) {
   );
 
   const selectedLists = getCampaignLists(id, auth.user.userId);
+  await recordAuditEvent({
+    actorUserId: auth.user.userId,
+    actorEmail: auth.user.email,
+    actorRole: auth.user.role,
+    action: 'campaign_duplicate',
+    entityType: 'Campaign',
+    entityId: id,
+    scopeType: 'SELF',
+    metadata: {
+      sourceCampaignId: params.id,
+      listIds,
+      templateId: campaign.templateId,
+    },
+  });
   return ok({
     campaign: duplicated
       ? {

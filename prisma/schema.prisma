@@ -76,6 +76,10 @@ model MailSettings {
 model PlatformSettings {
   id                String   @id @default("global")
   imageUploadLimitKb Int      @default(50)
+  sendingDomain     String?
+  spfVerified       Boolean  @default(false)
+  dkimVerified      Boolean  @default(false)
+  dmarcVerified     Boolean  @default(false)
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 }
@@ -224,8 +228,10 @@ model CampaignSendJob {
   remainingToday  Int      @default(0)
   requestedAt     DateTime @default(now())
   startedAt       DateTime?
+  nextRunAt       DateTime?
   finishedAt      DateTime?
   lastError       String?
+  skipReason      String?
   campaign        Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   createdAt       DateTime @default(now())

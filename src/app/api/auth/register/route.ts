@@ -1,5 +1,8 @@
 import { fail } from '@/lib/http';
 
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
+
 export async function POST() {
   return fail('Public registration is disabled. Ask an admin to create your access.', 410);
 }

@@ -1,5 +1,6 @@
 import { fail, ok } from '@/lib/http';
 import { ensureManagerSchema, requireManagerOrAdminFromCookies } from '@/lib/manager';
+import { recordAuditEvent } from '@/lib/audit';
 import { executeSql, queryRow, queryRows } from '@/lib/sqlite';
 
 type TeamRow = {
@@ -81,6 +82,21 @@ export async function POST(request: Request) {
     `,
     [id, name, description || null, dailyCreditLimit, auth.user.userId, createdAt, createdAt],
   );
+
+  await recordAuditEvent({
+    actorUserId: auth.user.userId,
+    actorEmail: auth.user.email,
+    actorRole: auth.user.role,
+    action: 'team_create',
+    entityType: 'Team',
+    entityId: id,
+    scopeType: 'TEAM',
+    metadata: {
+      name,
+      description: description || null,
+      dailyCreditLimit,
+    },
+  });
 
   const team = queryRow<TeamRow>(
     `

@@ -4,8 +4,6 @@ import { createProvisionedPasswordHash, createSessionToken, isAdminEmailAllowed,
 import { executeSql, queryRow } from '@/lib/sqlite';
 import { getAppOrigin, getGoogleClientId, getGoogleClientSecret, getGoogleRedirectUri, sanitizeNextPath } from '@/lib/google-oauth';
 
-const GOOGLE_JWKS = createRemoteJWKSet(new URL('https://www.googleapis.com/oauth2/v3/certs'));
-
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
@@ -14,6 +12,7 @@ function redirectToLogin(request: Request, error: string) {
 }
 
 export async function GET(request: Request) {
+  const GOOGLE_JWKS = createRemoteJWKSet(new URL('https://www.googleapis.com/oauth2/v3/certs'));
   const url = new URL(request.url);
   const code = url.searchParams.get('code');
   const state = url.searchParams.get('state');
