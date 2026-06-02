@@ -51,6 +51,11 @@ CREATE TABLE IF NOT EXISTS "PlatformSettings" (
   "updatedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+ALTER TABLE "PlatformSettings" ADD COLUMN IF NOT EXISTS "sendingDomain" TEXT;
+ALTER TABLE "PlatformSettings" ADD COLUMN IF NOT EXISTS "spfVerified" BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE "PlatformSettings" ADD COLUMN IF NOT EXISTS "dkimVerified" BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE "PlatformSettings" ADD COLUMN IF NOT EXISTS "dmarcVerified" BOOLEAN NOT NULL DEFAULT FALSE;
+
 INSERT INTO "PlatformSettings" ("id", "imageUploadLimitKb", "sendingDomain", "spfVerified", "dkimVerified", "dmarcVerified")
 VALUES ('global', 50, NULL, FALSE, FALSE, FALSE)
 ON CONFLICT ("id") DO NOTHING;
