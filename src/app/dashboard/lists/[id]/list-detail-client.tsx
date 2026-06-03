@@ -12,6 +12,8 @@ type ListDetail = {
   isDefaultTestList: number | boolean;
   contactsCount: number;
   campaignsCount: number;
+  owner?: { id: string; email: string; name: string | null; role: string };
+  isOwner?: boolean;
 };
 
 type Contact = {
@@ -147,6 +149,7 @@ export function ListDetailClient({ listId }: { listId: string }) {
 
   async function updateList() {
     if (!list) return;
+    if (list.isOwner === false) return setMessage('This list is read-only for your role.');
 
     const name = prompt('List name', list.name);
     if (!name) return;
@@ -170,6 +173,7 @@ export function ListDetailClient({ listId }: { listId: string }) {
 
   async function makeDefaultTestList() {
     if (!list) return;
+    if (list.isOwner === false) return setMessage('This list is read-only for your role.');
 
     const response = await fetch(`/api/lists/${list.id}`, {
       method: 'PATCH',
@@ -193,6 +197,7 @@ export function ListDetailClient({ listId }: { listId: string }) {
 
   async function deleteList() {
     if (!list) return;
+    if (list.isOwner === false) return setMessage('This list is read-only for your role.');
     if (!confirm(`Delete list "${list.name}"?`)) return;
 
     const response = await fetch(`/api/lists/${list.id}`, { method: 'DELETE' });
@@ -209,6 +214,7 @@ export function ListDetailClient({ listId }: { listId: string }) {
   async function addContact(event: FormEvent) {
     event.preventDefault();
     if (!listId) return;
+    if (list?.isOwner === false) return setMessage('This list is read-only for your role.');
 
     const response = await fetch('/api/contacts', {
       method: 'POST',
@@ -237,6 +243,7 @@ export function ListDetailClient({ listId }: { listId: string }) {
   async function importCsv(event: FormEvent) {
     event.preventDefault();
     if (!listId) return;
+    if (list?.isOwner === false) return setMessage('This list is read-only for your role.');
 
     const response = await fetch('/api/contacts', {
       method: 'PUT',
@@ -257,6 +264,7 @@ export function ListDetailClient({ listId }: { listId: string }) {
   }
 
   async function updateContactStatus(contactId: string, status: string) {
+    if (list?.isOwner === false) return setMessage('This list is read-only for your role.');
     const response = await fetch(`/api/contacts/${contactId}`, {
       method: 'PATCH',
       headers: { 'content-type': 'application/json' },
@@ -274,6 +282,7 @@ export function ListDetailClient({ listId }: { listId: string }) {
   }
 
   async function deleteContact(contactId: string) {
+    if (list?.isOwner === false) return setMessage('This list is read-only for your role.');
     const response = await fetch(`/api/contacts/${contactId}`, { method: 'DELETE' });
     const data = await response.json();
     if (!response.ok) {
@@ -287,6 +296,7 @@ export function ListDetailClient({ listId }: { listId: string }) {
 
   const contactCount = list?.contactsCount ?? contactsPagination.total;
   const campaignCount = list?.campaignsCount ?? 0;
+  const canManageList = list?.isOwner !== false;
 
   return (
     <div className="overview">
@@ -295,6 +305,11 @@ export function ListDetailClient({ listId }: { listId: string }) {
           <div>
             <h1>{loading ? 'Loading list...' : list?.name || 'List not found'}</h1>
             <p>{list?.description || 'Manage contacts, imports, and status updates from one focused page.'}</p>
+            {list?.owner ? (
+              <p className="form-note">
+                Owner: {list.owner.name || list.owner.email} ({list.owner.role}){canManageList ? '' : ' - read-only'}
+              </p>
+            ) : null}
           </div>
           <Link className="btn-secondary" href="/dashboard/lists">Back to Lists</Link>
         </div>
@@ -325,11 +340,12 @@ export function ListDetailClient({ listId }: { listId: string }) {
 
           <div className="detail-actions" style={{ marginBottom: '1rem' }}>
             {list.isDefaultTestList ? <span className="badge badge-success">Default test list</span> : null}
-            <button className="mini-btn" type="button" onClick={makeDefaultTestList} disabled={Boolean(list.isDefaultTestList)}>
+            {!canManageList ? <span className="badge badge-info">Read-only</span> : null}
+            <button className="mini-btn" type="button" onClick={makeDefaultTestList} disabled={!canManageList || Boolean(list.isDefaultTestList)}>
               {list.isDefaultTestList ? 'Default list' : 'Set default test list'}
             </button>
-            <button className="mini-btn" type="button" onClick={updateList}>Edit list</button>
-            <button className="mini-btn danger" type="button" onClick={deleteList}>Delete list</button>
+            <button className="mini-btn" type="button" onClick={updateList} disabled={!canManageList}>Edit list</button>
+            <button className="mini-btn danger" type="button" onClick={deleteList} disabled={!canManageList}>Delete list</button>
           </div>
 
           <div className="detail-panel">
@@ -338,7 +354,7 @@ export function ListDetailClient({ listId }: { listId: string }) {
               <input value={contactEmail} onChange={(e) => setContactEmail(e.target.value)} placeholder="email@example.com" type="email" required />
               <input value={contactFirstName} onChange={(e) => setContactFirstName(e.target.value)} placeholder="First name" />
               <input value={contactLastName} onChange={(e) => setContactLastName(e.target.value)} placeholder="Last name" />
-              <button className="btn-primary" type="submit">Add Contact</button>
+              <button className="btn-primary" type="submit" disabled={!canManageList}>Add Contact</button>
             </form>
           </div>
 
@@ -353,7 +369,7 @@ export function ListDetailClient({ listId }: { listId: string }) {
                 rows={6}
                 className="auth-textarea"
               />
-              <button className="btn-primary" type="submit">Import Contacts</button>
+              <button className="btn-primary" type="submit" disabled={!canManageList}>Import Contacts</button>
             </form>
           </div>
 
@@ -440,12 +456,13 @@ export function ListDetailClient({ listId }: { listId: string }) {
                             value={contact.status}
                             onChange={(e) => updateContactStatus(contact.id, e.target.value)}
                             className="status-select"
+                            disabled={!canManageList}
                           >
                             <option value="SUBSCRIBED">SUBSCRIBED</option>
                             <option value="UNSUBSCRIBED">UNSUBSCRIBED</option>
                             <option value="BOUNCED">BOUNCED</option>
                           </select>
-                          <button className="mini-btn danger" type="button" onClick={() => deleteContact(contact.id)}>Delete</button>
+                          <button className="mini-btn danger" type="button" onClick={() => deleteContact(contact.id)} disabled={!canManageList}>Delete</button>
                         </td>
                       </tr>
                     ))

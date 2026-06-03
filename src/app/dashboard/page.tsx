@@ -20,7 +20,7 @@ export default async function DashboardOverview() {
     note: 'dashboard_overview',
   });
 
-  const metrics = await getUserAnalyticsSummary(user.userId);
+  const metrics = await getUserAnalyticsSummary(user.userId, { role: user.role });
   const quota = await getUserQuotaStatus(user.userId, user.dailyEmailLimit);
 
   return (

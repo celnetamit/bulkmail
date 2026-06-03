@@ -93,8 +93,8 @@ export function CampaignCreateClient({ campaignId, templateIdFromQuery }: Campai
   async function loadAll() {
     setLoading(true);
     const [listsRes, templatesRes] = await Promise.all([
-      fetch('/api/lists?all=true', { cache: 'no-store' }),
-      fetch('/api/templates', { cache: 'no-store' }),
+      fetch('/api/lists?all=true&owner=self', { cache: 'no-store' }),
+      fetch('/api/templates?owner=self', { cache: 'no-store' }),
     ]);
     const listsData = (await readJsonResponse<{ lists: List[] }>(listsRes)) || { lists: [] };
     const templatesData = (await readJsonResponse<{ templates: Template[] }>(templatesRes)) || { templates: [] };

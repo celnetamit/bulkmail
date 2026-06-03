@@ -5,7 +5,14 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { IconHelp, IconPlus } from '@/components/dashboard-icons';
 
-type Template = { id: string; name: string; subject: string; bodyHtml: string };
+type Template = {
+  id: string;
+  name: string;
+  subject: string;
+  bodyHtml: string;
+  owner?: { id: string; email: string; name: string | null; role: string };
+  isOwner?: boolean;
+};
 
 export default function TemplatesPage() {
   const router = useRouter();
@@ -66,13 +73,25 @@ export default function TemplatesPage() {
               ) : (
                 templates.map((t) => (
                   <tr key={t.id}>
-                    <td>{t.name}</td>
+                    <td>
+                      <div>{t.name}</div>
+                      {t.owner ? (
+                        <div style={{ marginTop: '0.35rem', fontSize: '0.8rem', color: '#64748b' }}>
+                          Owner: {t.owner.name || t.owner.email} ({t.owner.role})
+                        </div>
+                      ) : null}
+                      {t.isOwner === false ? <div className="badge badge-info" style={{ display: 'inline-flex', marginTop: '0.35rem' }}>Read-only</div> : null}
+                    </td>
                     <td>{t.subject}</td>
                     <td>
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
-                        <button className="mini-btn" type="button" onClick={() => router.push(`/dashboard/templates/create?templateId=${t.id}`)}>Edit</button>
-                        <button className="mini-btn danger" type="button" onClick={() => deleteTemplate(t.id)}>Delete</button>
-                        <Link className="mini-btn" href={`/dashboard/campaigns/create?templateId=${t.id}`}>Use in Campaign</Link>
+                        <button className="mini-btn" type="button" onClick={() => router.push(`/dashboard/templates/create?templateId=${t.id}`)} disabled={t.isOwner === false}>Edit</button>
+                        <button className="mini-btn danger" type="button" onClick={() => deleteTemplate(t.id)} disabled={t.isOwner === false}>Delete</button>
+                        {t.isOwner === false ? (
+                          <button className="mini-btn" type="button" disabled>Use in Campaign</button>
+                        ) : (
+                          <Link className="mini-btn" href={`/dashboard/campaigns/create?templateId=${t.id}`}>Use in Campaign</Link>
+                        )}
                       </div>
                     </td>
                   </tr>

@@ -1,8 +1,9 @@
 import { requireUserFromCookies } from '@/lib/auth';
 import { recordAuditEvent } from '@/lib/audit';
 import { fail, ok } from '@/lib/http';
-import { executeSql, queryRow } from '@/lib/sqlite';
+import { executeSql, queryRow, queryRows } from '@/lib/sqlite';
 import { getCampaignLists, replaceCampaignLists } from '@/lib/campaign-lists';
+import { buildOwnerScope, isOwnedByViewer } from '@/lib/data-scope';
 
 type Params = { params: { id: string } };
 const ALLOWED_STATUSES = new Set(['DRAFT', 'SCHEDULED', 'QUEUED', 'RETRYING', 'SENDING', 'SENT', 'FAILED', 'SKIPPED']);
@@ -10,8 +11,34 @@ const ALLOWED_STATUSES = new Set(['DRAFT', 'SCHEDULED', 'QUEUED', 'RETRYING', 'S
 export async function GET(_: Request, { params }: Params) {
   const auth = await requireUserFromCookies();
   if ('error' in auth) return auth.error;
+  const ownerScope = buildOwnerScope(auth.user, 'c.userId');
 
-  const campaign = queryRow(
+  const campaign = queryRow<{
+    id: string;
+    name: string;
+    subject: string;
+    bodyHtml: string;
+    status: string;
+    provider: string | null;
+    isArchived: number | boolean;
+    totalRecipients: number;
+    sentCount: number;
+    failedCount: number;
+    skippedCount: number;
+    startedAt: string | null;
+    finishedAt: string | null;
+    durationSeconds: number | null;
+    userId: string;
+    listId: string;
+    templateId: string | null;
+    createdAt: string;
+    updatedAt: string;
+    listName: string;
+    templateName: string | null;
+    ownerEmail: string;
+    ownerName: string | null;
+    ownerRole: string;
+  }>(
     `
       SELECT
         c.id,
@@ -34,18 +61,34 @@ export async function GET(_: Request, { params }: Params) {
         c.createdAt,
         c.updatedAt,
         l.name as listName,
-        t.name as templateName
+        t.name as templateName,
+        u.email as ownerEmail,
+        u.name as ownerName,
+        u.role as ownerRole
       FROM "Campaign" c
       INNER JOIN "List" l ON l.id = c.listId
       LEFT JOIN "Template" t ON t.id = c.templateId
-      WHERE c.id = ? AND c.userId = ?
+      INNER JOIN "User" u ON u.id = c.userId
+      WHERE c.id = ? AND ${ownerScope.clause}
       LIMIT 1
     `,
-    [params.id, auth.user.userId],
+    [params.id, ...ownerScope.params],
   );
 
   if (!campaign) return fail('Campaign not found.', 404);
-  const selectedLists = getCampaignLists(params.id, auth.user.userId);
+  const selectedLists = queryRows<{ id: string; name: string; isDefaultTestList: number | boolean }>(
+    `
+      SELECT
+        l.id,
+        l.name,
+        CASE WHEN COALESCE(l.isDefaultTestList, FALSE) THEN 1 ELSE 0 END as isDefaultTestList
+      FROM "CampaignList" cl
+      INNER JOIN "List" l ON l.id = cl.listId
+      WHERE cl.campaignId = ?
+      ORDER BY cl.createdAt ASC
+    `,
+    [params.id],
+  );
 
   return ok({
     campaign: {
@@ -53,7 +96,15 @@ export async function GET(_: Request, { params }: Params) {
       list: selectedLists[0] ? { id: selectedLists[0].id, name: selectedLists[0].name } : { id: campaign.listId, name: campaign.listName },
       lists: selectedLists.length > 0 ? selectedLists : [{ id: campaign.listId, name: campaign.listName, isDefaultTestList: false }],
       template: campaign.templateId ? { id: campaign.templateId, name: campaign.templateName || '' } : null,
+      owner: {
+        id: campaign.userId,
+        email: campaign.ownerEmail,
+        name: campaign.ownerName,
+        role: campaign.ownerRole,
+      },
+      isOwner: isOwnedByViewer(campaign.userId, auth.user),
     },
+    scope: ownerScope.scope,
   });
 }
 

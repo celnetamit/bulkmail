@@ -1,4 +1,5 @@
 import { queryRow, queryRows } from '@/lib/sqlite';
+import { buildOwnerScopeForRole } from '@/lib/data-scope';
 
 export type AnalyticsDetectionStatus = 'healthy' | 'watch' | 'critical' | 'idle';
 
@@ -89,9 +90,11 @@ function buildDetections(metrics: {
   ];
 }
 
-export async function getUserAnalyticsSummary(userId: string, options?: { campaignId?: string; listId?: string; from?: Date | null; to?: Date | null; }) {
-  const filters: string[] = ['c.userId = ?'];
-  const params: unknown[] = [userId];
+export async function getUserAnalyticsSummary(userId: string, options?: { campaignId?: string; listId?: string; from?: Date | null; to?: Date | null; role?: string; }) {
+  const role = options?.role || 'USER';
+  const campaignOwnerScope = buildOwnerScopeForRole(userId, role, 'c.userId');
+  const filters: string[] = [campaignOwnerScope.clause];
+  const params: unknown[] = [...campaignOwnerScope.params];
 
   if (options?.campaignId) {
     filters.push('c.id = ?');
@@ -99,8 +102,8 @@ export async function getUserAnalyticsSummary(userId: string, options?: { campai
   }
 
   if (options?.listId) {
-    filters.push('c.listId = ?');
-    params.push(options.listId);
+    filters.push('(c.listId = ? OR c.id IN (SELECT campaignId FROM "CampaignList" WHERE listId = ?))');
+    params.push(options.listId, options.listId);
   }
 
   if (options?.from) {
@@ -157,8 +160,9 @@ export async function getUserAnalyticsSummary(userId: string, options?: { campai
     params,
   );
 
-  const contactFilters: string[] = ['l.userId = ?'];
-  const contactParams: unknown[] = [userId];
+  const contactOwnerScope = buildOwnerScopeForRole(userId, role, 'l.userId');
+  const contactFilters: string[] = [contactOwnerScope.clause];
+  const contactParams: unknown[] = [...contactOwnerScope.params];
 
   if (options?.listId) {
     contactFilters.push('l.id = ?');
@@ -168,10 +172,13 @@ export async function getUserAnalyticsSummary(userId: string, options?: { campai
       l.id IN (
         SELECT listId FROM "CampaignList" WHERE campaignId = ?
         UNION
-        SELECT listId FROM "Campaign" WHERE id = ? AND userId = ?
+        SELECT l.id
+        FROM "List" l
+        INNER JOIN "Campaign" c ON c.listId = l.id
+        WHERE c.id = ? AND ${campaignOwnerScope.clause}
       )
     `);
-    contactParams.push(options.campaignId, options.campaignId, userId);
+    contactParams.push(options.campaignId, options.campaignId, ...campaignOwnerScope.params);
   }
 
   const contactStats = queryRow<{

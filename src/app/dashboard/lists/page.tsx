@@ -14,6 +14,9 @@ type ListItem = {
   campaignsCount: number;
   createdAt?: string;
   updatedAt?: string;
+  userId?: string;
+  owner?: { id: string; email: string; name: string | null; role: string };
+  isOwner?: boolean;
 };
 
 type Pagination = {
@@ -321,6 +324,8 @@ export default function ListsPage() {
   }
 
   function toggleSelectedList(id: string) {
+    const list = lists.find((entry) => entry.id === id);
+    if (list && list.isOwner === false) return;
     setSelectedListIds((current) =>
       current.includes(id) ? current.filter((entry) => entry !== id) : [...current, id],
     );
@@ -328,7 +333,7 @@ export default function ListsPage() {
 
   function toggleSelectAllVisible() {
     if (lists.length === 0) return;
-    const visibleIds = lists.map((list) => list.id);
+    const visibleIds = lists.filter((list) => list.isOwner !== false).map((list) => list.id);
     const allSelected = visibleIds.every((id) => selectedListIds.includes(id));
     setSelectedListIds(allSelected ? [] : visibleIds);
   }
@@ -336,7 +341,8 @@ export default function ListsPage() {
   const listTotal = listsPagination.total;
   const listCountOnPage = lists.length;
   const selectedListCount = selectedListIds.length;
-  const allVisibleSelected = lists.length > 0 && lists.every((list) => selectedListIds.includes(list.id));
+  const selectableLists = lists.filter((list) => list.isOwner !== false);
+  const allVisibleSelected = selectableLists.length > 0 && selectableLists.every((list) => selectedListIds.includes(list.id));
 
   return (
     <div className="overview">
@@ -518,7 +524,9 @@ export default function ListsPage() {
               {lists.length === 0 ? (
                 <tr><td colSpan={6}>No lists yet.</td></tr>
               ) : (
-                lists.map((list) => (
+                lists.map((list) => {
+                  const canManageList = list.isOwner !== false;
+                  return (
                   <tr
                     key={list.id}
                     className={`${selectedListId === list.id ? 'is-selected-row' : ''} ${selectedListIds.includes(list.id) ? 'is-selected-row--bulk' : ''}`}
@@ -529,6 +537,7 @@ export default function ListsPage() {
                           type="checkbox"
                           checked={selectedListIds.includes(list.id)}
                           onChange={() => toggleSelectedList(list.id)}
+                          disabled={!canManageList}
                           aria-label={`Select list ${list.name}`}
                         />
                       </td>
@@ -536,8 +545,14 @@ export default function ListsPage() {
                         <button className="link-btn" type="button" onClick={(event) => { event.stopPropagation(); router.push(`/dashboard/lists/${list.id}`); }}>
                           {list.name}
                         </button>
+                        {list.owner ? (
+                          <div style={{ marginTop: '0.35rem', fontSize: '0.8rem', color: '#64748b' }}>
+                            Owner: {list.owner.name || list.owner.email} ({list.owner.role})
+                          </div>
+                        ) : null}
                         {list.isDefaultTestList ? <div className="badge badge-success" style={{ display: 'inline-flex', marginTop: '0.35rem' }}>Default test list</div> : null}
                         {list.isArchived ? <div className="badge badge-warning" style={{ display: 'inline-flex', marginTop: '0.35rem' }}>Archived</div> : null}
+                        {!canManageList ? <div className="badge badge-info" style={{ display: 'inline-flex', marginTop: '0.35rem' }}>Read-only</div> : null}
                       </td>
                     <td>{list.description || '-'}</td>
                     <td>{list.contactsCount}</td>
@@ -557,18 +572,19 @@ export default function ListsPage() {
                         {activeMenuId === list.id ? (
                           <div className="row-menu" onClick={(event) => event.stopPropagation()}>
                             <button type="button" onClick={() => router.push(`/dashboard/lists/${list.id}`)}>Open</button>
-                            <button type="button" onClick={() => updateList(list)}>Edit</button>
-                            <button type="button" onClick={() => archiveLists([list.id], !Boolean(list.isArchived))}>
+                            <button type="button" onClick={() => updateList(list)} disabled={!canManageList}>Edit</button>
+                            <button type="button" onClick={() => archiveLists([list.id], !Boolean(list.isArchived))} disabled={!canManageList}>
                               {list.isArchived ? 'Unarchive' : 'Archive'}
                             </button>
-                            <button type="button" onClick={() => duplicateLists([list.id])}>Duplicate</button>
-                            <button type="button" className="danger" onClick={() => deleteList(list)}>Delete</button>
+                            <button type="button" onClick={() => duplicateLists([list.id])} disabled={!canManageList}>Duplicate</button>
+                            <button type="button" className="danger" onClick={() => deleteList(list)} disabled={!canManageList}>Delete</button>
                           </div>
                         ) : null}
                       </div>
                     </td>
                   </tr>
-                ))
+                  );
+                })
               )}
             </tbody>
           </table>

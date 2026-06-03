@@ -1,20 +1,61 @@
 import { requireUserFromCookies } from '@/lib/auth';
 import { fail, ok } from '@/lib/http';
 import { executeSql, queryRow } from '@/lib/sqlite';
+import { buildOwnerScope, isOwnedByViewer } from '@/lib/data-scope';
 
 type Params = { params: { id: string } };
 
 export async function GET(_: Request, { params }: Params) {
   const auth = await requireUserFromCookies();
   if ('error' in auth) return auth.error;
+  const ownerScope = buildOwnerScope(auth.user, 't.userId');
 
-  const template = queryRow(
-    'SELECT id, name, subject, bodyHtml, userId, createdAt, updatedAt FROM "Template" WHERE id = ? AND userId = ? LIMIT 1',
-    [params.id, auth.user.userId],
+  const template = queryRow<{
+    id: string;
+    name: string;
+    subject: string;
+    bodyHtml: string;
+    userId: string;
+    createdAt: string;
+    updatedAt: string;
+    ownerEmail: string;
+    ownerName: string | null;
+    ownerRole: string;
+  }>(
+    `
+      SELECT
+        t.id,
+        t.name,
+        t.subject,
+        t.bodyHtml,
+        t.userId,
+        t.createdAt,
+        t.updatedAt,
+        u.email as ownerEmail,
+        u.name as ownerName,
+        u.role as ownerRole
+      FROM "Template" t
+      INNER JOIN "User" u ON u.id = t.userId
+      WHERE t.id = ? AND ${ownerScope.clause}
+      LIMIT 1
+    `,
+    [params.id, ...ownerScope.params],
   );
   if (!template) return fail('Template not found.', 404);
 
-  return ok({ template });
+  return ok({
+    template: {
+      ...template,
+      owner: {
+        id: template.userId,
+        email: template.ownerEmail,
+        name: template.ownerName,
+        role: template.ownerRole,
+      },
+      isOwner: isOwnedByViewer(template.userId, auth.user),
+    },
+    scope: ownerScope.scope,
+  });
 }
 
 export async function PATCH(request: Request, { params }: Params) {

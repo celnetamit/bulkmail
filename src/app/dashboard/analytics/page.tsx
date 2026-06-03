@@ -35,8 +35,8 @@ type SummaryResponse = {
       detail: string;
     }>;
   };
-  campaigns: Array<{ id: string; name: string; listId: string }>;
-  lists: Array<{ id: string; name: string }>;
+  campaigns: Array<{ id: string; name: string; listId: string; ownerEmail?: string; ownerName?: string | null; ownerRole?: string }>;
+  lists: Array<{ id: string; name: string; ownerEmail?: string; ownerName?: string | null; ownerRole?: string }>;
 };
 
 function detectionBadgeClass(status: SummaryResponse['metrics']['detections'][number]['status']) {
@@ -88,11 +88,19 @@ export default function AnalyticsPage() {
         <form className="auth-form" onSubmit={applyFilters}>
           <select className="status-select" value={campaignId} onChange={(e) => setCampaignId(e.target.value)}>
             <option value="">All Campaigns</option>
-            {summary?.campaigns.map((campaign) => <option key={campaign.id} value={campaign.id}>{campaign.name}</option>)}
+            {summary?.campaigns.map((campaign) => (
+              <option key={campaign.id} value={campaign.id}>
+                {campaign.name}{campaign.ownerEmail ? ` - ${campaign.ownerName || campaign.ownerEmail}` : ''}
+              </option>
+            ))}
           </select>
           <select className="status-select" value={listId} onChange={(e) => setListId(e.target.value)}>
             <option value="">All Lists</option>
-            {summary?.lists.map((list) => <option key={list.id} value={list.id}>{list.name}</option>)}
+            {summary?.lists.map((list) => (
+              <option key={list.id} value={list.id}>
+                {list.name}{list.ownerEmail ? ` - ${list.ownerName || list.ownerEmail}` : ''}
+              </option>
+            ))}
           </select>
           <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
           <input type="date" value={to} onChange={(e) => setTo(e.target.value)} />

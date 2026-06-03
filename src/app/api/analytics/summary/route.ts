@@ -1,5 +1,6 @@
 import { requireUserFromCookies } from '@/lib/auth';
 import { ok } from '@/lib/http';
+import { buildOwnerScope } from '@/lib/data-scope';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -24,6 +25,8 @@ export async function GET(request: Request) {
     const listId = searchParams.get('listId')?.trim() || undefined;
     const from = parseDate(searchParams.get('from'));
     const to = parseDate(searchParams.get('to'));
+    const campaignScope = buildOwnerScope(auth.user, 'c.userId');
+    const listScope = buildOwnerScope(auth.user, 'l.userId');
 
     recordResourceMetric({
       scopeType: 'GLOBAL',
@@ -33,28 +36,30 @@ export async function GET(request: Request) {
     });
 
     const [metrics, campaigns, lists] = await Promise.all([
-      getUserAnalyticsSummary(auth.user.userId, { campaignId, listId, from, to }),
-      queryRows<{ id: string; name: string; listId: string }>(
+      getUserAnalyticsSummary(auth.user.userId, { campaignId, listId, from, to, role: auth.user.role }),
+      queryRows<{ id: string; name: string; listId: string; ownerEmail: string; ownerName: string | null; ownerRole: string }>(
         `
-          SELECT id, name, listId
-          FROM "Campaign"
-          WHERE userId = ?
-          ORDER BY createdAt DESC
+          SELECT c.id, c.name, c.listId, u.email as ownerEmail, u.name as ownerName, u.role as ownerRole
+          FROM "Campaign" c
+          INNER JOIN "User" u ON u.id = c.userId
+          WHERE ${campaignScope.clause}
+          ORDER BY c.createdAt DESC
         `,
-        [auth.user.userId],
+        campaignScope.params,
       ),
-      queryRows<{ id: string; name: string }>(
+      queryRows<{ id: string; name: string; ownerEmail: string; ownerName: string | null; ownerRole: string }>(
         `
-          SELECT id, name
-          FROM "List"
-          WHERE userId = ?
-          ORDER BY createdAt DESC
+          SELECT l.id, l.name, u.email as ownerEmail, u.name as ownerName, u.role as ownerRole
+          FROM "List" l
+          INNER JOIN "User" u ON u.id = l.userId
+          WHERE ${listScope.clause}
+          ORDER BY l.createdAt DESC
         `,
-        [auth.user.userId],
+        listScope.params,
       ),
     ]);
 
-    return ok({ metrics, campaigns, lists });
+    return ok({ metrics, campaigns, lists, scope: campaignScope.scope });
   } catch (error) {
     console.error('analytics_summary_failed', error);
     return ok({ error: 'Failed to load analytics.' }, 500);

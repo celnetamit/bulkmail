@@ -1,13 +1,19 @@
 import { requireUserFromCookies } from '@/lib/auth';
 import { fail, ok } from '@/lib/http';
 import { executeSql, queryRow, queryRows } from '@/lib/sqlite';
+import { buildOwnerScope, isOwnedByViewer } from '@/lib/data-scope';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
-export async function GET() {
+export async function GET(request: Request) {
   const auth = await requireUserFromCookies();
   if ('error' in auth) return auth.error;
+  const url = new URL(request.url);
+  const ownerSelfOnly = url.searchParams.get('owner') === 'self';
+  const ownerScope = ownerSelfOnly
+    ? { clause: 't.userId = ?', params: [auth.user.userId] as unknown[], scope: 'SELF' as const }
+    : buildOwnerScope(auth.user, 't.userId');
 
   const templates = queryRows<{
     id: string;
@@ -17,17 +23,43 @@ export async function GET() {
     userId: string;
     createdAt: string;
     updatedAt: string;
+    ownerEmail: string;
+    ownerName: string | null;
+    ownerRole: string;
   }>(
     `
-      SELECT id, name, subject, bodyHtml, userId, createdAt, updatedAt
-      FROM "Template"
-      WHERE userId = ?
-      ORDER BY createdAt DESC
+      SELECT
+        t.id,
+        t.name,
+        t.subject,
+        t.bodyHtml,
+        t.userId,
+        t.createdAt,
+        t.updatedAt,
+        u.email as ownerEmail,
+        u.name as ownerName,
+        u.role as ownerRole
+      FROM "Template" t
+      INNER JOIN "User" u ON u.id = t.userId
+      WHERE ${ownerScope.clause}
+      ORDER BY t.createdAt DESC
     `,
-    [auth.user.userId],
+    ownerScope.params,
   );
 
-  return ok({ templates });
+  return ok({
+    templates: templates.map((template) => ({
+      ...template,
+      owner: {
+        id: template.userId,
+        email: template.ownerEmail,
+        name: template.ownerName,
+        role: template.ownerRole,
+      },
+      isOwner: isOwnedByViewer(template.userId, auth.user),
+    })),
+    scope: ownerScope.scope,
+  });
 }
 
 export async function POST(request: Request) {

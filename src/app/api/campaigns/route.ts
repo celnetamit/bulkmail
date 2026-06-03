@@ -3,6 +3,7 @@ import { recordAuditEvent } from '@/lib/audit';
 import { fail, ok } from '@/lib/http';
 import { queryRow, queryRows, executeSql } from '@/lib/sqlite';
 import { getCampaignLists, replaceCampaignLists } from '@/lib/campaign-lists';
+import { buildOwnerScope, isOwnedByViewer } from '@/lib/data-scope';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -12,6 +13,7 @@ export async function GET(request: Request) {
   if ('error' in auth) return auth.error;
   const url = new URL(request.url);
   const includeArchived = url.searchParams.get('includeArchived') === 'true' || url.searchParams.get('includeArchived') === '1';
+  const ownerScope = buildOwnerScope(auth.user, 'c.userId');
 
   const campaigns = queryRows<{
     id: string;
@@ -35,6 +37,9 @@ export async function GET(request: Request) {
     updatedAt: string;
     listName: string;
     templateName: string | null;
+    ownerEmail: string;
+    ownerName: string | null;
+    ownerRole: string;
   }>(
     `
       SELECT
@@ -58,15 +63,19 @@ export async function GET(request: Request) {
         c.createdAt,
         c.updatedAt,
         l.name as listName,
-        t.name as templateName
+        t.name as templateName,
+        u.email as ownerEmail,
+        u.name as ownerName,
+        u.role as ownerRole
       FROM "Campaign" c
       INNER JOIN "List" l ON l.id = c.listId
       LEFT JOIN "Template" t ON t.id = c.templateId
-      WHERE c.userId = ?
+      INNER JOIN "User" u ON u.id = c.userId
+      WHERE ${ownerScope.clause}
       ${includeArchived ? '' : 'AND COALESCE(c.isArchived, FALSE) = FALSE'}
       ORDER BY c.createdAt DESC
     `,
-    [auth.user.userId],
+    ownerScope.params,
   );
 
   const rows = queryRows<{
@@ -78,10 +87,10 @@ export async function GET(request: Request) {
       SELECT e.campaignId as campaignId, e.type as type, COUNT(*) as count
       FROM "Event" e
       INNER JOIN "Campaign" c ON c.id = e.campaignId
-      WHERE c.userId = ?
+      WHERE ${ownerScope.clause}
       GROUP BY e.campaignId, e.type
     `,
-    [auth.user.userId],
+    ownerScope.params,
   );
 
   const campaignListRows = queryRows<{
@@ -99,10 +108,10 @@ export async function GET(request: Request) {
       FROM "CampaignList" cl
       INNER JOIN "Campaign" c ON c.id = cl.campaignId
       INNER JOIN "List" l ON l.id = cl.listId
-      WHERE c.userId = ?
+      WHERE ${ownerScope.clause}
       ORDER BY cl.createdAt ASC
     `,
-    [auth.user.userId],
+    ownerScope.params,
   );
 
   const byCampaign = new Map<string, Record<string, number>>();
@@ -131,6 +140,13 @@ export async function GET(request: Request) {
         lists: selectedLists.length > 0 ? selectedLists : [{ id: campaign.listId, name: campaign.listName, isDefaultTestList: false }],
         listCount: selectedLists.length > 0 ? selectedLists.length : 1,
         template: campaign.templateId ? { id: campaign.templateId, name: campaign.templateName || '' } : null,
+        owner: {
+          id: campaign.userId,
+          email: campaign.ownerEmail,
+          name: campaign.ownerName,
+          role: campaign.ownerRole,
+        },
+        isOwner: isOwnedByViewer(campaign.userId, auth.user),
         openedCount: counts.OPENED || 0,
         deliveredCount: counts.DELIVERED || 0,
         bouncedCount: counts.BOUNCED || 0,
@@ -138,7 +154,7 @@ export async function GET(request: Request) {
       };
     });
 
-  return ok({ campaigns: campaignsWithStats });
+  return ok({ campaigns: campaignsWithStats, scope: ownerScope.scope });
 }
 
 export async function POST(request: Request) {

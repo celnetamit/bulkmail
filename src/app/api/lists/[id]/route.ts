@@ -3,12 +3,14 @@ import { recordAuditEvent } from '@/lib/audit';
 import { fail, ok } from '@/lib/http';
 import { executeSql, queryRow } from '@/lib/sqlite';
 import { setDefaultTestList } from '@/lib/campaign-lists';
+import { buildOwnerScope, isOwnedByViewer } from '@/lib/data-scope';
 
 type Params = { params: { id: string } };
 
 export async function GET(_: Request, { params }: Params) {
   const auth = await requireUserFromCookies();
   if ('error' in auth) return auth.error;
+  const ownerScope = buildOwnerScope(auth.user, 'l.userId');
 
   const list = queryRow<{
     id: string;
@@ -21,6 +23,9 @@ export async function GET(_: Request, { params }: Params) {
     updatedAt: string;
     contactsCount: number;
     campaignsCount: number;
+    ownerEmail: string;
+    ownerName: string | null;
+    ownerRole: string;
   }>(
     `
       SELECT
@@ -33,16 +38,32 @@ export async function GET(_: Request, { params }: Params) {
         l.createdAt,
         l.updatedAt,
         (SELECT COUNT(*) FROM "Contact" c WHERE c.listId = l.id) as contactsCount,
-        (SELECT COUNT(*) FROM "CampaignList" cl WHERE cl.listId = l.id) as campaignsCount
+        (SELECT COUNT(*) FROM "CampaignList" cl WHERE cl.listId = l.id) as campaignsCount,
+        u.email as ownerEmail,
+        u.name as ownerName,
+        u.role as ownerRole
       FROM "List" l
-      WHERE l.id = ? AND l.userId = ?
+      INNER JOIN "User" u ON u.id = l.userId
+      WHERE l.id = ? AND ${ownerScope.clause}
       LIMIT 1
     `,
-    [params.id, auth.user.userId],
+    [params.id, ...ownerScope.params],
   );
 
   if (!list) return fail('List not found.', 404);
-  return ok({ list });
+  return ok({
+    list: {
+      ...list,
+      owner: {
+        id: list.userId,
+        email: list.ownerEmail,
+        name: list.ownerName,
+        role: list.ownerRole,
+      },
+      isOwner: isOwnedByViewer(list.userId, auth.user),
+    },
+    scope: ownerScope.scope,
+  });
 }
 
 export async function PATCH(request: Request, { params }: Params) {

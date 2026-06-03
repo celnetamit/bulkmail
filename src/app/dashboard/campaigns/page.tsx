@@ -31,6 +31,8 @@ type Campaign = {
   listCount: number;
   lists?: { id: string; name: string; isDefaultTestList: number | boolean }[];
   template: { id: string; name: string } | null;
+  owner?: { id: string; email: string; name: string | null; role: string };
+  isOwner?: boolean;
 };
 
 type BulkCampaignResponse = {
@@ -77,7 +79,7 @@ export default function CampaignsPage() {
   const loadAll = useCallback(async () => {
     const [campaignsRes, listsRes] = await Promise.all([
       fetch(`/api/campaigns${showArchived ? '?includeArchived=true' : ''}`, { cache: 'no-store' }),
-      fetch('/api/lists?all=true', { cache: 'no-store' }),
+      fetch('/api/lists?all=true&owner=self', { cache: 'no-store' }),
     ]);
     const campaignsData = (await campaignsRes.json()) as { campaigns: Campaign[] };
     const listsData = (await listsRes.json()) as { lists: ListOption[] };
@@ -129,9 +131,12 @@ export default function CampaignsPage() {
     : 0;
 
   const selectedCampaignCount = selectedCampaignIds.length;
-  const allVisibleSelected = campaigns.length > 0 && campaigns.every((campaign) => selectedCampaignIds.includes(campaign.id));
+  const selectableCampaigns = campaigns.filter((campaign) => campaign.isOwner !== false);
+  const allVisibleSelected = selectableCampaigns.length > 0 && selectableCampaigns.every((campaign) => selectedCampaignIds.includes(campaign.id));
 
   function toggleSelectedCampaign(id: string) {
+    const campaign = campaigns.find((entry) => entry.id === id);
+    if (campaign && campaign.isOwner === false) return;
     setSelectedCampaignIds((current) =>
       current.includes(id) ? current.filter((entry) => entry !== id) : [...current, id],
     );
@@ -139,7 +144,7 @@ export default function CampaignsPage() {
 
   function toggleSelectAllVisibleCampaigns() {
     if (campaigns.length === 0) return;
-    const visibleIds = campaigns.map((campaign) => campaign.id);
+    const visibleIds = campaigns.filter((campaign) => campaign.isOwner !== false).map((campaign) => campaign.id);
     const allSelected = visibleIds.every((id) => selectedCampaignIds.includes(id));
     setSelectedCampaignIds(allSelected ? [] : visibleIds);
   }
@@ -441,19 +446,28 @@ export default function CampaignsPage() {
               </tr>
             </thead>
             <tbody>
-              {campaigns.length === 0 ? <tr><td colSpan={7}>No campaigns yet.</td></tr> : campaigns.map((c) => (
+              {campaigns.length === 0 ? <tr><td colSpan={7}>No campaigns yet.</td></tr> : campaigns.map((c) => {
+                const canManageCampaign = c.isOwner !== false;
+                return (
                 <tr key={c.id} className={selectedCampaignIds.includes(c.id) ? 'is-selected-row--bulk' : ''}>
                   <td onClick={(event) => event.stopPropagation()}>
                     <input
                       type="checkbox"
                       checked={selectedCampaignIds.includes(c.id)}
                       onChange={() => toggleSelectedCampaign(c.id)}
+                      disabled={!canManageCampaign}
                       aria-label={`Select campaign ${c.name}`}
                     />
                   </td>
                   <td>
                     <div>{c.name}</div>
+                    {c.owner ? (
+                      <div style={{ marginTop: '0.35rem', fontSize: '0.8rem', color: '#64748b' }}>
+                        Owner: {c.owner.name || c.owner.email} ({c.owner.role})
+                      </div>
+                    ) : null}
                     {c.isArchived ? <div className="badge badge-warning" style={{ display: 'inline-flex', marginTop: '0.35rem' }}>Archived</div> : null}
+                    {!canManageCampaign ? <div className="badge badge-info" style={{ display: 'inline-flex', marginTop: '0.35rem' }}>Read-only</div> : null}
                   </td>
                   <td>
                     <div>{c.list.name}</div>
@@ -494,18 +508,18 @@ export default function CampaignsPage() {
                         className="mini-btn"
                         type="button"
                         onClick={() => router.push(`/dashboard/campaigns/create?campaignId=${c.id}`)}
-                        disabled={c.status === 'QUEUED' || c.status === 'RETRYING' || c.status === 'SENDING' || Boolean(c.isArchived)}
+                        disabled={!canManageCampaign || c.status === 'QUEUED' || c.status === 'RETRYING' || c.status === 'SENDING' || Boolean(c.isArchived)}
                       >
                         Edit Draft
                       </button>
-                      <button className="mini-btn" type="button" onClick={() => duplicateCampaign(c.id)}>Copy</button>
-                      <button className="mini-btn" type="button" onClick={() => testCampaign(c.id)} disabled={testingId === c.id || Boolean(c.isArchived)}>
+                      <button className="mini-btn" type="button" onClick={() => duplicateCampaign(c.id)} disabled={!canManageCampaign}>Copy</button>
+                      <button className="mini-btn" type="button" onClick={() => testCampaign(c.id)} disabled={!canManageCampaign || testingId === c.id || Boolean(c.isArchived)}>
                         {testingId === c.id ? 'Testing...' : 'Test'}
                       </button>
                       <Link className="mini-btn" href={`/dashboard/analytics?campaignId=${c.id}`}>Stats</Link>
                     </div>
                     <div style={{ marginTop: '0.4rem' }}>
-                      <select className="status-select" value={c.status} onChange={(e) => updateStatus(c, e.target.value)} disabled={c.status === 'QUEUED' || c.status === 'RETRYING' || c.status === 'SENDING' || Boolean(c.isArchived)}>
+                      <select className="status-select" value={c.status} onChange={(e) => updateStatus(c, e.target.value)} disabled={!canManageCampaign || c.status === 'QUEUED' || c.status === 'RETRYING' || c.status === 'SENDING' || Boolean(c.isArchived)}>
                         <option>DRAFT</option><option>SCHEDULED</option><option>QUEUED</option><option>RETRYING</option><option>SENDING</option><option>SENT</option><option>FAILED</option><option>SKIPPED</option>
                       </select>
                     </div>
@@ -514,15 +528,16 @@ export default function CampaignsPage() {
                         className="mini-btn"
                         type="button"
                         onClick={() => sendCampaign(c.id)}
-                        disabled={sendingId === c.id || c.status === 'QUEUED' || c.status === 'RETRYING' || c.status === 'SENDING' || Boolean(c.isArchived)}
+                        disabled={!canManageCampaign || sendingId === c.id || c.status === 'QUEUED' || c.status === 'RETRYING' || c.status === 'SENDING' || Boolean(c.isArchived)}
                       >
                         {sendingId === c.id ? 'Sending...' : c.status === 'QUEUED' || c.status === 'RETRYING' || c.status === 'SENDING' ? c.status : 'Send'}
                       </button>
-                      <button className="mini-btn danger" type="button" onClick={() => deleteCampaign(c.id)} disabled={c.status === 'QUEUED' || c.status === 'RETRYING' || c.status === 'SENDING'}>Delete</button>
+                      <button className="mini-btn danger" type="button" onClick={() => deleteCampaign(c.id)} disabled={!canManageCampaign || c.status === 'QUEUED' || c.status === 'RETRYING' || c.status === 'SENDING'}>Delete</button>
                     </div>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>

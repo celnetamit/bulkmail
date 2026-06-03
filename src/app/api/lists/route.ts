@@ -3,6 +3,7 @@ import { recordAuditEvent } from '@/lib/audit';
 import { fail, ok } from '@/lib/http';
 import { executeSql, queryRow, queryRows } from '@/lib/sqlite';
 import { setDefaultTestList } from '@/lib/campaign-lists';
+import { buildOwnerScope, isOwnedByViewer } from '@/lib/data-scope';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -42,6 +43,7 @@ export async function GET(request: Request) {
     const url = new URL(request.url);
     const { page, pageSize, search, sort, order } = parsePagination(url);
     const all = url.searchParams.get('all') === 'true' || url.searchParams.get('all') === '1';
+    const ownerSelfOnly = url.searchParams.get('owner') === 'self';
     const includeArchived = url.searchParams.get('includeArchived') === 'true' || url.searchParams.get('includeArchived') === '1';
     const offset = (page - 1) * pageSize;
     const searchTerm = search ? `%${search.toLowerCase()}%` : '';
@@ -49,13 +51,16 @@ export async function GET(request: Request) {
       ? "AND (LOWER(l.name) LIKE ? OR LOWER(COALESCE(l.description, '')) LIKE ?)"
       : '';
     const archivedClause = includeArchived ? '' : 'AND COALESCE(l.isArchived, FALSE) = FALSE';
-    const params = search ? [auth.user.userId, searchTerm, searchTerm] : [auth.user.userId];
+    const ownerScope = ownerSelfOnly
+      ? { clause: 'l.userId = ?', params: [auth.user.userId] as unknown[], scope: 'SELF' as const }
+      : buildOwnerScope(auth.user, 'l.userId');
+    const params = search ? [...ownerScope.params, searchTerm, searchTerm] : [...ownerScope.params];
 
     const totalRow = queryRow<{ total: number }>(
       `
         SELECT COUNT(*) as total
         FROM "List" l
-        WHERE l.userId = ?
+        WHERE ${ownerScope.clause}
         ${archivedClause}
         ${searchClause}
       `,
@@ -73,6 +78,9 @@ export async function GET(request: Request) {
       updatedAt: string;
       contactsCount: number;
       campaignsCount: number;
+      ownerEmail: string;
+      ownerName: string | null;
+      ownerRole: string;
     }>(
       `
         SELECT
@@ -85,9 +93,13 @@ export async function GET(request: Request) {
           l.createdAt,
           l.updatedAt,
           (SELECT COUNT(*) FROM "Contact" c WHERE c.listId = l.id) as contactsCount,
-          (SELECT COUNT(*) FROM "CampaignList" cl WHERE cl.listId = l.id) as campaignsCount
+          (SELECT COUNT(*) FROM "CampaignList" cl WHERE cl.listId = l.id) as campaignsCount,
+          u.email as ownerEmail,
+          u.name as ownerName,
+          u.role as ownerRole
         FROM "List" l
-        WHERE l.userId = ?
+        INNER JOIN "User" u ON u.id = l.userId
+        WHERE ${ownerScope.clause}
         ${archivedClause}
         ${searchClause}
         ORDER BY ${getSortClause(sort, order)}
@@ -95,17 +107,27 @@ export async function GET(request: Request) {
       `,
       all
         ? search
-          ? [auth.user.userId, searchTerm, searchTerm]
-          : [auth.user.userId]
+          ? [...ownerScope.params, searchTerm, searchTerm]
+          : [...ownerScope.params]
         : search
-          ? [auth.user.userId, searchTerm, searchTerm, pageSize, offset]
-          : [auth.user.userId, pageSize, offset],
+          ? [...ownerScope.params, searchTerm, searchTerm, pageSize, offset]
+          : [...ownerScope.params, pageSize, offset],
     );
 
     const effectivePageSize = all ? Math.max(1, totalRow?.total ?? lists.length ?? 1) : pageSize;
 
     return ok({
-      lists,
+      lists: lists.map((list) => ({
+        ...list,
+        owner: {
+          id: list.userId,
+          email: list.ownerEmail,
+          name: list.ownerName,
+          role: list.ownerRole,
+        },
+        isOwner: isOwnedByViewer(list.userId, auth.user),
+      })),
+      scope: ownerScope.scope,
       pagination: {
         page,
         pageSize: effectivePageSize,

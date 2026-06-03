@@ -2,6 +2,7 @@ import { requireUserFromCookies } from '@/lib/auth';
 import { fail, ok } from '@/lib/http';
 import { executeSql, queryRow, queryRows } from '@/lib/sqlite';
 import { isValidEmailAddress, normalizeEmailAddress } from '@/lib/email-address';
+import { buildOwnerScope } from '@/lib/data-scope';
 
 const ALLOWED_STATUSES = new Set(['SUBSCRIBED', 'UNSUBSCRIBED', 'BOUNCED']);
 const DEFAULT_PAGE_SIZE = 10;
@@ -51,17 +52,18 @@ export async function GET(request: Request) {
   const searchClause = search
     ? "AND (LOWER(c.email) LIKE ? OR LOWER(COALESCE(c.\"firstName\", '')) LIKE ? OR LOWER(COALESCE(c.\"lastName\", '')) LIKE ? OR LOWER(c.status) LIKE ?)"
     : '';
+  const ownerScope = buildOwnerScope(auth.user, 'l.userId');
 
   const countParams = listId
-    ? [auth.user.userId, listId, ...(search ? [searchTerm, searchTerm, searchTerm, searchTerm] : [])]
-    : [auth.user.userId, ...(search ? [searchTerm, searchTerm, searchTerm, searchTerm] : [])];
+    ? [...ownerScope.params, listId, ...(search ? [searchTerm, searchTerm, searchTerm, searchTerm] : [])]
+    : [...ownerScope.params, ...(search ? [searchTerm, searchTerm, searchTerm, searchTerm] : [])];
 
   const totalRow = queryRow<{ total: number }>(
     `
       SELECT COUNT(*) as total
       FROM "Contact" c
       INNER JOIN "List" l ON l.id = c.listId
-      WHERE l.userId = ?
+      WHERE ${ownerScope.clause}
       ${listId ? 'AND c.listId = ?' : ''}
       ${searchClause}
     `,
@@ -70,10 +72,24 @@ export async function GET(request: Request) {
 
   const contacts = queryRows(
     `
-      SELECT c.id, c.email, c.firstName, c.lastName, c.status, c.createdAt, c.updatedAt, l.id as listId, l.name as listName
+      SELECT
+        c.id,
+        c.email,
+        c.firstName,
+        c.lastName,
+        c.status,
+        c.createdAt,
+        c.updatedAt,
+        l.id as listId,
+        l.name as listName,
+        l.userId as ownerUserId,
+        u.email as ownerEmail,
+        u.name as ownerName,
+        u.role as ownerRole
       FROM "Contact" c
       INNER JOIN "List" l ON l.id = c.listId
-      WHERE l.userId = ?
+      INNER JOIN "User" u ON u.id = l.userId
+      WHERE ${ownerScope.clause}
       ${listId ? 'AND c.listId = ?' : ''}
       ${searchClause}
       ORDER BY ${getSortClause(sort, order)}
@@ -81,17 +97,18 @@ export async function GET(request: Request) {
     `,
     listId
       ? [
-          auth.user.userId,
+          ...ownerScope.params,
           listId,
           ...(search ? [searchTerm, searchTerm, searchTerm, searchTerm] : []),
           pageSize,
           offset,
         ]
-      : [auth.user.userId, ...(search ? [searchTerm, searchTerm, searchTerm, searchTerm] : []), pageSize, offset],
+      : [...ownerScope.params, ...(search ? [searchTerm, searchTerm, searchTerm, searchTerm] : []), pageSize, offset],
   );
 
   return ok({
     contacts,
+    scope: ownerScope.scope,
     pagination: {
       page,
       pageSize,
