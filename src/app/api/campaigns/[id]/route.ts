@@ -90,6 +90,17 @@ export async function GET(_: Request, { params }: Params) {
     [params.id],
   );
 
+  const lastJob = queryRow<{ skipReason: string | null; lastError: string | null; status: string | null; finishedAt: string | null }>(
+    `
+      SELECT skipReason, lastError, status, finishedAt
+      FROM "CampaignSendJob"
+      WHERE campaignId = ?
+      ORDER BY createdAt DESC
+      LIMIT 1
+    `,
+    [params.id],
+  );
+
   return ok({
     campaign: {
       ...campaign,
@@ -103,6 +114,7 @@ export async function GET(_: Request, { params }: Params) {
         role: campaign.ownerRole,
       },
       isOwner: isOwnedByViewer(campaign.userId, auth.user),
+      lastJob: lastJob || null,
     },
     scope: ownerScope.scope,
   });

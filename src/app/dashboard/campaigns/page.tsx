@@ -533,6 +533,20 @@ export default function CampaignsPage() {
                         {sendingId === c.id ? 'Sending...' : c.status === 'QUEUED' || c.status === 'RETRYING' || c.status === 'SENDING' ? c.status : 'Send'}
                       </button>
                       <button className="mini-btn danger" type="button" onClick={() => deleteCampaign(c.id)} disabled={!canManageCampaign || c.status === 'QUEUED' || c.status === 'RETRYING' || c.status === 'SENDING'}>Delete</button>
+                      <button
+                        className="mini-btn"
+                        type="button"
+                        onClick={async () => {
+                          if (!confirm('Reset this campaign to a fresh state? This will clear send counts and remove queued jobs.')) return;
+                          const res = await fetch(`/api/campaigns/${c.id}/reset`, { method: 'POST' });
+                          if (!res.ok) return setMessage('Failed to reset campaign.');
+                          setMessage('Campaign reset to fresh state.');
+                          await loadAll();
+                        }}
+                        disabled={!canManageCampaign || c.status === 'QUEUED' || c.status === 'RETRYING' || c.status === 'SENDING' || Boolean(c.isArchived)}
+                      >
+                        Reset
+                      </button>
                     </div>
                   </td>
                 </tr>
