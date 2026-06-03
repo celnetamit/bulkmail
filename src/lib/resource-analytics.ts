@@ -248,12 +248,12 @@ function buildAccessibleUserFilter(role: Role, userId: string) {
 
     const uniqueUserIds = Array.from(new Set([userId, ...managedUsers]));
     return {
-      clause: uniqueUserIds.length ? `rm.userId IN (${uniqueUserIds.map(() => '?').join(', ')})` : '1=0',
+      clause: uniqueUserIds.length ? `rm."userId" IN (${uniqueUserIds.map(() => '?').join(', ')})` : '1=0',
       params: uniqueUserIds,
     };
   }
 
-  return { clause: 'rm.userId = ?', params: [userId] };
+  return { clause: 'rm."userId" = ?', params: [userId] };
 }
 
 function buildCampaignUserFilter(role: Role, userId: string) {
@@ -274,19 +274,19 @@ function buildCampaignUserFilter(role: Role, userId: string) {
 
     const uniqueUserIds = Array.from(new Set([userId, ...managedUsers]));
     return {
-      clause: uniqueUserIds.length ? `c.userId IN (${uniqueUserIds.map(() => '?').join(', ')})` : '1=0',
+      clause: uniqueUserIds.length ? `c."userId" IN (${uniqueUserIds.map(() => '?').join(', ')})` : '1=0',
       params: uniqueUserIds,
     };
   }
 
-  return { clause: 'c.userId = ?', params: [userId] };
+  return { clause: 'c."userId" = ?', params: [userId] };
 }
 
 export async function getResourceAnalyticsSummary(userId: string, role: Role, from: Date, to: Date | null) {
   const accessibleUserFilter = buildAccessibleUserFilter(role, userId);
   const accessibleCampaignFilter = buildCampaignUserFilter(role, userId);
   const dateParams = [from.toISOString(), ...(to ? [to.toISOString()] : [])];
-  const dateClause = to ? 'rm.createdAt BETWEEN ? AND ?' : 'rm.createdAt >= ?';
+  const dateClause = to ? 'rm."createdAt" BETWEEN ? AND ?' : 'rm."createdAt" >= ?';
 
   const live = captureResourceSnapshot();
   const totalsParams = [
@@ -322,8 +322,8 @@ export async function getResourceAnalyticsSummary(userId: string, role: Role, fr
     `
       SELECT
         COUNT(*) as samples,
-        COALESCE(COUNT(DISTINCT CASE WHEN rm.eventType = 'SEND_COMPLETE' THEN rm.campaignId END), 0) as campaigns,
-        COALESCE(COUNT(DISTINCT rm.userId), 0) as users,
+           COALESCE(COUNT(DISTINCT CASE WHEN rm.eventType = 'SEND_COMPLETE' THEN rm."campaignId" END), 0) as campaigns,
+           COALESCE(COUNT(DISTINCT rm."userId"), 0) as users,
         COALESCE(SUM(CASE WHEN eventType = 'SEND_COMPLETE' THEN sentCount ELSE 0 END), 0) as sentCount,
         COALESCE(SUM(CASE WHEN eventType = 'SEND_COMPLETE' THEN failedCount ELSE 0 END), 0) as failedCount,
         COALESCE(SUM(CASE WHEN eventType = 'SEND_COMPLETE' THEN skippedCount ELSE 0 END), 0) as skippedCount,
@@ -345,11 +345,11 @@ export async function getResourceAnalyticsSummary(userId: string, role: Role, fr
         (
           SELECT day
           FROM (
-            SELECT date(rm.createdAt) as day, SUM(CASE WHEN rm.eventType = 'SEND_COMPLETE' THEN rm.sentCount ELSE 0 END) as sentTotal
+            SELECT date(rm."createdAt") as day, SUM(CASE WHEN rm.eventType = 'SEND_COMPLETE' THEN rm.sentCount ELSE 0 END) as sentTotal
             FROM "ResourceMetric" rm
             WHERE ${accessibleUserFilter.clause}
             AND ${dateClause}
-            GROUP BY date(rm.createdAt)
+            GROUP BY date(rm."createdAt")
             ORDER BY sentTotal DESC, day DESC
             LIMIT 1
           )
@@ -357,11 +357,11 @@ export async function getResourceAnalyticsSummary(userId: string, role: Role, fr
         COALESCE((
           SELECT sentTotal
           FROM (
-            SELECT date(rm.createdAt) as day, SUM(CASE WHEN rm.eventType = 'SEND_COMPLETE' THEN rm.sentCount ELSE 0 END) as sentTotal
+            SELECT date(rm."createdAt") as day, SUM(CASE WHEN rm.eventType = 'SEND_COMPLETE' THEN rm.sentCount ELSE 0 END) as sentTotal
             FROM "ResourceMetric" rm
             WHERE ${accessibleUserFilter.clause}
             AND ${dateClause}
-            GROUP BY date(rm.createdAt)
+            GROUP BY date(rm."createdAt")
             ORDER BY sentTotal DESC, day DESC
             LIMIT 1
           )
@@ -376,7 +376,7 @@ export async function getResourceAnalyticsSummary(userId: string, role: Role, fr
   const dailyPeaks = queryRows<ResourceTrendPoint>(
     `
       SELECT
-        date(rm.createdAt) as day,
+        date(rm."createdAt") as day,
         COUNT(*) as samples,
         COALESCE(SUM(CASE WHEN rm.eventType = 'SEND_COMPLETE' THEN rm.sentCount ELSE 0 END), 0) as sentCount,
         COALESCE(SUM(CASE WHEN rm.eventType = 'SEND_COMPLETE' THEN rm.failedCount ELSE 0 END), 0) as failedCount,
@@ -388,7 +388,7 @@ export async function getResourceAnalyticsSummary(userId: string, role: Role, fr
       FROM "ResourceMetric" rm
       WHERE ${accessibleUserFilter.clause}
       AND ${dateClause}
-      GROUP BY date(rm.createdAt)
+      GROUP BY date(rm."createdAt")
       ORDER BY day ASC
     `,
     [...accessibleUserFilter.params, ...dateParams],
@@ -409,9 +409,9 @@ export async function getResourceAnalyticsSummary(userId: string, role: Role, fr
         COALESCE(MAX(rm.memoryRssMb), 0) as peakRssMb,
         COALESCE(AVG(rm.memoryHeapUsedMb), 0) as avgHeapUsedMb,
         COALESCE(AVG(rm.durationMs), 0) as avgDurationMs,
-        MAX(rm.createdAt) as lastSeenAt
+        MAX(rm."createdAt") as lastSeenAt
       FROM "ResourceMetric" rm
-      INNER JOIN "User" u ON u.id = rm.userId
+      INNER JOIN "User" u ON u.id = rm."userId"
       WHERE ${accessibleUserFilter.clause}
       AND ${dateClause}
       GROUP BY u.id, u.email, u.name, u.role
@@ -471,19 +471,19 @@ export async function getResourceAnalyticsSummary(userId: string, role: Role, fr
             THEN COALESCE(MAX(rm.sentCount), 0) * 1000.0 / NULLIF(MAX(rm.durationMs), 0)
           ELSE 0
         END as emailsPerSecond,
-        MAX(rm.createdAt) as sentAt
+        MAX(rm."createdAt") as sentAt
       FROM "Campaign" c
-      LEFT JOIN "ResourceMetric" rm ON rm.campaignId = c.id AND rm.eventType = 'SEND_COMPLETE'
+      LEFT JOIN "ResourceMetric" rm ON rm."campaignId" = c.id AND rm.eventType = 'SEND_COMPLETE'
       WHERE ${accessibleCampaignFilter.clause}
-      AND c.createdAt >= ?
+      AND c."createdAt" >= ?
       GROUP BY c.id, c.name, c.subject, c.status, c.totalRecipients, c.sentCount, c.failedCount, c.skippedCount, c.durationSeconds
-      ORDER BY sentAt DESC, c.createdAt DESC
+      ORDER BY sentAt DESC, c."createdAt" DESC
       LIMIT 30
     `,
     [...accessibleCampaignFilter.params, from.toISOString()],
   );
 
-  const eventDateClause = to ? 'e.createdAt BETWEEN ? AND ?' : 'e.createdAt >= ?';
+  const eventDateClause = to ? 'e."createdAt" BETWEEN ? AND ?' : 'e."createdAt" >= ?';
   const eventDateParams = [from.toISOString(), ...(to ? [to.toISOString()] : [])];
   const deliverabilitySummary = queryRow<DeliverabilitySummary>(
     `
@@ -518,7 +518,7 @@ export async function getResourceAnalyticsSummary(userId: string, role: Role, fr
           ELSE 0
         END as unsubscribeRate
       FROM "Event" e
-      INNER JOIN "Campaign" c ON c.id = e.campaignId
+      INNER JOIN "Campaign" c ON c.id = e."campaignId"
       WHERE ${accessibleCampaignFilter.clause}
       AND ${eventDateClause}
     `,
@@ -528,17 +528,17 @@ export async function getResourceAnalyticsSummary(userId: string, role: Role, fr
   const deliverabilityTrend = queryRows<DeliverabilityTrendPoint>(
     `
       SELECT
-        date(e.createdAt) as day,
+        date(e."createdAt") as day,
         COALESCE(SUM(CASE WHEN e.type = 'SENT' THEN 1 ELSE 0 END), 0) as sentCount,
         COALESCE(SUM(CASE WHEN e.type = 'DELIVERED' THEN 1 ELSE 0 END), 0) as deliveredCount,
         COALESCE(SUM(CASE WHEN e.type = 'OPENED' THEN 1 ELSE 0 END), 0) as openedCount,
         COALESCE(SUM(CASE WHEN e.type = 'BOUNCED' THEN 1 ELSE 0 END), 0) as bouncedCount,
         COALESCE(SUM(CASE WHEN e.type = 'UNSUBSCRIBED' THEN 1 ELSE 0 END), 0) as unsubscribedCount
       FROM "Event" e
-      INNER JOIN "Campaign" c ON c.id = e.campaignId
+      INNER JOIN "Campaign" c ON c.id = e."campaignId"
       WHERE ${accessibleCampaignFilter.clause}
       AND ${eventDateClause}
-      GROUP BY date(e.createdAt)
+      GROUP BY date(e."createdAt")
       ORDER BY day ASC
     `,
     [...accessibleCampaignFilter.params, ...eventDateParams],

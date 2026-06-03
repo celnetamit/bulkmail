@@ -79,12 +79,12 @@ export async function GET() {
           u.dailyEmailLimit,
           u.imageUploadLimitKb,
           u.lastLoginAt,
-          u.createdAt,
-          (SELECT COUNT(*) FROM "List" l WHERE l.userId = u.id) as listsCount,
-          (SELECT COUNT(*) FROM "Template" t WHERE t.userId = u.id) as templatesCount,
-          (SELECT COUNT(*) FROM "Campaign" c WHERE c.userId = u.id) as campaignsCount
+          u."createdAt",
+          (SELECT COUNT(*) FROM "List" l WHERE l."userId" = u.id) as listsCount,
+          (SELECT COUNT(*) FROM "Template" t WHERE t."userId" = u.id) as templatesCount,
+          (SELECT COUNT(*) FROM "Campaign" c WHERE c."userId" = u.id) as campaignsCount
         FROM "User" u
-        ORDER BY u.createdAt DESC
+        ORDER BY u."createdAt" DESC
       `,
     );
 
@@ -100,28 +100,28 @@ export async function GET() {
     )?.count || 0;
     const contactRows = queryRows<{ userId: string; count: number }>(
       `
-        SELECT l.userId as userId, COUNT(*) as count
+        SELECT l."userId" as userId, COUNT(*) as count
         FROM "Contact" c
-        INNER JOIN "List" l ON l.id = c.listId
-        GROUP BY l.userId
+        INNER JOIN "List" l ON l.id = c."listId"
+        GROUP BY l."userId"
       `,
     );
     const sentTodayRows = queryRows<{ userId: string; count: number }>(
       `
-        SELECT c.userId as userId, COUNT(*) as count
+        SELECT c."userId" as userId, COUNT(*) as count
         FROM "Event" e
-        INNER JOIN "Campaign" c ON c.id = e.campaignId
-        WHERE e.type = 'SENT' AND e.createdAt >= ?
-        GROUP BY c.userId
+        INNER JOIN "Campaign" c ON c.id = e."campaignId"
+        WHERE e.type = 'SENT' AND e."createdAt" >= ?
+        GROUP BY c."userId"
       `,
       [from.toISOString()],
     );
     const eventRows = queryRows<{ userId: string; type: string; count: number }>(
       `
-        SELECT c.userId as userId, e.type as type, COUNT(*) as count
+        SELECT c."userId" as userId, e.type as type, COUNT(*) as count
         FROM "Event" e
-        INNER JOIN "Campaign" c ON c.id = e.campaignId
-        GROUP BY c.userId, e.type
+        INNER JOIN "Campaign" c ON c.id = e."campaignId"
+        GROUP BY c."userId", e.type
       `,
     );
 

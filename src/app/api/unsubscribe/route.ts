@@ -41,19 +41,19 @@ export async function GET(request: Request) {
   executeSql(
     `
       UPDATE "Contact"
-      SET status = 'UNSUBSCRIBED', updatedAt = CURRENT_TIMESTAMP
+      SET status = 'UNSUBSCRIBED', "updatedAt" = CURRENT_TIMESTAMP
       WHERE lower(email) = lower(?)
-        AND listId IN (SELECT id FROM "List" WHERE userId = ?)
+        AND "listId" IN (SELECT "id" FROM "List" WHERE "userId" = ?)
     `,
     [payload.email, payload.userId],
   );
 
   const sourceContact = queryRow<{ id: string }>(
     `
-      SELECT c.id
+      SELECT c."id"
       FROM "Contact" c
-      INNER JOIN "List" l ON l.id = c.listId
-      WHERE c.id = ? AND lower(c.email) = lower(?) AND l.userId = ?
+      INNER JOIN "List" l ON l."id" = c."listId"
+      WHERE c."id" = ? AND lower(c."email") = lower(?) AND l."userId" = ?
       LIMIT 1
     `,
     [payload.contactId, payload.email, payload.userId],
@@ -64,8 +64,8 @@ export async function GET(request: Request) {
     executeSql(
       `
         INSERT INTO "Event" (
-          id, type, provider, providerEventId, providerMessageId,
-          contactId, campaignId, createdAt
+          "id", "type", "provider", "providerEventId", "providerMessageId",
+          "contactId", "campaignId", "createdAt"
         ) VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
         ON CONFLICT(providerEventId) DO UPDATE SET
           type = excluded.type,

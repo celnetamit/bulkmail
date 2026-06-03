@@ -130,11 +130,11 @@ export function recordSystemEvent(input: SystemEventInput) {
 export function listRecentSystemEvents(limit = 10) {
   ensureObservabilitySchema();
 
-  return queryRows<SystemEventRow>(
+    return queryRows<SystemEventRow>(
     `
-      SELECT id, level, source, message, userId, campaignId, details, createdAt
+      SELECT "id", "level", "source", "message", "userId", "campaignId", "details", "createdAt"
       FROM "SystemEvent"
-      ORDER BY createdAt DESC
+      ORDER BY "createdAt" DESC
       LIMIT ?
     `,
     [limit],
@@ -165,11 +165,11 @@ export function getSystemHealthSnapshot(): SystemHealthSnapshot {
 
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
   const recentErrors24h = queryRow<{ count: number }>(
-    `SELECT COUNT(*) as count FROM "SystemEvent" WHERE level = 'ERROR' AND createdAt >= ?`,
+    `SELECT COUNT(*) as count FROM "SystemEvent" WHERE "level" = 'ERROR' AND "createdAt" >= ?`,
     [since],
   )?.count || 0;
   const recentWarnings24h = queryRow<{ count: number }>(
-    `SELECT COUNT(*) as count FROM "SystemEvent" WHERE level = 'WARN' AND createdAt >= ?`,
+    `SELECT COUNT(*) as count FROM "SystemEvent" WHERE "level" = 'WARN' AND "createdAt" >= ?`,
     [since],
   )?.count || 0;
   const lastError = queryRow<{
@@ -178,10 +178,10 @@ export function getSystemHealthSnapshot(): SystemHealthSnapshot {
     createdAt: string;
   }>(
     `
-      SELECT message, source, createdAt
+      SELECT "message", "source", "createdAt"
       FROM "SystemEvent"
-      WHERE level = 'ERROR'
-      ORDER BY createdAt DESC
+      WHERE "level" = 'ERROR'
+      ORDER BY "createdAt" DESC
       LIMIT 1
     `,
   );

@@ -320,8 +320,8 @@ function getDeliverabilityItems(userId: string): CampaignRiskItem[] {
         COALESCE(SUM(CASE WHEN e.type = 'BOUNCED' THEN 1 ELSE 0 END), 0) as bouncedCount,
         COALESCE(SUM(CASE WHEN e.type = 'UNSUBSCRIBED' THEN 1 ELSE 0 END), 0) as unsubscribedCount
       FROM "Event" e
-      INNER JOIN "Campaign" c ON c.id = e.campaignId
-      WHERE c.userId = ? AND e.createdAt >= ?
+      INNER JOIN "Campaign" c ON c.id = e."campaignId"
+      WHERE c."userId" = ? AND e."createdAt" >= ?
     `,
     [userId, thirtyDaysAgo],
   );
@@ -367,8 +367,8 @@ async function getComplianceRiskItems(userId: string, suppressedContacts: number
     }>(
       `
         SELECT sendingDomain, spfVerified, dkimVerified, dmarcVerified
-        FROM "PlatformSettings"
-        WHERE id = 'global'
+          FROM "PlatformSettings"
+          WHERE "id" = 'global'
         LIMIT 1
       `,
       [],
@@ -376,9 +376,9 @@ async function getComplianceRiskItems(userId: string, suppressedContacts: number
     Promise.resolve(queryRow<{ name: string }>(
       `
         SELECT name
-        FROM "List"
-        WHERE userId = ? AND COALESCE(isDefaultTestList, FALSE) = TRUE
-        LIMIT 1
+          FROM "List"
+          WHERE "userId" = ? AND COALESCE("isDefaultTestList", FALSE) = TRUE
+          LIMIT 1
       `,
       [userId],
     )),

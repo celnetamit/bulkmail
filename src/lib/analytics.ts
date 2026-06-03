@@ -107,12 +107,12 @@ export async function getUserAnalyticsSummary(userId: string, options?: { campai
   }
 
   if (options?.from) {
-    filters.push('e.createdAt >= ?');
+    filters.push('e."createdAt" >= ?');
     params.push(options.from.toISOString());
   }
 
   if (options?.to) {
-    filters.push('e.createdAt <= ?');
+    filters.push('e."createdAt" <= ?');
     params.push(options.to.toISOString());
   }
 
@@ -120,7 +120,7 @@ export async function getUserAnalyticsSummary(userId: string, options?: { campai
     `
       SELECT e.type as type, COUNT(*) as count
       FROM "Event" e
-      INNER JOIN "Campaign" c ON c.id = e.campaignId
+      INNER JOIN "Campaign" c ON c.id = e."campaignId"
       WHERE ${filters.join(' AND ')}
       GROUP BY e.type
     `,
@@ -154,7 +154,7 @@ export async function getUserAnalyticsSummary(userId: string, options?: { campai
           THEN 1 ELSE 0
         END), 0) as providerBlocks
       FROM "Event" e
-      INNER JOIN "Campaign" c ON c.id = e.campaignId
+      INNER JOIN "Campaign" c ON c.id = e."campaignId"
       WHERE ${filters.join(' AND ')}
     `,
     params,

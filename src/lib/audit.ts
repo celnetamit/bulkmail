@@ -89,9 +89,9 @@ export function listRecentAuditEvents(limit = 10) {
     createdAt: string;
   }>(
     `
-      SELECT id, actorUserId, actorEmail, actorRole, action, entityType, entityId, scopeType, metadataJson, createdAt
+      SELECT "id", "actorUserId", "actorEmail", "actorRole", "action", "entityType", "entityId", "scopeType", "metadataJson", "createdAt"
       FROM "AuditLog"
-      ORDER BY createdAt DESC
+      ORDER BY "createdAt" DESC
       LIMIT ?
     `,
     [limit],

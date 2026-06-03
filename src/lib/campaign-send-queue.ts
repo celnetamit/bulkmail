@@ -149,7 +149,7 @@ function loadCampaign(campaignId: string, userId: string) {
         c.listId,
         c.templateId
       FROM "Campaign" c
-      WHERE c.id = ? AND c.userId = ?
+      WHERE c.id = ? AND c."userId" = ?
       LIMIT 1
     `,
     [campaignId, userId],
@@ -170,10 +170,10 @@ function loadCampaignRecipients(campaign: CampaignRow, userId: string) {
       SELECT c.id, c.email, c.status
       FROM "Contact" c
       INNER JOIN "List" l ON l.id = c.listId
-      WHERE l.id IN (${effectiveListIds.map(() => '?').join(', ')}) AND l.userId = ?
-      ORDER BY c.createdAt ASC
-    `,
-    [...effectiveListIds, userId],
+      WHERE l.id IN (${effectiveListIds.map(() => '?').join(', ')}) AND l."userId" = ?
+      ORDER BY c."createdAt" ASC
+    `
+    [campaignId],
   );
 }
 
@@ -219,7 +219,7 @@ export function queueCampaignSendJob(userId: string, campaignId: string) {
     `
       SELECT id, status
       FROM "CampaignSendJob"
-      WHERE campaignId = ? AND status IN ('QUEUED', 'RUNNING', 'RETRYING')
+      WHERE "campaignId" = ? AND status IN ('QUEUED', 'RUNNING', 'RETRYING')
       LIMIT 1
     `,
     [campaignId],
@@ -279,7 +279,7 @@ export function queueCampaignSendJob(userId: string, campaignId: string) {
         "finishedAt" = NULL,
         durationSeconds = NULL,
         updatedAt = CURRENT_TIMESTAMP
-      WHERE id = ? AND userId = ?
+      WHERE id = ? AND "userId" = ?
     `,
     ['QUEUED', campaignId, userId],
   );

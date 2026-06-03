@@ -277,7 +277,7 @@ export async function dispatchCampaignEmails(userId: string, input: SendInput) {
   const { unique: dedupedContacts, duplicates, invalid } = dedupeRecipients(input.contacts.filter((contact) => contact.status === 'SUBSCRIBED'));
   const transport = await resolveMailTransport(userId);
   const account = queryRow<{ dailyEmailLimit: number; isActive: number | boolean }>(
-    'SELECT dailyEmailLimit, isActive FROM "User" WHERE id = ? LIMIT 1',
+    'SELECT "dailyEmailLimit", "isActive" FROM "User" WHERE "id" = ? LIMIT 1',
     [userId],
   );
 
@@ -380,9 +380,9 @@ export async function dispatchCampaignEmails(userId: string, input: SendInput) {
         executeSql(
           `
             INSERT INTO "Event" (
-              id, type, provider, providerEventId, providerMessageId,
-              contactId, campaignId, createdAt
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                  "id", "type", "provider", "providerEventId", "providerMessageId",
+                  "contactId", "campaignId", "createdAt"
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
           `,
           [
             crypto.randomUUID().replace(/-/g, ''),

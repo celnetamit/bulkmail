@@ -89,7 +89,7 @@ export async function getPlatformSettings(): Promise<PlatformSettingsView> {
   ensurePlatformSettingsSchema();
 
   const row = queryRow<PlatformSettingsRow>(
-    'SELECT id, imageUploadLimitKb, sendingDomain, spfVerified, dkimVerified, dmarcVerified, createdAt, updatedAt FROM "PlatformSettings" WHERE id = ? LIMIT 1',
+    'SELECT "id", "imageUploadLimitKb", "sendingDomain", "spfVerified", "dkimVerified", "dmarcVerified", "createdAt", "updatedAt" FROM "PlatformSettings" WHERE "id" = ? LIMIT 1',
     ['global'],
   );
 
@@ -113,7 +113,7 @@ export async function savePlatformSettings(input: {
   ensurePlatformSettingsSchema();
 
   const current = queryRow<PlatformSettingsRow>(
-    'SELECT id, imageUploadLimitKb, sendingDomain, spfVerified, dkimVerified, dmarcVerified, createdAt, updatedAt FROM "PlatformSettings" WHERE id = ? LIMIT 1',
+    'SELECT "id", "imageUploadLimitKb", "sendingDomain", "spfVerified", "dkimVerified", "dmarcVerified", "createdAt", "updatedAt" FROM "PlatformSettings" WHERE "id" = ? LIMIT 1',
     ['global'],
   );
 

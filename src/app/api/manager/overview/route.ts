@@ -46,8 +46,8 @@ export async function GET() {
         (SELECT COUNT(*) FROM "TeamMember" tm WHERE tm.teamId = t.id) as memberCount,
         COALESCE((SELECT SUM(tm.allocatedDailyLimit) FROM "TeamMember" tm WHERE tm.teamId = t.id), 0) as allocatedCredits
       FROM "Team" t
-      WHERE t.managerId = ?
-      ORDER BY t.createdAt DESC
+      WHERE t."managerId" = ?
+      ORDER BY t."createdAt" DESC
     `,
     [managerId],
   );
@@ -82,8 +82,8 @@ export async function GET() {
             tm.allocatedDailyLimit
           FROM "TeamMember" tm
           INNER JOIN "User" u ON u.id = tm.userId
-          WHERE tm.teamId IN (${teamIds.map(() => '?').join(', ')})
-          ORDER BY u.createdAt DESC
+          WHERE tm."teamId" IN (${teamIds.map(() => '?').join(', ')})
+          ORDER BY u."createdAt" DESC
         `,
         teamIds,
       )
@@ -125,8 +125,8 @@ export async function GET() {
           FROM "Campaign" c
           INNER JOIN "User" u ON u.id = c.userId
           INNER JOIN "TeamMember" tm ON tm.userId = c.userId
-          WHERE tm.teamId IN (${teamIds.map(() => '?').join(', ')})
-          ORDER BY c.createdAt DESC
+          WHERE tm."teamId" IN (${teamIds.map(() => '?').join(', ')})
+          ORDER BY c."createdAt" DESC
           LIMIT 40
         `,
         teamIds,
@@ -138,9 +138,9 @@ export async function GET() {
         `
           SELECT tm.teamId as teamId, COUNT(*) as count
           FROM "Event" e
-          INNER JOIN "Campaign" c ON c.id = e.campaignId
-          INNER JOIN "TeamMember" tm ON tm.userId = c.userId
-          WHERE e.type = 'SENT' AND e.createdAt >= ? AND tm.teamId IN (${teamIds.map(() => '?').join(', ')})
+          INNER JOIN "Campaign" c ON c.id = e."campaignId"
+          INNER JOIN "TeamMember" tm ON tm.userId = c."userId"
+          WHERE e.type = 'SENT' AND e."createdAt" >= ? AND tm."teamId" IN (${teamIds.map(() => '?').join(', ')})
           GROUP BY tm.teamId
         `,
         [from.toISOString(), ...teamIds],
@@ -152,10 +152,10 @@ export async function GET() {
         `
           SELECT tm.teamId as teamId, e.type as type, COUNT(*) as count
           FROM "Event" e
-          INNER JOIN "Campaign" c ON c.id = e.campaignId
-          INNER JOIN "TeamMember" tm ON tm.userId = c.userId
-          WHERE tm.teamId IN (${teamIds.map(() => '?').join(', ')})
-          GROUP BY tm.teamId, e.type
+          INNER JOIN "Campaign" c ON c.id = e."campaignId"
+          INNER JOIN "TeamMember" tm ON tm.userId = c."userId"
+          WHERE tm."teamId" IN (${teamIds.map(() => '?').join(', ')})
+          GROUP BY tm."teamId", e.type
         `,
         teamIds,
       )

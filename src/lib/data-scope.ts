@@ -49,9 +49,15 @@ export function buildOwnerScopeForRole(userId: string, role: string, ownerExpres
     };
   }
 
+  // Ensure ownerExpression's right-hand identifier is quoted when using dot notation
+  // e.g., convert "c.userId" => "c."userId""
+  const ownerExprQuoted = ownerExpression.replace(/([a-zA-Z_][a-zA-Z0-9_]*)\.([a-zA-Z_][a-zA-Z0-9_]*)/g, (_m, left, right) => {
+    return `${left}."${right}"`;
+  });
+
   return {
     scope: normalizedRole === 'MANAGER' ? 'TEAM' : 'SELF',
-    clause: userIds.length > 0 ? `${ownerExpression} IN (${userIds.map(() => '?').join(', ')})` : '1=0',
+    clause: userIds.length > 0 ? `${ownerExprQuoted} IN (${userIds.map(() => '?').join(', ')})` : '1=0',
     params: userIds,
     userIds,
   };

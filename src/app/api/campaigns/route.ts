@@ -54,26 +54,26 @@ export async function GET(request: Request) {
         c.sentCount,
         c.failedCount,
         c.skippedCount,
-        c.startedAt,
-        c.finishedAt,
-        c.durationSeconds,
-        c.userId,
-        c.listId,
-        c.templateId,
-        c.createdAt,
-        c.updatedAt,
+        c."startedAt",
+        c."finishedAt",
+        c."durationSeconds",
+        c."userId",
+        c."listId",
+        c."templateId",
+        c."createdAt",
+        c."updatedAt",
         l.name as listName,
         t.name as templateName,
         u.email as ownerEmail,
         u.name as ownerName,
         u.role as ownerRole
       FROM "Campaign" c
-      INNER JOIN "List" l ON l.id = c.listId
-      LEFT JOIN "Template" t ON t.id = c.templateId
-      INNER JOIN "User" u ON u.id = c.userId
+      INNER JOIN "List" l ON l.id = c."listId"
+      LEFT JOIN "Template" t ON t.id = c."templateId"
+      INNER JOIN "User" u ON u.id = c."userId"
       WHERE ${ownerScope.clause}
       ${includeArchived ? '' : 'AND COALESCE(c.isArchived, FALSE) = FALSE'}
-      ORDER BY c.createdAt DESC
+      ORDER BY c."createdAt" DESC
     `,
     ownerScope.params,
   );
@@ -84,11 +84,11 @@ export async function GET(request: Request) {
     count: number;
   }>(
     `
-      SELECT e.campaignId as campaignId, e.type as type, COUNT(*) as count
+      SELECT e."campaignId" as campaignId, e.type as type, COUNT(*) as count
       FROM "Event" e
-      INNER JOIN "Campaign" c ON c.id = e.campaignId
+      INNER JOIN "Campaign" c ON c.id = e."campaignId"
       WHERE ${ownerScope.clause}
-      GROUP BY e.campaignId, e.type
+      GROUP BY e."campaignId", e.type
     `,
     ownerScope.params,
   );
@@ -106,10 +106,10 @@ export async function GET(request: Request) {
         l.name as listName,
         CASE WHEN COALESCE(l.isDefaultTestList, FALSE) THEN 1 ELSE 0 END as isDefaultTestList
       FROM "CampaignList" cl
-      INNER JOIN "Campaign" c ON c.id = cl.campaignId
-      INNER JOIN "List" l ON l.id = cl.listId
+      INNER JOIN "Campaign" c ON c.id = cl."campaignId"
+      INNER JOIN "List" l ON l.id = cl."listId"
       WHERE ${ownerScope.clause}
-      ORDER BY cl.createdAt ASC
+      ORDER BY cl."createdAt" ASC
     `,
     ownerScope.params,
   );

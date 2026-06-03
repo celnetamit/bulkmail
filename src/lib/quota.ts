@@ -9,8 +9,8 @@ export async function getUserDailySentCount(userId: string, from = startOfUtcDay
     `
       SELECT COUNT(*) as count
       FROM "Event" e
-      INNER JOIN "Campaign" c ON c.id = e.campaignId
-      WHERE e.type = ? AND e.createdAt >= ? AND c.userId = ?
+      INNER JOIN "Campaign" c ON c.id = e."campaignId"
+      WHERE e."type" = ? AND e."createdAt" >= ? AND c."userId" = ?
     `,
     ['SENT', from.toISOString(), userId],
   );
