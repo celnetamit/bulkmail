@@ -166,3 +166,22 @@ export function IconImport(props: IconProps) {
 export function IconHelpCircle(props: IconProps) {
   return <IconHelp {...props} />;
 }
+
+export function IconMenu(props: IconProps) {
+  return (
+    <BaseIcon {...props}>
+      <path d="M4 7h16" />
+      <path d="M4 12h16" />
+      <path d="M4 17h16" />
+    </BaseIcon>
+  );
+}
+
+export function IconClose(props: IconProps) {
+  return (
+    <BaseIcon {...props}>
+      <path d="m6 6 12 12" />
+      <path d="m18 6-12 12" />
+    </BaseIcon>
+  );
+}

@@ -74,7 +74,13 @@ function isActive(pathname: string, item: NavItem) {
   return pathname === item.href || pathname.startsWith(`${item.href}/`);
 }
 
-export function DashboardNav({ role }: { role: 'USER' | 'MANAGER' | 'ADMIN' }) {
+export function DashboardNav({
+  role,
+  onNavigate,
+}: {
+  role: 'USER' | 'MANAGER' | 'ADMIN';
+  onNavigate?: () => void;
+}) {
   const pathname = usePathname() || '';
 
   return (
@@ -95,6 +101,7 @@ export function DashboardNav({ role }: { role: 'USER' | 'MANAGER' | 'ADMIN' }) {
                   href={item.href}
                   className={`nav-link ${isActive(pathname, item) ? 'nav-link--active' : ''}`}
                   aria-current={isActive(pathname, item) ? 'page' : undefined}
+                  onClick={onNavigate}
                 >
                   {item.icon ? <item.icon className="nav-link__icon" aria-hidden="true" /> : null}
                   {item.label}

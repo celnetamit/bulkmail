@@ -58,6 +58,7 @@ type CampaignSendJobResult = {
 const SENDABLE_STATUSES = new Set(['DRAFT', 'SCHEDULED']);
 const MAX_RETRY_ATTEMPTS = 3;
 const WORKER_INTERVAL_MS = 1500;
+const DEFAULT_STALE_RUNNING_MS = 30 * 60 * 1000;
 
 let campaignSendQueueSchemaInitialized = false;
 
@@ -95,6 +96,66 @@ function getBackgroundAppOrigin() {
   return 'http://localhost:3000';
 }
 
+function getStaleRunningMs() {
+  const configured = Number(process.env.CAMPAIGN_SEND_STALE_RUNNING_MS || '');
+  if (Number.isFinite(configured) && configured >= 60000) return configured;
+  return DEFAULT_STALE_RUNNING_MS;
+}
+
+function dateValue(value: string | null) {
+  if (!value) return 0;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function ensureCampaignSendQueueColumns() {
+  if (process.env.DATABASE_URL) {
+    executeSql('ALTER TABLE "CampaignSendJob" ADD COLUMN IF NOT EXISTS "attempts" INTEGER NOT NULL DEFAULT 0');
+    executeSql('ALTER TABLE "CampaignSendJob" ADD COLUMN IF NOT EXISTS "provider" TEXT');
+    executeSql('ALTER TABLE "CampaignSendJob" ADD COLUMN IF NOT EXISTS "totalRecipients" INTEGER NOT NULL DEFAULT 0');
+    executeSql('ALTER TABLE "CampaignSendJob" ADD COLUMN IF NOT EXISTS "sentCount" INTEGER NOT NULL DEFAULT 0');
+    executeSql('ALTER TABLE "CampaignSendJob" ADD COLUMN IF NOT EXISTS "failedCount" INTEGER NOT NULL DEFAULT 0');
+    executeSql('ALTER TABLE "CampaignSendJob" ADD COLUMN IF NOT EXISTS "skippedCount" INTEGER NOT NULL DEFAULT 0');
+    executeSql('ALTER TABLE "CampaignSendJob" ADD COLUMN IF NOT EXISTS "quotaSkippedCount" INTEGER NOT NULL DEFAULT 0');
+    executeSql('ALTER TABLE "CampaignSendJob" ADD COLUMN IF NOT EXISTS "remainingToday" INTEGER NOT NULL DEFAULT 0');
+    executeSql('ALTER TABLE "CampaignSendJob" ADD COLUMN IF NOT EXISTS "requestedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW()');
+    executeSql('ALTER TABLE "CampaignSendJob" ADD COLUMN IF NOT EXISTS "startedAt" TIMESTAMPTZ');
+    executeSql('ALTER TABLE "CampaignSendJob" ADD COLUMN IF NOT EXISTS "nextRunAt" TIMESTAMPTZ');
+    executeSql('ALTER TABLE "CampaignSendJob" ADD COLUMN IF NOT EXISTS "finishedAt" TIMESTAMPTZ');
+    executeSql('ALTER TABLE "CampaignSendJob" ADD COLUMN IF NOT EXISTS "lastError" TEXT');
+    executeSql('ALTER TABLE "CampaignSendJob" ADD COLUMN IF NOT EXISTS "skipReason" TEXT');
+    executeSql('ALTER TABLE "CampaignSendJob" ADD COLUMN IF NOT EXISTS "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW()');
+    executeSql('ALTER TABLE "CampaignSendJob" ADD COLUMN IF NOT EXISTS "updatedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW()');
+    return;
+  }
+
+  const columns = new Set(
+    queryRows<{ name: string }>('PRAGMA table_info("CampaignSendJob")').map((column) => column.name),
+  );
+  const addColumn = (name: string, definition: string) => {
+    if (columns.has(name)) return;
+    executeSql(`ALTER TABLE "CampaignSendJob" ADD COLUMN "${name}" ${definition}`);
+    columns.add(name);
+  };
+
+  addColumn('attempts', "INTEGER NOT NULL DEFAULT 0");
+  addColumn('provider', 'TEXT');
+  addColumn('totalRecipients', 'INTEGER NOT NULL DEFAULT 0');
+  addColumn('sentCount', 'INTEGER NOT NULL DEFAULT 0');
+  addColumn('failedCount', 'INTEGER NOT NULL DEFAULT 0');
+  addColumn('skippedCount', 'INTEGER NOT NULL DEFAULT 0');
+  addColumn('quotaSkippedCount', 'INTEGER NOT NULL DEFAULT 0');
+  addColumn('remainingToday', 'INTEGER NOT NULL DEFAULT 0');
+  addColumn('requestedAt', 'TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP');
+  addColumn('startedAt', 'TEXT');
+  addColumn('nextRunAt', 'TEXT');
+  addColumn('finishedAt', 'TEXT');
+  addColumn('lastError', 'TEXT');
+  addColumn('skipReason', 'TEXT');
+  addColumn('createdAt', 'TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP');
+  addColumn('updatedAt', 'TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP');
+}
+
 export function ensureCampaignSendQueueSchema() {
   if (campaignSendQueueSchemaInitialized) return;
 
@@ -124,6 +185,7 @@ export function ensureCampaignSendQueueSchema() {
       CONSTRAINT "CampaignSendJob_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE CASCADE ON UPDATE CASCADE
     )
   `);
+  ensureCampaignSendQueueColumns();
   executeSql('CREATE INDEX IF NOT EXISTS "CampaignSendJob_status_requestedAt_idx" ON "CampaignSendJob" ("status", "requestedAt")');
   executeSql('CREATE INDEX IF NOT EXISTS "CampaignSendJob_campaignId_idx" ON "CampaignSendJob" ("campaignId")');
 
@@ -315,8 +377,6 @@ async function processQueuedCampaignSendJob(job: CampaignSendJobRow) {
     `
       UPDATE "CampaignSendJob"
       SET
-        status = ?,
-        attempts = attempts + 1,
         provider = ?,
         "totalRecipients" = ?,
         "sentCount" = 0,
@@ -328,9 +388,9 @@ async function processQueuedCampaignSendJob(job: CampaignSendJobRow) {
         "nextRunAt" = NULL,
         "updatedAt" = CURRENT_TIMESTAMP,
         "lastError" = NULL
-      WHERE id = ? AND status IN ('QUEUED', 'RETRYING')
+      WHERE id = ? AND status = 'RUNNING'
     `,
-    ['RUNNING', campaign.provider, contacts.length, job.id],
+    [campaign.provider, contacts.length, job.id],
   );
 
   try {
@@ -412,7 +472,7 @@ async function processQueuedCampaignSendJob(job: CampaignSendJobRow) {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     const retryable = isRetryableSendError(error);
-    const currentAttempt = job.attempts + 1;
+    const currentAttempt = Math.max(1, job.attempts);
     const shouldRetry = retryable && currentAttempt < MAX_RETRY_ATTEMPTS;
     const nextRunAt = shouldRetry ? new Date(Date.now() + getRetryDelayMs(currentAttempt)).toISOString() : null;
     const nextStatus = shouldRetry ? 'RETRYING' : 'FAILED';
@@ -463,12 +523,87 @@ async function processQueuedCampaignSendJob(job: CampaignSendJobRow) {
   }
 }
 
+function recoverStaleRunningCampaignSendJobs() {
+  const staleBefore = Date.now() - getStaleRunningMs();
+  const runningJobs = queryRows<CampaignSendJobRow>(
+    `
+      SELECT
+        id, "campaignId", "userId", status, attempts, provider,
+        "totalRecipients", "sentCount", "failedCount", "skippedCount",
+        "quotaSkippedCount", "remainingToday", "requestedAt", "startedAt",
+        "nextRunAt", "finishedAt", "lastError", "skipReason", "createdAt", "updatedAt"
+      FROM "CampaignSendJob"
+      WHERE status = 'RUNNING'
+    `,
+  );
+
+  for (const job of runningJobs) {
+    const lastTouched = Math.max(
+      dateValue(job.updatedAt),
+      dateValue(job.startedAt),
+      dateValue(job.requestedAt),
+      dateValue(job.createdAt),
+    );
+    if (!lastTouched || lastTouched > staleBefore) continue;
+
+    const attempts = Number(job.attempts || 0);
+    const nextStatus = attempts >= MAX_RETRY_ATTEMPTS ? 'FAILED' : 'RETRYING';
+    const message = `Recovered stale RUNNING send job after ${Math.round(getStaleRunningMs() / 60000)} minutes without progress.`;
+    const now = new Date().toISOString();
+
+    executeSql(
+      `
+        UPDATE "CampaignSendJob"
+        SET
+          status = ?,
+          "nextRunAt" = ?,
+          "finishedAt" = ?,
+          "updatedAt" = CURRENT_TIMESTAMP,
+          "lastError" = ?,
+          "skipReason" = ?
+        WHERE id = ? AND status = 'RUNNING'
+      `,
+      [
+        nextStatus,
+        nextStatus === 'RETRYING' ? now : null,
+        nextStatus === 'FAILED' ? now : null,
+        message,
+        nextStatus === 'FAILED' ? 'Campaign send worker stopped before finishing.' : null,
+        job.id,
+      ],
+    );
+
+    executeSql(
+      `
+        UPDATE "Campaign"
+        SET status = ?, "updatedAt" = CURRENT_TIMESTAMP
+        WHERE id = ? AND "userId" = ? AND status IN ('QUEUED', 'SENDING', 'RETRYING')
+      `,
+      [nextStatus, job.campaignId, job.userId],
+    );
+
+    recordSystemEvent({
+      level: nextStatus === 'FAILED' ? 'ERROR' : 'WARN',
+      source: 'campaign_send_queue_recovery',
+      message,
+      campaignId: job.campaignId,
+      userId: job.userId,
+      details: {
+        jobId: job.id,
+        attempts,
+        status: nextStatus,
+      },
+    });
+  }
+}
+
 async function drainCampaignSendQueue() {
   if (workerState.draining) return;
   workerState.draining = true;
 
   try {
     ensureCampaignSendQueueSchema();
+    recoverStaleRunningCampaignSendJobs();
 
     while (true) {
       const nextJob = queryRow<CampaignSendJobRow>(
@@ -501,7 +636,12 @@ async function drainCampaignSendQueue() {
       if ((claimed.rowCount ?? claimed.changes ?? 0) !== 1) continue;
 
       try {
-        await processQueuedCampaignSendJob(nextJob);
+        await processQueuedCampaignSendJob({
+          ...nextJob,
+          status: 'RUNNING',
+          attempts: Number(nextJob.attempts || 0) + 1,
+          startedAt: nextJob.startedAt || new Date().toISOString(),
+        });
       } catch (error) {
         console.error('campaign_send_queue_job_failed', {
           campaignId: nextJob.campaignId,

@@ -583,7 +583,7 @@ export default function AdminDashboardClient() {
                 <tr key={user.id}>
                   <td>
                     <strong>{user.email}</strong>
-                    <div style={{ fontSize: '0.85rem', color: '#94a3b8' }}>{user.name || '-'}</div>
+                    <div style={{ fontSize: '0.85rem', color: '#64748b' }}>{user.name || '-'}</div>
                     <div style={{ fontSize: '0.8rem', color: '#64748b' }}>{user.lastLoginAt ? `Last login ${new Date(user.lastLoginAt).toLocaleString()}` : 'Never logged in'}</div>
                   </td>
                   <td style={{ minWidth: '220px' }}>
@@ -592,7 +592,7 @@ export default function AdminDashboardClient() {
                       <option value="MANAGER">MANAGER</option>
                       <option value="ADMIN">ADMIN</option>
                     </select>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.5rem', color: '#cbd5e1' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.5rem', color: '#475569' }}>
                       <input
                         type="checkbox"
                         checked={Boolean(draft.isActive ?? user.isActive)}
@@ -622,11 +622,11 @@ export default function AdminDashboardClient() {
                     <div className="progress-track" aria-hidden="true">
                       <div className="progress-bar" style={{ width: `${percent(user.sentToday, user.dailyEmailLimit)}%` }} />
                     </div>
-                    <div style={{ marginTop: '0.5rem', fontSize: '0.85rem', color: '#94a3b8' }}>
+                    <div style={{ marginTop: '0.5rem', fontSize: '0.85rem', color: '#64748b' }}>
                       {user.sentToday}/{user.dailyEmailLimit} sent today, {user.remainingToday} remaining
                     </div>
                   </td>
-                  <td style={{ fontSize: '0.85rem', color: '#cbd5e1' }}>
+                  <td style={{ fontSize: '0.85rem', color: '#475569' }}>
                     {user.listsCount} lists
                     <br />
                     {user.templatesCount} templates
@@ -635,7 +635,7 @@ export default function AdminDashboardClient() {
                     <br />
                     {user.imageUploadLimitKb ? `${user.imageUploadLimitKb} KB upload limit` : 'Global upload limit'}
                   </td>
-                  <td style={{ fontSize: '0.85rem', color: '#cbd5e1' }}>
+                  <td style={{ fontSize: '0.85rem', color: '#475569' }}>
                     {user.sentTotal} sent total
                     <br />
                     {user.contactCount} contacts
