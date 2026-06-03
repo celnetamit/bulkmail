@@ -159,10 +159,10 @@ export async function POST(request: Request, { params }: { params: { provider: s
     const contact = parsed.contactId
       ? queryRow<{ id: string; userId: string }>(
           `
-            SELECT c.id, l.userId
+            SELECT c.id, l."userId"
             FROM "Contact" c
-            INNER JOIN "List" l ON l.id = c.listId
-            INNER JOIN "Campaign" ca ON ca.listId = l.id
+            INNER JOIN "List" l ON l.id = c."listId"
+            INNER JOIN "Campaign" ca ON ca."listId" = l.id
             WHERE c.id = ? AND ca.id = ?
             LIMIT 1
           `,
@@ -170,10 +170,10 @@ export async function POST(request: Request, { params }: { params: { provider: s
         )
       : queryRow<{ id: string; userId: string }>(
           `
-            SELECT c.id, l.userId
+            SELECT c.id, l."userId"
             FROM "Contact" c
-            INNER JOIN "List" l ON l.id = c.listId
-            INNER JOIN "Campaign" ca ON ca.listId = l.id
+            INNER JOIN "List" l ON l.id = c."listId"
+            INNER JOIN "Campaign" ca ON ca."listId" = l.id
             WHERE lower(c.email) = lower(?) AND ca.id = ?
             LIMIT 1
           `,
@@ -188,12 +188,12 @@ export async function POST(request: Request, { params }: { params: { provider: s
     executeSql(
       `
         INSERT INTO "Event" (
-          id, type, provider, providerEventId, providerMessageId,
-          contactId, campaignId, createdAt
+          id, type, provider, "providerEventId", "providerMessageId",
+          "contactId", "campaignId", "createdAt"
         ) VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-        ON CONFLICT(providerEventId) DO UPDATE SET
+        ON CONFLICT("providerEventId") DO UPDATE SET
           type = excluded.type,
-          providerMessageId = excluded.providerMessageId
+          "providerMessageId" = excluded."providerMessageId"
       `,
       [crypto.randomUUID().replace(/-/g, ''), parsed.type, parsed.provider, parsed.eventId, parsed.messageId, contact.id, parsed.campaignId],
     );
@@ -202,9 +202,9 @@ export async function POST(request: Request, { params }: { params: { provider: s
       executeSql(
         `
           UPDATE "Contact"
-          SET status = ?, updatedAt = CURRENT_TIMESTAMP
+          SET status = ?, "updatedAt" = CURRENT_TIMESTAMP
           WHERE lower(email) = lower(?)
-            AND listId IN (SELECT id FROM "List" WHERE userId = ?)
+            AND "listId" IN (SELECT id FROM "List" WHERE "userId" = ?)
         `,
         [parsed.type === 'BOUNCED' ? 'BOUNCED' : 'UNSUBSCRIBED', parsed.contactEmail, contact.userId],
       );

@@ -11,10 +11,10 @@ export async function verifyWebhookSecret(request: Request) {
 
   const row = queryRow<{ webhookSharedSecretEncrypted: string | null }>(
     `
-      SELECT webhookSharedSecretEncrypted
+      SELECT "webhookSharedSecretEncrypted"
       FROM "MailSettings"
-      WHERE webhookSharedSecretEncrypted IS NOT NULL
-      ORDER BY updatedAt DESC
+      WHERE "webhookSharedSecretEncrypted" IS NOT NULL
+      ORDER BY "updatedAt" DESC
       LIMIT 1
     `,
   );

@@ -60,7 +60,7 @@ export async function POST(request: Request) {
     executeSql(
       `
         INSERT INTO "List" (
-          id, name, description, userId, isDefaultTestList, isArchived, createdAt, updatedAt
+          id, name, description, "userId", "isDefaultTestList", "isArchived", "createdAt", "updatedAt"
         ) VALUES (?, ?, ?, ?, FALSE, ?, ?, ?)
       `,
       [id, name, description || null, auth.user.userId, isArchived ? 1 : 0, createdAt, createdAt],
@@ -76,7 +76,7 @@ export async function POST(request: Request) {
       executeSql(
         `
           INSERT INTO "Contact" (
-            id, email, firstName, lastName, status, listId, createdAt, updatedAt
+            id, email, "firstName", "lastName", status, "listId", "createdAt", "updatedAt"
           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         `,
         [
@@ -115,7 +115,7 @@ export async function POST(request: Request) {
 
   const firstList = importedListIds[0]
     ? queryRow(
-        'SELECT id, name, description, userId, createdAt, updatedAt FROM "List" WHERE id = ? AND userId = ? LIMIT 1',
+        'SELECT id, name, description, "userId", "createdAt", "updatedAt" FROM "List" WHERE id = ? AND "userId" = ? LIMIT 1',
         [importedListIds[0], auth.user.userId],
       )
     : null;

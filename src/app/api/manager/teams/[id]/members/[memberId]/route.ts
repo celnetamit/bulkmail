@@ -11,10 +11,10 @@ function loadTeam(teamId: string, managerId: string) {
       SELECT
         t.id,
         t.name,
-        t.dailyCreditLimit,
-        COALESCE((SELECT SUM(tm.allocatedDailyLimit) FROM "TeamMember" tm WHERE tm.teamId = t.id), 0) as allocatedCredits
+        t."dailyCreditLimit",
+        COALESCE((SELECT SUM(tm."allocatedDailyLimit") FROM "TeamMember" tm WHERE tm."teamId" = t.id), 0) as allocatedCredits
       FROM "Team" t
-      WHERE t.id = ? AND t.managerId = ?
+      WHERE t.id = ? AND t."managerId" = ?
       LIMIT 1
     `,
     [teamId, managerId],
@@ -36,19 +36,19 @@ function loadMember(teamId: string, userId: string) {
   }>(
     `
       SELECT
-        tm.userId as memberId,
-        tm.teamId,
-        tm.allocatedDailyLimit,
+        tm."userId" as memberId,
+        tm."teamId",
+        tm."allocatedDailyLimit",
         u.email,
         u.name,
         u.role,
-        u.isActive,
-        u.dailyEmailLimit,
-        u.lastLoginAt,
-        u.createdAt
+        u."isActive",
+        u."dailyEmailLimit",
+        u."lastLoginAt",
+        u."createdAt"
       FROM "TeamMember" tm
-      INNER JOIN "User" u ON u.id = tm.userId
-      WHERE tm.teamId = ? AND tm.userId = ?
+      INNER JOIN "User" u ON u.id = tm."userId"
+      WHERE tm."teamId" = ? AND tm."userId" = ?
       LIMIT 1
     `,
     [teamId, userId],
@@ -114,7 +114,7 @@ export async function PATCH(request: Request, { params }: Params) {
       `
         UPDATE "TeamMember"
         SET "allocatedDailyLimit" = ?, "updatedAt" = CURRENT_TIMESTAMP
-        WHERE teamId = ? AND userId = ?
+        WHERE "teamId" = ? AND "userId" = ?
       `,
       [dailyEmailLimit, params.id, params.memberId],
     );
@@ -163,7 +163,7 @@ export async function DELETE(request: Request, { params }: Params) {
     `,
     [params.memberId],
   );
-  executeSql('DELETE FROM "TeamMember" WHERE teamId = ? AND userId = ?', [params.id, params.memberId]);
+  executeSql('DELETE FROM "TeamMember" WHERE "teamId" = ? AND "userId" = ?', [params.id, params.memberId]);
 
   await recordAuditEvent({
     actorUserId: auth.user.userId,

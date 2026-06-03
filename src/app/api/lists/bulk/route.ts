@@ -47,10 +47,10 @@ export async function POST(request: Request) {
     isArchived: number | boolean;
   }>(
     `
-      SELECT id, name, description, CASE WHEN COALESCE(isDefaultTestList, FALSE) THEN 1 ELSE 0 END as isDefaultTestList,
-             CASE WHEN COALESCE(isArchived, FALSE) THEN 1 ELSE 0 END as isArchived
+      SELECT id, name, description, CASE WHEN COALESCE("isDefaultTestList", FALSE) THEN 1 ELSE 0 END as "isDefaultTestList",
+             CASE WHEN COALESCE("isArchived", FALSE) THEN 1 ELSE 0 END as "isArchived"
       FROM "List"
-      WHERE userId = ? AND id IN (${placeholders(listIds.length)})
+      WHERE "userId" = ? AND id IN (${placeholders(listIds.length)})
     `,
     [auth.user.userId, ...listIds],
   );
@@ -66,8 +66,8 @@ export async function POST(request: Request) {
     executeSql(
       `
         UPDATE "List"
-        SET isArchived = ?, isDefaultTestList = CASE WHEN ? = 1 THEN FALSE ELSE isDefaultTestList END, updatedAt = CURRENT_TIMESTAMP
-        WHERE userId = ? AND id IN (${placeholders(listIds.length)})
+        SET "isArchived" = ?, "isDefaultTestList" = CASE WHEN ? = 1 THEN FALSE ELSE "isDefaultTestList" END, "updatedAt" = CURRENT_TIMESTAMP
+        WHERE "userId" = ? AND id IN (${placeholders(listIds.length)})
       `,
       [archived, archived, auth.user.userId, ...listIds],
     );
@@ -98,7 +98,7 @@ export async function POST(request: Request) {
     executeSql(
       `
         INSERT INTO "List" (
-          id, name, description, userId, isDefaultTestList, isArchived, createdAt, updatedAt
+          id, name, description, "userId", "isDefaultTestList", "isArchived", "createdAt", "updatedAt"
         ) VALUES (?, ?, ?, ?, FALSE, FALSE, ?, ?)
       `,
       [newId, newName, source.description, auth.user.userId, createdAt, createdAt],
@@ -111,10 +111,10 @@ export async function POST(request: Request) {
       status: string;
     }>(
       `
-        SELECT email, firstName, lastName, status
+        SELECT email, "firstName", "lastName", status
         FROM "Contact"
-        WHERE listId = ?
-        ORDER BY createdAt ASC
+        WHERE "listId" = ?
+        ORDER BY "createdAt" ASC
       `,
       [source.id],
     );
@@ -128,7 +128,7 @@ export async function POST(request: Request) {
       executeSql(
         `
           INSERT INTO "Contact" (
-            id, email, firstName, lastName, status, listId, createdAt, updatedAt
+            id, email, "firstName", "lastName", status, "listId", "createdAt", "updatedAt"
           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         `,
         [
@@ -180,15 +180,15 @@ export async function POST(request: Request) {
             l.id,
             l.name,
             l.description,
-            l.userId,
-            CASE WHEN COALESCE(l.isDefaultTestList, FALSE) THEN 1 ELSE 0 END as isDefaultTestList,
-            CASE WHEN COALESCE(l.isArchived, FALSE) THEN 1 ELSE 0 END as isArchived,
-            l.createdAt,
-            l.updatedAt,
-            (SELECT COUNT(*) FROM "Contact" c WHERE c.listId = l.id) as contactsCount,
-            (SELECT COUNT(*) FROM "CampaignList" cl WHERE cl.listId = l.id) as campaignsCount
+            l."userId",
+            CASE WHEN COALESCE(l."isDefaultTestList", FALSE) THEN 1 ELSE 0 END as "isDefaultTestList",
+            CASE WHEN COALESCE(l."isArchived", FALSE) THEN 1 ELSE 0 END as "isArchived",
+            l."createdAt",
+            l."updatedAt",
+            (SELECT COUNT(*) FROM "Contact" c WHERE c."listId" = l.id) as contactsCount,
+            (SELECT COUNT(*) FROM "CampaignList" cl WHERE cl."listId" = l.id) as campaignsCount
           FROM "List" l
-          WHERE l.id = ? AND l.userId = ?
+          WHERE l.id = ? AND l."userId" = ?
           LIMIT 1
         `,
         [id, auth.user.userId],

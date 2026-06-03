@@ -13,7 +13,7 @@ export async function GET(request: Request) {
   if ('error' in auth) return auth.error;
   const url = new URL(request.url);
   const includeArchived = url.searchParams.get('includeArchived') === 'true' || url.searchParams.get('includeArchived') === '1';
-  const ownerScope = buildOwnerScope(auth.user, 'c.userId');
+  const ownerScope = buildOwnerScope(auth.user, 'c."userId"');
 
   const campaigns = queryRows<{
     id: string;
@@ -46,14 +46,14 @@ export async function GET(request: Request) {
         c.id,
         c.name,
         c.subject,
-        c.bodyHtml,
+        c."bodyHtml",
         c.status,
         c.provider,
-        CASE WHEN COALESCE(c.isArchived, FALSE) THEN 1 ELSE 0 END as isArchived,
-        c.totalRecipients,
-        c.sentCount,
-        c.failedCount,
-        c.skippedCount,
+        CASE WHEN COALESCE(c."isArchived", FALSE) THEN 1 ELSE 0 END as "isArchived",
+        c."totalRecipients",
+        c."sentCount",
+        c."failedCount",
+        c."skippedCount",
         c."startedAt",
         c."finishedAt",
         c."durationSeconds",
@@ -84,7 +84,7 @@ export async function GET(request: Request) {
     count: number;
   }>(
     `
-      SELECT e."campaignId" as campaignId, e.type as type, COUNT(*) as count
+      SELECT e."campaignId" as "campaignId", e.type as type, COUNT(*) as count
       FROM "Event" e
       INNER JOIN "Campaign" c ON c.id = e."campaignId"
       WHERE ${ownerScope.clause}
@@ -101,10 +101,10 @@ export async function GET(request: Request) {
   }>(
     `
       SELECT
-        cl.campaignId as campaignId,
-        cl.listId as listId,
+        cl."campaignId" as "campaignId",
+        cl."listId" as "listId",
         l.name as listName,
-        CASE WHEN COALESCE(l.isDefaultTestList, FALSE) THEN 1 ELSE 0 END as isDefaultTestList
+        CASE WHEN COALESCE(l."isDefaultTestList", FALSE) THEN 1 ELSE 0 END as "isDefaultTestList"
       FROM "CampaignList" cl
       INNER JOIN "Campaign" c ON c.id = cl."campaignId"
       INNER JOIN "List" l ON l.id = cl."listId"
@@ -185,7 +185,7 @@ export async function POST(request: Request) {
     `
       SELECT id
       FROM "List"
-      WHERE userId = ? AND id IN (${listIds.map(() => '?').join(', ')})
+      WHERE "userId" = ? AND id IN (${listIds.map(() => '?').join(', ')})
     `,
     [auth.user.userId, ...listIds],
   );
@@ -193,7 +193,7 @@ export async function POST(request: Request) {
 
   if (templateId) {
     const template = queryRow<{ id: string }>(
-      'SELECT id FROM "Template" WHERE id = ? AND userId = ? LIMIT 1',
+      'SELECT id FROM "Template" WHERE id = ? AND "userId" = ? LIMIT 1',
       [templateId, auth.user.userId],
     );
     if (!template) return fail('Template not found.', 404);
@@ -206,10 +206,10 @@ export async function POST(request: Request) {
   executeSql(
     `
       INSERT INTO "Campaign" (
-        id, name, subject, bodyHtml, status, provider,
-        totalRecipients, sentCount, failedCount, skippedCount,
-        startedAt, finishedAt, durationSeconds,
-        userId, listId, templateId, createdAt, updatedAt
+        id, name, subject, "bodyHtml", status, provider,
+        "totalRecipients", "sentCount", "failedCount", "skippedCount",
+        "startedAt", "finishedAt", "durationSeconds",
+        "userId", "listId", "templateId", "createdAt", "updatedAt"
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
     [
@@ -237,7 +237,7 @@ export async function POST(request: Request) {
   try {
   replaceCampaignLists(id, auth.user.userId, listIds);
   } catch (error) {
-    executeSql('DELETE FROM "Campaign" WHERE id = ? AND userId = ?', [id, auth.user.userId]);
+    executeSql('DELETE FROM "Campaign" WHERE id = ? AND "userId" = ?', [id, auth.user.userId]);
     return fail(error instanceof Error ? error.message : 'Failed to create campaign lists.', 400);
   }
 

@@ -35,7 +35,7 @@ function getSortClause(sort: string, order: 'asc' | 'desc') {
 
 async function assertOwnedList(listId: string, userId: string) {
   return queryRow<{ id: string }>(
-    'SELECT id FROM "List" WHERE id = ? AND userId = ? LIMIT 1',
+    'SELECT id FROM "List" WHERE id = ? AND "userId" = ? LIMIT 1',
     [listId, userId],
   );
 }
@@ -52,7 +52,7 @@ export async function GET(request: Request) {
   const searchClause = search
     ? "AND (LOWER(c.email) LIKE ? OR LOWER(COALESCE(c.\"firstName\", '')) LIKE ? OR LOWER(COALESCE(c.\"lastName\", '')) LIKE ? OR LOWER(c.status) LIKE ?)"
     : '';
-  const ownerScope = buildOwnerScope(auth.user, 'l.userId');
+  const ownerScope = buildOwnerScope(auth.user, 'l."userId"');
 
   const countParams = listId
     ? [...ownerScope.params, listId, ...(search ? [searchTerm, searchTerm, searchTerm, searchTerm] : [])]
@@ -62,9 +62,9 @@ export async function GET(request: Request) {
     `
       SELECT COUNT(*) as total
       FROM "Contact" c
-      INNER JOIN "List" l ON l.id = c.listId
+      INNER JOIN "List" l ON l.id = c."listId"
       WHERE ${ownerScope.clause}
-      ${listId ? 'AND c.listId = ?' : ''}
+      ${listId ? 'AND c."listId" = ?' : ''}
       ${searchClause}
     `,
     countParams,
@@ -75,22 +75,22 @@ export async function GET(request: Request) {
       SELECT
         c.id,
         c.email,
-        c.firstName,
-        c.lastName,
+        c."firstName",
+        c."lastName",
         c.status,
-        c.createdAt,
-        c.updatedAt,
-        l.id as listId,
+        c."createdAt",
+        c."updatedAt",
+        l.id as "listId",
         l.name as listName,
-        l.userId as ownerUserId,
+        l."userId" as ownerUserId,
         u.email as ownerEmail,
         u.name as ownerName,
         u.role as ownerRole
       FROM "Contact" c
-      INNER JOIN "List" l ON l.id = c.listId
-      INNER JOIN "User" u ON u.id = l.userId
+      INNER JOIN "List" l ON l.id = c."listId"
+      INNER JOIN "User" u ON u.id = l."userId"
       WHERE ${ownerScope.clause}
-      ${listId ? 'AND c.listId = ?' : ''}
+      ${listId ? 'AND c."listId" = ?' : ''}
       ${searchClause}
       ORDER BY ${getSortClause(sort, order)}
       LIMIT ? OFFSET ?
@@ -160,10 +160,10 @@ export async function POST(request: Request) {
 
   const existingContact = queryRow<{ id: string; listId: string }>(
     `
-      SELECT c.id, c.listId
+      SELECT c.id, c."listId"
       FROM "Contact" c
-      INNER JOIN "List" l ON l.id = c.listId
-      WHERE c.email = ? AND l.userId = ?
+      INNER JOIN "List" l ON l.id = c."listId"
+      WHERE c.email = ? AND l."userId" = ?
       LIMIT 1
     `,
     [email, auth.user.userId],
@@ -181,7 +181,7 @@ export async function POST(request: Request) {
   const id = crypto.randomUUID().replace(/-/g, '');
   const createdAt = new Date().toISOString();
   executeSql(
-    'INSERT INTO "Contact" (id, listId, email, firstName, lastName, status, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+    'INSERT INTO "Contact" (id, "listId", email, "firstName", "lastName", status, "createdAt", "updatedAt") VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
     [id, listId, email, firstName || null, lastName || null, 'SUBSCRIBED', createdAt, createdAt],
   );
 
@@ -253,8 +253,8 @@ export async function PUT(request: Request) {
       `
         SELECT c.id
         FROM "Contact" c
-        INNER JOIN "List" l ON l.id = c.listId
-        WHERE c.email = ? AND l.userId = ?
+        INNER JOIN "List" l ON l.id = c."listId"
+        WHERE c.email = ? AND l."userId" = ?
         LIMIT 1
       `,
       [email, auth.user.userId],
@@ -269,7 +269,7 @@ export async function PUT(request: Request) {
     const id = crypto.randomUUID().replace(/-/g, '');
     const createdAt = new Date().toISOString();
     executeSql(
-      'INSERT INTO "Contact" (id, listId, email, firstName, lastName, status, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      'INSERT INTO "Contact" (id, "listId", email, "firstName", "lastName", status, "createdAt", "updatedAt") VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
       [id, listId, email, firstRaw || null, lastRaw || null, 'SUBSCRIBED', createdAt, createdAt],
     );
     created += 1;

@@ -28,8 +28,8 @@ function getSortClause(sort: string, order: 'asc' | 'desc') {
   const allowedSorts: Record<string, string> = {
     createdAt: `l."createdAt" ${order.toUpperCase()}`,
     name: `LOWER(l.name) ${order.toUpperCase()}, l."createdAt" DESC`,
-    contactsCount: `(SELECT COUNT(*) FROM "Contact" c WHERE c.listId = l.id) ${order.toUpperCase()}, l."createdAt" DESC`,
-    campaignsCount: `(SELECT COUNT(*) FROM "CampaignList" cl WHERE cl.listId = l.id) ${order.toUpperCase()}, l."createdAt" DESC`,
+    contactsCount: `(SELECT COUNT(*) FROM "Contact" c WHERE c."listId" = l.id) ${order.toUpperCase()}, l."createdAt" DESC`,
+    campaignsCount: `(SELECT COUNT(*) FROM "CampaignList" cl WHERE cl."listId" = l.id) ${order.toUpperCase()}, l."createdAt" DESC`,
   };
 
   return allowedSorts[sort] || allowedSorts.createdAt;
@@ -50,10 +50,10 @@ export async function GET(request: Request) {
     const searchClause = search
       ? "AND (LOWER(l.name) LIKE ? OR LOWER(COALESCE(l.description, '')) LIKE ?)"
       : '';
-    const archivedClause = includeArchived ? '' : 'AND COALESCE(l.isArchived, FALSE) = FALSE';
+    const archivedClause = includeArchived ? '' : 'AND COALESCE(l."isArchived", FALSE) = FALSE';
     const ownerScope = ownerSelfOnly
-      ? { clause: 'l.userId = ?', params: [auth.user.userId] as unknown[], scope: 'SELF' as const }
-      : buildOwnerScope(auth.user, 'l.userId');
+      ? { clause: 'l."userId" = ?', params: [auth.user.userId] as unknown[], scope: 'SELF' as const }
+      : buildOwnerScope(auth.user, 'l."userId"');
     const params = search ? [...ownerScope.params, searchTerm, searchTerm] : [...ownerScope.params];
 
     const totalRow = queryRow<{ total: number }>(
@@ -87,18 +87,18 @@ export async function GET(request: Request) {
           l.id,
           l.name,
           l.description,
-          l.userId,
-          CASE WHEN COALESCE(l.isDefaultTestList, FALSE) THEN 1 ELSE 0 END as isDefaultTestList,
-          CASE WHEN COALESCE(l.isArchived, FALSE) THEN 1 ELSE 0 END as isArchived,
-          l.createdAt,
-          l.updatedAt,
-          (SELECT COUNT(*) FROM "Contact" c WHERE c.listId = l.id) as contactsCount,
-          (SELECT COUNT(*) FROM "CampaignList" cl WHERE cl.listId = l.id) as campaignsCount,
+          l."userId",
+          CASE WHEN COALESCE(l."isDefaultTestList", FALSE) THEN 1 ELSE 0 END as "isDefaultTestList",
+          CASE WHEN COALESCE(l."isArchived", FALSE) THEN 1 ELSE 0 END as "isArchived",
+          l."createdAt",
+          l."updatedAt",
+          (SELECT COUNT(*) FROM "Contact" c WHERE c."listId" = l.id) as contactsCount,
+          (SELECT COUNT(*) FROM "CampaignList" cl WHERE cl."listId" = l.id) as campaignsCount,
           u.email as ownerEmail,
           u.name as ownerName,
           u.role as ownerRole
         FROM "List" l
-        INNER JOIN "User" u ON u.id = l.userId
+        INNER JOIN "User" u ON u.id = l."userId"
         WHERE ${ownerScope.clause}
         ${archivedClause}
         ${searchClause}
@@ -177,7 +177,7 @@ export async function POST(request: Request) {
   const createdAt = new Date().toISOString();
 
   executeSql(
-    'INSERT INTO "List" (id, name, description, userId, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?)',
+    'INSERT INTO "List" (id, name, description, "userId", "createdAt", "updatedAt") VALUES (?, ?, ?, ?, ?, ?)',
     [id, name, description || null, auth.user.userId, createdAt, createdAt],
   );
 
@@ -201,7 +201,7 @@ export async function POST(request: Request) {
   });
 
   const list = queryRow(
-    'SELECT * FROM "List" WHERE id = ? AND userId = ? LIMIT 1',
+    'SELECT * FROM "List" WHERE id = ? AND "userId" = ? LIMIT 1',
     [id, auth.user.userId],
   );
 

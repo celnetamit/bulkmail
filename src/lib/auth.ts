@@ -106,14 +106,14 @@ async function getUserRecordFromToken(token: string | null) {
     imageUploadLimitKb: number | null;
     lastLoginAt: string | null;
   }>(
-    'SELECT id, email, name, role, isActive, dailyEmailLimit, imageUploadLimitKb, lastLoginAt FROM "User" WHERE id = ? LIMIT 1',
+    'SELECT id, email, name, role, "isActive", "dailyEmailLimit", "imageUploadLimitKb", "lastLoginAt" FROM "User" WHERE id = ? LIMIT 1',
     [session.userId],
   );
 
   if (!user || !Boolean(user.isActive)) return null;
 
   if (isAdminEmailAllowed(user.email) && user.role !== 'ADMIN') {
-    executeSql('UPDATE "User" SET role = ?, updatedAt = CURRENT_TIMESTAMP WHERE id = ?', ['ADMIN', user.id]);
+    executeSql('UPDATE "User" SET role = ?, "updatedAt" = CURRENT_TIMESTAMP WHERE id = ?', ['ADMIN', user.id]);
     user.role = 'ADMIN';
   }
 

@@ -92,7 +92,7 @@ function buildDetections(metrics: {
 
 export async function getUserAnalyticsSummary(userId: string, options?: { campaignId?: string; listId?: string; from?: Date | null; to?: Date | null; role?: string; }) {
   const role = options?.role || 'USER';
-  const campaignOwnerScope = buildOwnerScopeForRole(userId, role, 'c.userId');
+  const campaignOwnerScope = buildOwnerScopeForRole(userId, role, 'c."userId"');
   const filters: string[] = [campaignOwnerScope.clause];
   const params: unknown[] = [...campaignOwnerScope.params];
 
@@ -102,7 +102,7 @@ export async function getUserAnalyticsSummary(userId: string, options?: { campai
   }
 
   if (options?.listId) {
-    filters.push('(c.listId = ? OR c.id IN (SELECT campaignId FROM "CampaignList" WHERE listId = ?))');
+    filters.push('(c."listId" = ? OR c.id IN (SELECT "campaignId" FROM "CampaignList" WHERE "listId" = ?))');
     params.push(options.listId, options.listId);
   }
 
@@ -140,17 +140,17 @@ export async function getUserAnalyticsSummary(userId: string, options?: { campai
     `
       SELECT
         COALESCE(SUM(CASE
-          WHEN lower(COALESCE(e.providerEventId, '')) LIKE '%:complaint:%'
-            OR lower(COALESCE(e.providerEventId, '')) LIKE '%:complained:%'
-            OR lower(COALESCE(e.providerEventId, '')) LIKE '%:spam:%'
-            OR lower(COALESCE(e.providerEventId, '')) LIKE '%:spam_report:%'
+          WHEN lower(COALESCE(e."providerEventId", '')) LIKE '%:complaint:%'
+            OR lower(COALESCE(e."providerEventId", '')) LIKE '%:complained:%'
+            OR lower(COALESCE(e."providerEventId", '')) LIKE '%:spam:%'
+            OR lower(COALESCE(e."providerEventId", '')) LIKE '%:spam_report:%'
           THEN 1 ELSE 0
         END), 0) as spamComplaints,
         COALESCE(SUM(CASE
-          WHEN lower(COALESCE(e.providerEventId, '')) LIKE '%:blocked:%'
-            OR lower(COALESCE(e.providerEventId, '')) LIKE '%:block:%'
-            OR lower(COALESCE(e.providerEventId, '')) LIKE '%:reject:%'
-            OR lower(COALESCE(e.providerEventId, '')) LIKE '%:rejected:%'
+          WHEN lower(COALESCE(e."providerEventId", '')) LIKE '%:blocked:%'
+            OR lower(COALESCE(e."providerEventId", '')) LIKE '%:block:%'
+            OR lower(COALESCE(e."providerEventId", '')) LIKE '%:reject:%'
+            OR lower(COALESCE(e."providerEventId", '')) LIKE '%:rejected:%'
           THEN 1 ELSE 0
         END), 0) as providerBlocks
       FROM "Event" e
@@ -160,7 +160,7 @@ export async function getUserAnalyticsSummary(userId: string, options?: { campai
     params,
   );
 
-  const contactOwnerScope = buildOwnerScopeForRole(userId, role, 'l.userId');
+  const contactOwnerScope = buildOwnerScopeForRole(userId, role, 'l."userId"');
   const contactFilters: string[] = [contactOwnerScope.clause];
   const contactParams: unknown[] = [...contactOwnerScope.params];
 
@@ -170,11 +170,11 @@ export async function getUserAnalyticsSummary(userId: string, options?: { campai
   } else if (options?.campaignId) {
     contactFilters.push(`
       l.id IN (
-        SELECT listId FROM "CampaignList" WHERE campaignId = ?
+        SELECT "listId" FROM "CampaignList" WHERE "campaignId" = ?
         UNION
         SELECT l.id
         FROM "List" l
-        INNER JOIN "Campaign" c ON c.listId = l.id
+        INNER JOIN "Campaign" c ON c."listId" = l.id
         WHERE c.id = ? AND ${campaignOwnerScope.clause}
       )
     `);
@@ -194,7 +194,7 @@ export async function getUserAnalyticsSummary(userId: string, options?: { campai
         COALESCE(SUM(CASE WHEN c.status = 'BOUNCED' THEN 1 ELSE 0 END), 0) as bouncedContacts,
         COALESCE(SUM(CASE WHEN c.status = 'UNSUBSCRIBED' THEN 1 ELSE 0 END), 0) as unsubscribedContacts
       FROM "Contact" c
-      INNER JOIN "List" l ON l.id = c.listId
+      INNER JOIN "List" l ON l.id = c."listId"
       WHERE ${contactFilters.join(' AND ')}
     `,
     contactParams,

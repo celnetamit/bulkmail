@@ -1248,19 +1248,40 @@ p {
   position: relative;
   width: 100%;
 }
+
 .searchable-multiselect__control {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 0.5rem;
-  padding: 0.6rem 0.75rem;
+  min-height: 44px;
+  padding: 0.45rem 0.65rem;
   border: 1px solid var(--border-color);
   border-radius: 0.6rem;
-  background: var(--card-bg);
-  color: var(--text-color);
+  background: #ffffff;
+  color: #0f172a;
   cursor: pointer;
 }
-.searchable-multiselect__placeholder { color: var(--muted-text); }
+
+.searchable-multiselect__control:focus {
+  outline: 2px solid rgba(37, 99, 235, 0.2);
+  border-color: rgba(37, 99, 235, 0.55);
+}
+
+.searchable-multiselect__value {
+  min-width: 0;
+}
+
+.searchable-multiselect__placeholder {
+  color: #64748b;
+}
+
+.searchable-multiselect__chev {
+  flex: 0 0 auto;
+  color: #475569;
+  font-size: 0.9rem;
+}
+
 .searchable-multiselect__menu {
   position: absolute;
   left: 0;
@@ -1269,34 +1290,94 @@ p {
   z-index: 40;
   border: 1px solid var(--border-color);
   border-radius: 0.6rem;
-  background: var(--card-bg);
-  max-height: 14rem;
-  overflow: auto;
+  background: #ffffff;
+  color: #0f172a;
+  box-shadow: 0 18px 45px -28px rgba(15, 23, 42, 0.48), 0 8px 22px -18px rgba(15, 23, 42, 0.32);
   padding: 0.5rem;
 }
+
+.searchable-multiselect__menu-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.1rem 0.1rem 0.5rem;
+  color: #64748b;
+  font-size: 0.82rem;
+}
+
+.searchable-multiselect__clear {
+  border: 0;
+  background: transparent;
+  color: #2563eb;
+  cursor: pointer;
+  font-weight: 600;
+}
+
 .searchable-multiselect__search {
   width: 100%;
   padding: 0.5rem;
   margin-bottom: 0.5rem;
   border: 1px solid var(--border-color);
   border-radius: 0.5rem;
-  background: transparent;
-  color: var(--text-color);
+  background: #ffffff;
+  color: #0f172a;
 }
+
+.searchable-multiselect__search::placeholder {
+  color: #94a3b8;
+}
+
+.searchable-multiselect__list {
+  display: grid;
+  gap: 0.35rem;
+  max-height: 14rem;
+  overflow: auto;
+  padding-right: 0.1rem;
+}
+
 .searchable-multiselect__item {
   display: flex;
   gap: 0.6rem;
-  padding: 0.45rem 0.5rem;
+  padding: 0.6rem 0.65rem;
   align-items: center;
   border-radius: 0.45rem;
+  border: 1px solid transparent;
+  color: #0f172a;
   cursor: pointer;
 }
-.searchable-multiselect__item:hover { background: rgba(59,130,246,0.06); }
-.searchable-multiselect__item--selected { font-weight: 600; }
 
-.searchable-multiselect__control:focus {
-  outline: 2px solid rgba(59,130,246,0.25);
+.searchable-multiselect__item:hover {
+  background: #f8fafc;
+  border-color: #dbeafe;
 }
+
+.searchable-multiselect__item--selected {
+  background: #eff6ff;
+  border-color: #93c5fd;
+  font-weight: 600;
+}
+
+.searchable-multiselect__item input {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  accent-color: #2563eb;
+}
+
+.searchable-multiselect__item-body {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.searchable-multiselect__item-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .searchable-multiselect__tags {
   display: flex;
   gap: 0.35rem;
@@ -1309,21 +1390,40 @@ p {
   gap: 0.4rem;
   padding: 0.25rem 0.45rem;
   border-radius: 999px;
-  background: rgba(59,130,246,0.12);
-  color: var(--text-color);
-  border: 1px solid rgba(59,130,246,0.18);
+  background: #eff6ff;
+  color: #1e3a8a;
+  border: 1px solid #bfdbfe;
   font-size: 0.85rem;
 }
+
 .searchable-multiselect__tag-remove {
   background: transparent;
   border: none;
-  color: var(--text-color);
+  color: #1d4ed8;
   cursor: pointer;
   font-weight: 700;
   padding: 0 0.25rem;
 }
-.searchable-multiselect__tag-remove:focus { outline: none; }
-.searchable-multiselect__item:focus { outline: 2px solid rgba(59,130,246,0.12); }
+
+.searchable-multiselect__tag-remove:focus {
+  outline: 2px solid rgba(37, 99, 235, 0.25);
+  border-radius: 0.25rem;
+}
+
+.searchable-multiselect__item:focus {
+  outline: 2px solid rgba(37, 99, 235, 0.2);
+}
+
+.searchable-multiselect__empty {
+  padding: 0.7rem 0.65rem;
+  color: #64748b;
+  font-size: 0.92rem;
+}
+
+.searchable-multiselect .badge-success {
+  background: #dcfce7;
+  color: #166534;
+}
 
 .campaign-risk-panel {
   padding: 1rem;

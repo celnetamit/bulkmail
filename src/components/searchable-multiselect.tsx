@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
 
 type List = { id: string; name: string; isDefaultTestList?: number | boolean };
 
@@ -12,6 +12,7 @@ type Props = {
 };
 
 export default function SearchableMultiSelect({ lists, selectedIds, onChange, placeholder }: Props) {
+  const listboxId = useId();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [focusedIndex, setFocusedIndex] = useState<number>(-1);
@@ -28,55 +29,68 @@ export default function SearchableMultiSelect({ lists, selectedIds, onChange, pl
     return () => window.removeEventListener('click', handleClick);
   }, []);
 
-  const filtered = lists.filter((l) => l.name.toLowerCase().includes(query.toLowerCase()));
+  const normalizedQuery = query.trim().toLowerCase();
+  const filtered = useMemo(
+    () => lists.filter((list) => list.name.toLowerCase().includes(normalizedQuery)),
+    [lists, normalizedQuery],
+  );
+  const selectedItems = useMemo(
+    () => selectedIds.map((id) => lists.find((list) => list.id === id)).filter((list): list is List => Boolean(list)),
+    [lists, selectedIds],
+  );
 
   function toggle(id: string) {
     if (selectedIds.includes(id)) onChange(selectedIds.filter((s) => s !== id));
     else onChange([...selectedIds, id]);
   }
 
-  const selectedCount = selectedIds.length;
-  const displayText = selectedCount === 0 ? (placeholder || 'Select lists...') : `${selectedCount} selected`;
+  function openMenu() {
+    setOpen(true);
+    setTimeout(() => searchRef.current?.focus(), 20);
+  }
 
   return (
     <div className="searchable-multiselect" ref={ref}>
       <div
         className="searchable-multiselect__control"
         tabIndex={0}
-        onClick={() => { setOpen((s) => !s); setTimeout(() => searchRef.current?.focus(), 20); }}
-        onKeyDown={(e) => {
-          if (e.key === 'ArrowDown') {
-            e.preventDefault();
-            setOpen(true);
-            setTimeout(() => searchRef.current?.focus(), 20);
+        onClick={() => {
+          if (open) {
+            setOpen(false);
+            return;
           }
-          if (e.key === 'Backspace' && query === '' && selectedIds.length > 0) {
-            // remove last selected
+          openMenu();
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowDown') {
+            e.preventDefault();
+            openMenu();
+          }
+          if (e.key === 'Backspace' && selectedIds.length > 0) {
             onChange(selectedIds.slice(0, -1));
           }
         }}
-        role="button"
+        role="combobox"
+        aria-controls={listboxId}
+        aria-expanded={open}
+        aria-haspopup="listbox"
       >
         <div className="searchable-multiselect__value">
-          {selectedIds.length > 0 ? (
+          {selectedItems.length > 0 ? (
             <div className="searchable-multiselect__tags">
-              {selectedIds.map((id) => {
-                const item = lists.find((l) => l.id === id);
-                if (!item) return null;
-                return (
-                  <span key={id} className="searchable-multiselect__tag">
+              {selectedItems.map((item) => (
+                  <span key={item.id} className="searchable-multiselect__tag">
                     <span className="searchable-multiselect__tag-label">{item.name}</span>
                     <button
                       type="button"
                       className="searchable-multiselect__tag-remove"
-                      onClick={(ev) => { ev.stopPropagation(); onChange(selectedIds.filter((s) => s !== id)); }}
+                      onClick={(ev) => { ev.stopPropagation(); onChange(selectedIds.filter((s) => s !== item.id)); }}
                       aria-label={`Remove ${item.name}`}
                     >
                       ×
                     </button>
                   </span>
-                );
-              })}
+                ))}
             </div>
           ) : (
             <span className="searchable-multiselect__placeholder">{placeholder || 'Select lists...'}</span>
@@ -86,7 +100,15 @@ export default function SearchableMultiSelect({ lists, selectedIds, onChange, pl
       </div>
 
       {open ? (
-        <div className="searchable-multiselect__menu">
+        <div className="searchable-multiselect__menu" id={listboxId}>
+          <div className="searchable-multiselect__menu-head">
+            <span>{selectedIds.length} selected</span>
+            {selectedIds.length > 0 ? (
+              <button type="button" className="searchable-multiselect__clear" onClick={() => onChange([])}>
+                Clear
+              </button>
+            ) : null}
+          </div>
           <input
             ref={searchRef}
             className="searchable-multiselect__search"
@@ -107,49 +129,58 @@ export default function SearchableMultiSelect({ lists, selectedIds, onChange, pl
               if (e.key === 'Escape') {
                 setOpen(false);
               }
+              if (e.key === 'Enter' && filtered[focusedIndex >= 0 ? focusedIndex : 0]) {
+                e.preventDefault();
+                toggle(filtered[focusedIndex >= 0 ? focusedIndex : 0].id);
+              }
             }}
             autoFocus
           />
           {filtered.length === 0 ? (
-            <div className="form-note">No lists match your search.</div>
+            <div className="searchable-multiselect__empty">No lists match your search.</div>
           ) : (
-            filtered.map((l, idx) => {
-              const sel = selectedIds.includes(l.id);
-              return (
-                <div
-                  key={l.id}
-                  ref={(el) => { itemsRef.current[idx] = el; }}
-                  tabIndex={0}
-                  className={`searchable-multiselect__item ${sel ? 'searchable-multiselect__item--selected' : ''}`}
-                  onClick={() => toggle(l.id)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      e.preventDefault();
-                      toggle(l.id);
-                    }
-                    if (e.key === 'ArrowDown') {
-                      e.preventDefault();
-                      const next = Math.min(idx + 1, filtered.length - 1);
-                      itemsRef.current[next]?.focus();
-                    }
-                    if (e.key === 'ArrowUp') {
-                      e.preventDefault();
-                      const prev = Math.max(idx - 1, 0);
-                      itemsRef.current[prev]?.focus();
-                    }
-                    if (e.key === 'Escape') {
-                      setOpen(false);
-                    }
-                  }}
-                >
-                  <input type="checkbox" checked={sel} readOnly />
-                  <div style={{ display: 'flex', gap: '.5rem', alignItems: 'center' }}>
-                    <span style={{ minWidth: 0 }}>{l.name}</span>
-                    {l.isDefaultTestList ? <span className="badge badge-success">Test list</span> : null}
+            <div className="searchable-multiselect__list" role="listbox" aria-multiselectable="true">
+              {filtered.map((l, idx) => {
+                const sel = selectedIds.includes(l.id);
+                return (
+                  <div
+                    key={l.id}
+                    ref={(el) => { itemsRef.current[idx] = el; }}
+                    tabIndex={0}
+                    className={`searchable-multiselect__item ${sel ? 'searchable-multiselect__item--selected' : ''}`}
+                    onClick={() => toggle(l.id)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        toggle(l.id);
+                      }
+                      if (e.key === 'ArrowDown') {
+                        e.preventDefault();
+                        const next = Math.min(idx + 1, filtered.length - 1);
+                        itemsRef.current[next]?.focus();
+                      }
+                      if (e.key === 'ArrowUp') {
+                        e.preventDefault();
+                        const prev = Math.max(idx - 1, 0);
+                        if (idx === 0) searchRef.current?.focus();
+                        else itemsRef.current[prev]?.focus();
+                      }
+                      if (e.key === 'Escape') {
+                        setOpen(false);
+                      }
+                    }}
+                    role="option"
+                    aria-selected={sel}
+                  >
+                    <input type="checkbox" checked={sel} readOnly />
+                    <div className="searchable-multiselect__item-body">
+                      <span className="searchable-multiselect__item-name">{l.name}</span>
+                      {l.isDefaultTestList ? <span className="badge badge-success">Test list</span> : null}
+                    </div>
                   </div>
-                </div>
-              );
-            })
+                );
+              })}
+            </div>
           )}
         </div>
       ) : null}

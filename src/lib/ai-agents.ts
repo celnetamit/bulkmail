@@ -348,21 +348,21 @@ export async function getAiAgentProfiles(): Promise<AiAgentProfileView[]> {
   const rows = queryRows<StoredAiAgentProfile>(
     `
       SELECT
-        agentKey,
+        "agentKey",
         label,
         description,
         provider,
         model,
-        baseUrl,
-        apiKeyEncrypted,
-        systemPrompt,
-        temperature,
-        maxOutputTokens,
-        isEnabled,
-        createdAt,
-        updatedAt
+        "baseUrl",
+        "apiKeyEncrypted",
+        "systemPrompt",
+        "temperature",
+        "maxOutputTokens",
+        "isEnabled",
+        "createdAt",
+        "updatedAt"
       FROM "AiAgentProfile"
-      ORDER BY agentKey ASC
+      ORDER BY "agentKey" ASC
     `,
   );
 
@@ -377,7 +377,7 @@ export async function saveAiAgentProfiles(
 
   for (const profile of profiles) {
     const current = queryRow<StoredAiAgentProfile>(
-      'SELECT agentKey, label, description, provider, model, baseUrl, apiKeyEncrypted, systemPrompt, temperature, maxOutputTokens, isEnabled, createdAt, updatedAt FROM "AiAgentProfile" WHERE agentKey = ? LIMIT 1',
+      'SELECT "agentKey", label, description, provider, model, "baseUrl", "apiKeyEncrypted", "systemPrompt", "temperature", "maxOutputTokens", "isEnabled", "createdAt", "updatedAt" FROM "AiAgentProfile" WHERE "agentKey" = ? LIMIT 1',
       [profile.agentKey],
     );
 
@@ -463,21 +463,21 @@ export async function resolveAiAgentProfile(agentKey: AiAgentKey): Promise<AiAge
   const row = queryRow<StoredAiAgentProfile>(
     `
       SELECT
-        agentKey,
+        "agentKey",
         label,
         description,
         provider,
         model,
-        baseUrl,
-        apiKeyEncrypted,
-        systemPrompt,
-        temperature,
-        maxOutputTokens,
-        isEnabled,
-        createdAt,
-        updatedAt
+        "baseUrl",
+        "apiKeyEncrypted",
+        "systemPrompt",
+        "temperature",
+        "maxOutputTokens",
+        "isEnabled",
+        "createdAt",
+        "updatedAt"
       FROM "AiAgentProfile"
-      WHERE agentKey = ?
+      WHERE "agentKey" = ?
       LIMIT 1
     `,
     [agentKey],
@@ -515,10 +515,10 @@ export async function listAgentConversations(userId: string, agentKey: AiAgentKe
   ensureAiAgentsSchema();
   return queryRows<AgentConversationRow>(
     `
-      SELECT id, agentKey, title, userId, lastMessageAt, createdAt, updatedAt
+      SELECT id, "agentKey", title, "userId", "lastMessageAt", "createdAt", "updatedAt"
       FROM "AgentConversation"
-      WHERE userId = ? AND agentKey = ?
-      ORDER BY COALESCE(lastMessageAt, createdAt) DESC
+      WHERE "userId" = ? AND "agentKey" = ?
+      ORDER BY COALESCE("lastMessageAt", "createdAt") DESC
       LIMIT 20
     `,
     [userId, agentKey],
@@ -529,9 +529,9 @@ export async function getAgentConversation(conversationId: string, userId: strin
   ensureAiAgentsSchema();
   const conversation = queryRow<AgentConversationRow>(
     `
-      SELECT id, agentKey, title, userId, lastMessageAt, createdAt, updatedAt
+      SELECT id, "agentKey", title, "userId", "lastMessageAt", "createdAt", "updatedAt"
       FROM "AgentConversation"
-      WHERE id = ? AND userId = ?
+      WHERE id = ? AND "userId" = ?
       LIMIT 1
     `,
     [conversationId, userId],
@@ -541,10 +541,10 @@ export async function getAgentConversation(conversationId: string, userId: strin
 
   const messages = queryRows<AgentMessageRow>(
     `
-      SELECT id, conversationId, role, content, metadataJson, createdAt
+      SELECT id, "conversationId", role, content, "metadataJson", "createdAt"
       FROM "AgentMessage"
-      WHERE conversationId = ?
-      ORDER BY createdAt ASC
+      WHERE "conversationId" = ?
+      ORDER BY "createdAt" ASC
     `,
     [conversationId],
   );
@@ -660,19 +660,19 @@ async function buildDebuggerContext(userId: string, role: AgentRole) {
         c.name,
         c.subject,
         c.status,
-        c.failedCount,
-        c.sentCount,
-        c.skippedCount,
-        c.startedAt,
-        c.finishedAt,
-        c.durationSeconds,
+        c."failedCount",
+        c."sentCount",
+        c."skippedCount",
+        c."startedAt",
+        c."finishedAt",
+        c."durationSeconds",
         l.name as listName,
         u.email as ownerEmail
       FROM "Campaign" c
-      INNER JOIN "List" l ON l.id = c.listId
-      INNER JOIN "User" u ON u.id = c.userId
-      WHERE c.status = 'FAILED' OR c.failedCount > 0
-      ORDER BY COALESCE(c.finishedAt, c.updatedAt) DESC
+      INNER JOIN "List" l ON l.id = c."listId"
+      INNER JOIN "User" u ON u.id = c."userId"
+      WHERE c.status = 'FAILED' OR c."failedCount" > 0
+      ORDER BY COALESCE(c."finishedAt", c."updatedAt") DESC
       LIMIT 10
     `,
   );
@@ -699,11 +699,11 @@ async function buildWorkerContext(userId: string) {
         l.id,
         l.name,
         l.description,
-        (SELECT COUNT(*) FROM "Contact" c WHERE c.listId = l.id) as contacts,
-        (SELECT COUNT(*) FROM "Campaign" c WHERE c.listId = l.id) as campaigns
+        (SELECT COUNT(*) FROM "Contact" c WHERE c."listId" = l.id) as contacts,
+        (SELECT COUNT(*) FROM "Campaign" c WHERE c."listId" = l.id) as campaigns
       FROM "List" l
-      WHERE l.userId = ?
-      ORDER BY l.createdAt DESC
+      WHERE l."userId" = ?
+      ORDER BY l."createdAt" DESC
       LIMIT 10
     `,
     [userId],
@@ -713,8 +713,8 @@ async function buildWorkerContext(userId: string) {
     `
       SELECT id, name, subject
       FROM "Template"
-      WHERE userId = ?
-      ORDER BY createdAt DESC
+      WHERE "userId" = ?
+      ORDER BY "createdAt" DESC
       LIMIT 10
     `,
     [userId],
@@ -724,9 +724,9 @@ async function buildWorkerContext(userId: string) {
     `
       SELECT c.id, c.name, c.subject, c.status, l.name as listName
       FROM "Campaign" c
-      INNER JOIN "List" l ON l.id = c.listId
-      WHERE c.userId = ?
-      ORDER BY c.createdAt DESC
+      INNER JOIN "List" l ON l.id = c."listId"
+      WHERE c."userId" = ?
+      ORDER BY c."createdAt" DESC
       LIMIT 10
     `,
     [userId],
@@ -884,7 +884,7 @@ async function createEntityFromAction(
       return `Created list "${action.name}".`;
     }
     case 'update_list': {
-      const existing = queryRow<{ id: string }>('SELECT id FROM "List" WHERE id = ? AND userId = ? LIMIT 1', [action.listId, actor.userId]);
+      const existing = queryRow<{ id: string }>('SELECT id FROM "List" WHERE id = ? AND "userId" = ? LIMIT 1', [action.listId, actor.userId]);
       if (!existing) return `List ${action.listId} was not found or is not owned by the user.`;
       const assignments: string[] = [];
       const params: unknown[] = [];
@@ -900,7 +900,7 @@ async function createEntityFromAction(
         changedFields.push('description');
       }
       if (!assignments.length) return `No list changes were requested.`;
-      executeSql(`UPDATE "List" SET ${assignments.join(', ')}, "updatedAt" = CURRENT_TIMESTAMP WHERE id = ? AND userId = ?`, [...params, action.listId, actor.userId]);
+      executeSql(`UPDATE "List" SET ${assignments.join(', ')}, "updatedAt" = CURRENT_TIMESTAMP WHERE id = ? AND "userId" = ?`, [...params, action.listId, actor.userId]);
       await recordAuditEvent({
         actorUserId: actor.userId,
         actorEmail: actor.email,
@@ -914,7 +914,7 @@ async function createEntityFromAction(
       return `Updated list ${action.listId}.`;
     }
     case 'delete_list': {
-      executeSql('DELETE FROM "List" WHERE id = ? AND userId = ?', [action.listId, actor.userId]);
+      executeSql('DELETE FROM "List" WHERE id = ? AND "userId" = ?', [action.listId, actor.userId]);
       await recordAuditEvent({
         actorUserId: actor.userId,
         actorEmail: actor.email,
@@ -949,7 +949,7 @@ async function createEntityFromAction(
       return `Created template "${action.name}".`;
     }
     case 'update_template': {
-      const existing = queryRow<{ id: string }>('SELECT id FROM "Template" WHERE id = ? AND userId = ? LIMIT 1', [action.templateId, actor.userId]);
+      const existing = queryRow<{ id: string }>('SELECT id FROM "Template" WHERE id = ? AND "userId" = ? LIMIT 1', [action.templateId, actor.userId]);
       if (!existing) return `Template ${action.templateId} was not found or is not owned by the user.`;
       const assignments: string[] = [];
       const params: unknown[] = [];
@@ -970,7 +970,7 @@ async function createEntityFromAction(
         changedFields.push('bodyHtml');
       }
       if (!assignments.length) return `No template changes were requested.`;
-      executeSql(`UPDATE "Template" SET ${assignments.join(', ')}, "updatedAt" = CURRENT_TIMESTAMP WHERE id = ? AND userId = ?`, [...params, action.templateId, actor.userId]);
+      executeSql(`UPDATE "Template" SET ${assignments.join(', ')}, "updatedAt" = CURRENT_TIMESTAMP WHERE id = ? AND "userId" = ?`, [...params, action.templateId, actor.userId]);
       await recordAuditEvent({
         actorUserId: actor.userId,
         actorEmail: actor.email,
@@ -984,7 +984,7 @@ async function createEntityFromAction(
       return `Updated template ${action.templateId}.`;
     }
     case 'delete_template': {
-      executeSql('DELETE FROM "Template" WHERE id = ? AND userId = ?', [action.templateId, actor.userId]);
+      executeSql('DELETE FROM "Template" WHERE id = ? AND "userId" = ?', [action.templateId, actor.userId]);
       await recordAuditEvent({
         actorUserId: actor.userId,
         actorEmail: actor.email,
@@ -1019,7 +1019,7 @@ async function createEntityFromAction(
       return `Created campaign "${action.name}".`;
     }
     case 'update_campaign': {
-      const existing = queryRow<{ id: string }>('SELECT id FROM "Campaign" WHERE id = ? AND userId = ? LIMIT 1', [action.campaignId, actor.userId]);
+      const existing = queryRow<{ id: string }>('SELECT id FROM "Campaign" WHERE id = ? AND "userId" = ? LIMIT 1', [action.campaignId, actor.userId]);
       if (!existing) return `Campaign ${action.campaignId} was not found or is not owned by the user.`;
       const assignments: string[] = [];
       const params: unknown[] = [];
@@ -1055,7 +1055,7 @@ async function createEntityFromAction(
         changedFields.push('status');
       }
       if (!assignments.length) return `No campaign changes were requested.`;
-      executeSql(`UPDATE "Campaign" SET ${assignments.join(', ')}, "updatedAt" = CURRENT_TIMESTAMP WHERE id = ? AND userId = ?`, [...params, action.campaignId, actor.userId]);
+      executeSql(`UPDATE "Campaign" SET ${assignments.join(', ')}, "updatedAt" = CURRENT_TIMESTAMP WHERE id = ? AND "userId" = ?`, [...params, action.campaignId, actor.userId]);
       await recordAuditEvent({
         actorUserId: actor.userId,
         actorEmail: actor.email,
@@ -1069,7 +1069,7 @@ async function createEntityFromAction(
       return `Updated campaign ${action.campaignId}.`;
     }
     case 'delete_campaign': {
-      executeSql('DELETE FROM "Campaign" WHERE id = ? AND userId = ?', [action.campaignId, actor.userId]);
+      executeSql('DELETE FROM "Campaign" WHERE id = ? AND "userId" = ?', [action.campaignId, actor.userId]);
       await recordAuditEvent({
         actorUserId: actor.userId,
         actorEmail: actor.email,
@@ -1085,13 +1085,13 @@ async function createEntityFromAction(
     case 'add_contact': {
       const email = action.email?.trim().toLowerCase();
       if (!email) return 'Contact email is required.';
-      const list = queryRow<{ id: string }>('SELECT id FROM "List" WHERE id = ? AND userId = ? LIMIT 1', [action.listId, actor.userId]);
+      const list = queryRow<{ id: string }>('SELECT id FROM "List" WHERE id = ? AND "userId" = ? LIMIT 1', [action.listId, actor.userId]);
       if (!list) return `List ${action.listId} was not found or is not owned by the user.`;
       const id = randomUUID().replace(/-/g, '');
       executeSql(
         `
           INSERT OR REPLACE INTO "Contact" ("id", "email", "firstName", "lastName", "status", "listId", "createdAt", "updatedAt")
-          VALUES (?, ?, ?, ?, COALESCE((SELECT status FROM "Contact" WHERE email = ? AND listId = ? LIMIT 1), 'SUBSCRIBED'), ?, ?, ?)
+          VALUES (?, ?, ?, ?, COALESCE((SELECT status FROM "Contact" WHERE email = ? AND "listId" = ? LIMIT 1), 'SUBSCRIBED'), ?, ?, ?)
         `,
         [id, email, action.firstName || null, action.lastName || null, email, action.listId, action.listId, now, now],
       );
@@ -1110,10 +1110,10 @@ async function createEntityFromAction(
     case 'update_contact': {
       const existing = queryRow<{ id: string; listId: string }>(
         `
-          SELECT c.id, c.listId
+          SELECT c.id, c."listId"
           FROM "Contact" c
-          INNER JOIN "List" l ON l.id = c.listId
-          WHERE c.id = ? AND l.userId = ?
+          INNER JOIN "List" l ON l.id = c."listId"
+          WHERE c.id = ? AND l."userId" = ?
           LIMIT 1
         `,
         [action.contactId, actor.userId],
@@ -1160,8 +1160,8 @@ async function createEntityFromAction(
           WHERE id IN (
             SELECT c.id
             FROM "Contact" c
-            INNER JOIN "List" l ON l.id = c.listId
-            WHERE c.id = ? AND l.userId = ?
+            INNER JOIN "List" l ON l.id = c."listId"
+            WHERE c.id = ? AND l."userId" = ?
           )
         `,
         [action.contactId, actor.userId],
@@ -1188,9 +1188,9 @@ async function createEntityFromAction(
         listId: string;
       }>(
         `
-          SELECT c.id, c.name, c.subject, c.bodyHtml, c.status, c.listId
+          SELECT c.id, c.name, c.subject, c."bodyHtml", c.status, c."listId"
           FROM "Campaign" c
-          WHERE c.id = ? AND c.userId = ?
+          WHERE c.id = ? AND c."userId" = ?
           LIMIT 1
         `,
         [action.campaignId, actor.userId],
@@ -1203,9 +1203,9 @@ async function createEntityFromAction(
         `
           SELECT c.id, c.email, c.status
           FROM "Contact" c
-          INNER JOIN "List" l ON l.id = c.listId
-          WHERE l.id = ? AND l.userId = ?
-          ORDER BY c.createdAt ASC
+          INNER JOIN "List" l ON l.id = c."listId"
+          WHERE l.id = ? AND l."userId" = ?
+          ORDER BY c."createdAt" ASC
         `,
         [campaign.listId, actor.userId],
       );
@@ -1274,10 +1274,10 @@ export async function runAgentChat(user: { userId: string; email: string; role: 
   if (input.agentKey === 'worker' && input.executeActions && input.message === '__EXECUTE__') {
     const latestAssistant = queryRow<AgentMessageRow>(
       `
-        SELECT id, conversationId, role, content, metadataJson, createdAt
+        SELECT id, "conversationId", role, content, "metadataJson", "createdAt"
         FROM "AgentMessage"
-        WHERE conversationId = ? AND role = 'assistant'
-        ORDER BY createdAt DESC
+        WHERE "conversationId" = ? AND role = 'assistant'
+        ORDER BY "createdAt" DESC
         LIMIT 1
       `,
       [conversationId],
@@ -1325,10 +1325,10 @@ export async function runAgentChat(user: { userId: string; email: string; role: 
 
   const priorMessages = queryRows<AgentMessageRow>(
     `
-      SELECT id, conversationId, role, content, metadataJson, createdAt
+      SELECT id, "conversationId", role, content, "metadataJson", "createdAt"
       FROM "AgentMessage"
-      WHERE conversationId = ?
-      ORDER BY createdAt ASC
+      WHERE "conversationId" = ?
+      ORDER BY "createdAt" ASC
       LIMIT 20
     `,
     [conversationId],
@@ -1340,21 +1340,21 @@ export async function runAgentChat(user: { userId: string; email: string; role: 
   const profileRow = queryRow<StoredAiAgentProfile>(
     `
       SELECT
-        agentKey,
+        "agentKey",
         label,
         description,
         provider,
         model,
-        baseUrl,
-        apiKeyEncrypted,
-        systemPrompt,
-        temperature,
-        maxOutputTokens,
-        isEnabled,
-        createdAt,
-        updatedAt
+        "baseUrl",
+        "apiKeyEncrypted",
+        "systemPrompt",
+        "temperature",
+        "maxOutputTokens",
+        "isEnabled",
+        "createdAt",
+        "updatedAt"
       FROM "AiAgentProfile"
-      WHERE agentKey = ?
+      WHERE "agentKey" = ?
       LIMIT 1
     `,
     [input.agentKey],

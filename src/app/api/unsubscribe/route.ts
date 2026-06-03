@@ -67,9 +67,9 @@ export async function GET(request: Request) {
           "id", "type", "provider", "providerEventId", "providerMessageId",
           "contactId", "campaignId", "createdAt"
         ) VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-        ON CONFLICT(providerEventId) DO UPDATE SET
+        ON CONFLICT("providerEventId") DO UPDATE SET
           type = excluded.type,
-          providerMessageId = excluded.providerMessageId
+          "providerMessageId" = excluded."providerMessageId"
       `,
       [crypto.randomUUID().replace(/-/g, ''), 'UNSUBSCRIBED', 'unsubscribe-link', providerEventId, null, sourceContact.id, payload.campaignId],
     );

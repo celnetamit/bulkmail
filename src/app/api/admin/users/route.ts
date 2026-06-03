@@ -14,9 +14,9 @@ export async function GET() {
 
   const users = queryRows(
     `
-      SELECT id, email, name, role, isActive, dailyEmailLimit, imageUploadLimitKb, lastLoginAt, createdAt
+      SELECT id, email, name, role, "isActive", "dailyEmailLimit", "imageUploadLimitKb", "lastLoginAt", "createdAt"
       FROM "User"
-      ORDER BY createdAt DESC
+      ORDER BY "createdAt" DESC
     `,
   );
 
@@ -60,7 +60,7 @@ export async function POST(request: Request) {
   executeSql(
     `
       INSERT INTO "User" (
-        id, email, name, password, role, isActive, dailyEmailLimit, imageUploadLimitKb, lastLoginAt, createdAt, updatedAt
+        id, email, name, password, role, "isActive", "dailyEmailLimit", "imageUploadLimitKb", "lastLoginAt", "createdAt", "updatedAt"
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
     [id, email, name || null, passwordHash, effectiveRole, 1, dailyEmailLimit, imageUploadLimitKb, null, createdAt, createdAt],
@@ -83,7 +83,7 @@ export async function POST(request: Request) {
   });
 
   const user = queryRow(
-    'SELECT id, email, name, role, isActive, dailyEmailLimit, createdAt, lastLoginAt FROM "User" WHERE id = ? LIMIT 1',
+    'SELECT id, email, name, role, "isActive", "dailyEmailLimit", "createdAt", "lastLoginAt" FROM "User" WHERE id = ? LIMIT 1',
     [id],
   );
 

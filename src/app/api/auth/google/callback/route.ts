@@ -78,7 +78,7 @@ export async function GET(request: Request) {
     name: string | null;
     role: string;
     isActive: number | boolean;
-  }>('SELECT id, email, name, role, isActive FROM "User" WHERE email = ? LIMIT 1', [email]);
+  }>('SELECT id, email, name, role, "isActive" FROM "User" WHERE email = ? LIMIT 1', [email]);
 
   if (!user) {
     if (!isAdminEmailAllowed(email)) {
@@ -91,7 +91,7 @@ export async function GET(request: Request) {
     executeSql(
       `
         INSERT INTO "User" (
-          id, email, name, password, role, isActive, dailyEmailLimit, lastLoginAt, createdAt, updatedAt
+          id, email, name, password, role, "isActive", "dailyEmailLimit", "lastLoginAt", "createdAt", "updatedAt"
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
       [id, email, null, passwordHash, 'ADMIN', 1, 100000, null, createdAt, createdAt],
@@ -103,7 +103,7 @@ export async function GET(request: Request) {
       name: string | null;
       role: string;
       isActive: number | boolean;
-    }>('SELECT id, email, name, role, isActive FROM "User" WHERE id = ? LIMIT 1', [id]);
+    }>('SELECT id, email, name, role, "isActive" FROM "User" WHERE id = ? LIMIT 1', [id]);
 
     if (!provisionedUser) {
       return redirectToLogin(request, 'auth_failed');
@@ -124,11 +124,11 @@ export async function GET(request: Request) {
 
   const name = typeof payload.name === 'string' ? payload.name.trim() : '';
   if (name && !user.name) {
-    executeSql('UPDATE "User" SET name = ?, updatedAt = CURRENT_TIMESTAMP WHERE id = ?', [name, user.id]);
+    executeSql('UPDATE "User" SET name = ?, "updatedAt" = CURRENT_TIMESTAMP WHERE id = ?', [name, user.id]);
   }
 
   if (isAdminEmailAllowed(email) && user.role !== 'ADMIN') {
-    executeSql('UPDATE "User" SET role = ?, updatedAt = CURRENT_TIMESTAMP WHERE id = ?', ['ADMIN', user.id]);
+    executeSql('UPDATE "User" SET role = ?, "updatedAt" = CURRENT_TIMESTAMP WHERE id = ?', ['ADMIN', user.id]);
   }
 
   const token = await createSessionToken({ userId: user.id, email: user.email });

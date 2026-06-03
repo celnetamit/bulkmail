@@ -192,12 +192,12 @@ export function recordResourceMetric(input: ResourceMetricInput) {
   executeSql(
     `
       INSERT INTO "ResourceMetric" (
-        id, scopeType, eventType, userId, campaignId,
-        cpuUserMs, cpuSystemMs, memoryRssMb, memoryHeapUsedMb, memoryHeapTotalMb,
-        eventLoopUtilization, activeHandles, activeRequests,
-        loadAverage1m, loadAverage5m, loadAverage15m,
-        sentCount, failedCount, skippedCount, recipientCount,
-        durationMs, note, createdAt
+        id, "scopeType", "eventType", "userId", "campaignId",
+        "cpuUserMs", "cpuSystemMs", "memoryRssMb", "memoryHeapUsedMb", "memoryHeapTotalMb",
+        "eventLoopUtilization", "activeHandles", "activeRequests",
+        "loadAverage1m", "loadAverage5m", "loadAverage15m",
+        "sentCount", "failedCount", "skippedCount", "recipientCount",
+        "durationMs", note, "createdAt"
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
     [
@@ -238,10 +238,10 @@ function buildAccessibleUserFilter(role: Role, userId: string) {
   if (role === 'MANAGER') {
     const managedUsers = queryRows<{ userId: string }>(
       `
-        SELECT DISTINCT tm.userId as userId
+        SELECT DISTINCT tm."userId" as "userId"
         FROM "Team" t
-        INNER JOIN "TeamMember" tm ON tm.teamId = t.id
-        WHERE t.managerId = ?
+        INNER JOIN "TeamMember" tm ON tm."teamId" = t.id
+        WHERE t."managerId" = ?
       `,
       [userId],
     ).map((row) => row.userId);
@@ -264,10 +264,10 @@ function buildCampaignUserFilter(role: Role, userId: string) {
   if (role === 'MANAGER') {
     const managedUsers = queryRows<{ userId: string }>(
       `
-        SELECT DISTINCT tm.userId as userId
+        SELECT DISTINCT tm."userId" as "userId"
         FROM "Team" t
-        INNER JOIN "TeamMember" tm ON tm.teamId = t.id
-        WHERE t.managerId = ?
+        INNER JOIN "TeamMember" tm ON tm."teamId" = t.id
+        WHERE t."managerId" = ?
       `,
       [userId],
     ).map((row) => row.userId);
@@ -322,30 +322,30 @@ export async function getResourceAnalyticsSummary(userId: string, role: Role, fr
     `
       SELECT
         COUNT(*) as samples,
-           COALESCE(COUNT(DISTINCT CASE WHEN rm.eventType = 'SEND_COMPLETE' THEN rm."campaignId" END), 0) as campaigns,
+           COALESCE(COUNT(DISTINCT CASE WHEN rm."eventType" = 'SEND_COMPLETE' THEN rm."campaignId" END), 0) as campaigns,
            COALESCE(COUNT(DISTINCT rm."userId"), 0) as users,
-        COALESCE(SUM(CASE WHEN eventType = 'SEND_COMPLETE' THEN sentCount ELSE 0 END), 0) as sentCount,
-        COALESCE(SUM(CASE WHEN eventType = 'SEND_COMPLETE' THEN failedCount ELSE 0 END), 0) as failedCount,
-        COALESCE(SUM(CASE WHEN eventType = 'SEND_COMPLETE' THEN skippedCount ELSE 0 END), 0) as skippedCount,
-        COALESCE(AVG(memoryRssMb), 0) as avgRssMb,
-        COALESCE(MAX(memoryRssMb), 0) as peakRssMb,
-        COALESCE(AVG(memoryHeapUsedMb), 0) as avgHeapUsedMb,
-        COALESCE(MAX(memoryHeapUsedMb), 0) as peakHeapUsedMb,
-        COALESCE(AVG(eventLoopUtilization), 0) as avgEventLoopUtilization,
-        COALESCE(MAX(eventLoopUtilization), 0) as peakEventLoopUtilization,
-        COALESCE(AVG(durationMs), 0) as avgDurationMs,
-        COALESCE(MAX(durationMs), 0) as peakDurationMs,
-        COALESCE(SUM(recipientCount), 0) as totalRecipients,
+        COALESCE(SUM(CASE WHEN "eventType" = 'SEND_COMPLETE' THEN "sentCount" ELSE 0 END), 0) as "sentCount",
+        COALESCE(SUM(CASE WHEN "eventType" = 'SEND_COMPLETE' THEN "failedCount" ELSE 0 END), 0) as "failedCount",
+        COALESCE(SUM(CASE WHEN "eventType" = 'SEND_COMPLETE' THEN "skippedCount" ELSE 0 END), 0) as "skippedCount",
+        COALESCE(AVG("memoryRssMb"), 0) as avgRssMb,
+        COALESCE(MAX("memoryRssMb"), 0) as peakRssMb,
+        COALESCE(AVG("memoryHeapUsedMb"), 0) as avgHeapUsedMb,
+        COALESCE(MAX("memoryHeapUsedMb"), 0) as peakHeapUsedMb,
+        COALESCE(AVG("eventLoopUtilization"), 0) as avgEventLoopUtilization,
+        COALESCE(MAX("eventLoopUtilization"), 0) as peakEventLoopUtilization,
+        COALESCE(AVG("durationMs"), 0) as avgDurationMs,
+        COALESCE(MAX("durationMs"), 0) as peakDurationMs,
+        COALESCE(SUM("recipientCount"), 0) as "totalRecipients",
         CASE
-          WHEN COALESCE(SUM(CASE WHEN eventType = 'SEND_COMPLETE' THEN durationMs ELSE 0 END), 0) > 0
-            THEN COALESCE(SUM(CASE WHEN eventType = 'SEND_COMPLETE' THEN sentCount ELSE 0 END), 0) * 1000.0
-                 / NULLIF(SUM(CASE WHEN eventType = 'SEND_COMPLETE' THEN durationMs ELSE 0 END), 0)
+          WHEN COALESCE(SUM(CASE WHEN "eventType" = 'SEND_COMPLETE' THEN "durationMs" ELSE 0 END), 0) > 0
+            THEN COALESCE(SUM(CASE WHEN "eventType" = 'SEND_COMPLETE' THEN "sentCount" ELSE 0 END), 0) * 1000.0
+                 / NULLIF(SUM(CASE WHEN "eventType" = 'SEND_COMPLETE' THEN "durationMs" ELSE 0 END), 0)
           ELSE 0
         END as throughputPerSecond,
         (
           SELECT day
           FROM (
-            SELECT date(rm."createdAt") as day, SUM(CASE WHEN rm.eventType = 'SEND_COMPLETE' THEN rm.sentCount ELSE 0 END) as sentTotal
+            SELECT date(rm."createdAt") as day, SUM(CASE WHEN rm."eventType" = 'SEND_COMPLETE' THEN rm."sentCount" ELSE 0 END) as sentTotal
             FROM "ResourceMetric" rm
             WHERE ${accessibleUserFilter.clause}
             AND ${dateClause}
@@ -357,7 +357,7 @@ export async function getResourceAnalyticsSummary(userId: string, role: Role, fr
         COALESCE((
           SELECT sentTotal
           FROM (
-            SELECT date(rm."createdAt") as day, SUM(CASE WHEN rm.eventType = 'SEND_COMPLETE' THEN rm.sentCount ELSE 0 END) as sentTotal
+            SELECT date(rm."createdAt") as day, SUM(CASE WHEN rm."eventType" = 'SEND_COMPLETE' THEN rm."sentCount" ELSE 0 END) as sentTotal
             FROM "ResourceMetric" rm
             WHERE ${accessibleUserFilter.clause}
             AND ${dateClause}
@@ -378,13 +378,13 @@ export async function getResourceAnalyticsSummary(userId: string, role: Role, fr
       SELECT
         date(rm."createdAt") as day,
         COUNT(*) as samples,
-        COALESCE(SUM(CASE WHEN rm.eventType = 'SEND_COMPLETE' THEN rm.sentCount ELSE 0 END), 0) as sentCount,
-        COALESCE(SUM(CASE WHEN rm.eventType = 'SEND_COMPLETE' THEN rm.failedCount ELSE 0 END), 0) as failedCount,
-        COALESCE(AVG(rm.memoryRssMb), 0) as avgRssMb,
-        COALESCE(MAX(rm.memoryRssMb), 0) as peakRssMb,
-        COALESCE(AVG(rm.memoryHeapUsedMb), 0) as avgHeapUsedMb,
-        COALESCE(MAX(rm.memoryHeapUsedMb), 0) as peakHeapUsedMb,
-        COALESCE(AVG(rm.eventLoopUtilization), 0) as avgEventLoopUtilization
+        COALESCE(SUM(CASE WHEN rm."eventType" = 'SEND_COMPLETE' THEN rm."sentCount" ELSE 0 END), 0) as "sentCount",
+        COALESCE(SUM(CASE WHEN rm."eventType" = 'SEND_COMPLETE' THEN rm."failedCount" ELSE 0 END), 0) as "failedCount",
+        COALESCE(AVG(rm."memoryRssMb"), 0) as avgRssMb,
+        COALESCE(MAX(rm."memoryRssMb"), 0) as peakRssMb,
+        COALESCE(AVG(rm."memoryHeapUsedMb"), 0) as avgHeapUsedMb,
+        COALESCE(MAX(rm."memoryHeapUsedMb"), 0) as peakHeapUsedMb,
+        COALESCE(AVG(rm."eventLoopUtilization"), 0) as avgEventLoopUtilization
       FROM "ResourceMetric" rm
       WHERE ${accessibleUserFilter.clause}
       AND ${dateClause}
@@ -397,25 +397,25 @@ export async function getResourceAnalyticsSummary(userId: string, role: Role, fr
   const userBreakdown = queryRows<ResourceUserRow>(
     `
       SELECT
-        u.id as userId,
+        u.id as "userId",
         u.email,
         u.name,
         u.role,
-        COUNT(DISTINCT CASE WHEN rm.eventType = 'SEND_COMPLETE' THEN rm.campaignId END) as campaigns,
-        COALESCE(SUM(CASE WHEN rm.eventType = 'SEND_COMPLETE' THEN rm.sentCount ELSE 0 END), 0) as sentCount,
-        COALESCE(SUM(CASE WHEN rm.eventType = 'SEND_COMPLETE' THEN rm.failedCount ELSE 0 END), 0) as failedCount,
-        COALESCE(SUM(CASE WHEN rm.eventType = 'SEND_COMPLETE' THEN rm.skippedCount ELSE 0 END), 0) as skippedCount,
-        COALESCE(AVG(rm.memoryRssMb), 0) as avgRssMb,
-        COALESCE(MAX(rm.memoryRssMb), 0) as peakRssMb,
-        COALESCE(AVG(rm.memoryHeapUsedMb), 0) as avgHeapUsedMb,
-        COALESCE(AVG(rm.durationMs), 0) as avgDurationMs,
+        COUNT(DISTINCT CASE WHEN rm."eventType" = 'SEND_COMPLETE' THEN rm."campaignId" END) as campaigns,
+        COALESCE(SUM(CASE WHEN rm."eventType" = 'SEND_COMPLETE' THEN rm."sentCount" ELSE 0 END), 0) as "sentCount",
+        COALESCE(SUM(CASE WHEN rm."eventType" = 'SEND_COMPLETE' THEN rm."failedCount" ELSE 0 END), 0) as "failedCount",
+        COALESCE(SUM(CASE WHEN rm."eventType" = 'SEND_COMPLETE' THEN rm."skippedCount" ELSE 0 END), 0) as "skippedCount",
+        COALESCE(AVG(rm."memoryRssMb"), 0) as avgRssMb,
+        COALESCE(MAX(rm."memoryRssMb"), 0) as peakRssMb,
+        COALESCE(AVG(rm."memoryHeapUsedMb"), 0) as avgHeapUsedMb,
+        COALESCE(AVG(rm."durationMs"), 0) as avgDurationMs,
         MAX(rm."createdAt") as lastSeenAt
       FROM "ResourceMetric" rm
       INNER JOIN "User" u ON u.id = rm."userId"
       WHERE ${accessibleUserFilter.clause}
       AND ${dateClause}
       GROUP BY u.id, u.email, u.name, u.role
-      ORDER BY sentCount DESC, peakRssMb DESC, u.email ASC
+      ORDER BY "sentCount" DESC, peakRssMb DESC, u.email ASC
     `,
     [...accessibleUserFilter.params, ...dateParams],
   );
@@ -423,25 +423,25 @@ export async function getResourceAnalyticsSummary(userId: string, role: Role, fr
   const teamBreakdown = queryRows<ResourceTeamRow>(
     `
       SELECT
-        t.id as teamId,
+        t.id as "teamId",
         t.name,
         t.description,
         m.email as managerEmail,
-        COUNT(DISTINCT tm.userId) as memberCount,
-        COALESCE(SUM(CASE WHEN rm.eventType = 'SEND_COMPLETE' THEN rm.sentCount ELSE 0 END), 0) as sentCount,
-        COALESCE(SUM(CASE WHEN rm.eventType = 'SEND_COMPLETE' THEN rm.failedCount ELSE 0 END), 0) as failedCount,
-        COALESCE(SUM(CASE WHEN rm.eventType = 'SEND_COMPLETE' THEN rm.skippedCount ELSE 0 END), 0) as skippedCount,
-        COALESCE(AVG(rm.memoryRssMb), 0) as avgRssMb,
-        COALESCE(MAX(rm.memoryRssMb), 0) as peakRssMb,
-        COALESCE(AVG(rm.memoryHeapUsedMb), 0) as avgHeapUsedMb,
-        COALESCE(AVG(rm.durationMs), 0) as avgDurationMs
+        COUNT(DISTINCT tm."userId") as memberCount,
+        COALESCE(SUM(CASE WHEN rm."eventType" = 'SEND_COMPLETE' THEN rm."sentCount" ELSE 0 END), 0) as "sentCount",
+        COALESCE(SUM(CASE WHEN rm."eventType" = 'SEND_COMPLETE' THEN rm."failedCount" ELSE 0 END), 0) as "failedCount",
+        COALESCE(SUM(CASE WHEN rm."eventType" = 'SEND_COMPLETE' THEN rm."skippedCount" ELSE 0 END), 0) as "skippedCount",
+        COALESCE(AVG(rm."memoryRssMb"), 0) as avgRssMb,
+        COALESCE(MAX(rm."memoryRssMb"), 0) as peakRssMb,
+        COALESCE(AVG(rm."memoryHeapUsedMb"), 0) as avgHeapUsedMb,
+        COALESCE(AVG(rm."durationMs"), 0) as avgDurationMs
       FROM "Team" t
-      INNER JOIN "User" m ON m.id = t.managerId
-      LEFT JOIN "TeamMember" tm ON tm.teamId = t.id
-      LEFT JOIN "ResourceMetric" rm ON rm.userId = tm.userId AND ${dateClause}
+      INNER JOIN "User" m ON m.id = t."managerId"
+      LEFT JOIN "TeamMember" tm ON tm."teamId" = t.id
+      LEFT JOIN "ResourceMetric" rm ON rm."userId" = tm."userId" AND ${dateClause}
       WHERE ${role === 'MANAGER' ? 't.managerId = ?' : '1=1'}
       GROUP BY t.id, t.name, t.description, m.email
-      ORDER BY sentCount DESC, peakRssMb DESC, t.name ASC
+      ORDER BY "sentCount" DESC, peakRssMb DESC, t.name ASC
     `,
     [
       ...dateParams,
@@ -452,31 +452,31 @@ export async function getResourceAnalyticsSummary(userId: string, role: Role, fr
   const campaignCorrelation = queryRows<ResourceCampaignRow>(
     `
       SELECT
-        c.id as campaignId,
+        c.id as "campaignId",
         c.name,
         c.subject,
         c.status,
-        c.totalRecipients,
-        c.sentCount,
-        c.failedCount,
-        c.skippedCount,
-        c.durationSeconds,
-        COALESCE(MAX(rm.memoryRssMb), 0) as peakRssMb,
-        COALESCE(MAX(rm.memoryHeapUsedMb), 0) as peakHeapUsedMb,
-        COALESCE(AVG(rm.memoryRssMb), 0) as avgRssMb,
-        COALESCE(AVG(rm.memoryHeapUsedMb), 0) as avgHeapUsedMb,
-        COALESCE(AVG(rm.eventLoopUtilization), 0) as avgEventLoopUtilization,
+        c."totalRecipients",
+        c."sentCount",
+        c."failedCount",
+        c."skippedCount",
+        c."durationSeconds",
+        COALESCE(MAX(rm."memoryRssMb"), 0) as peakRssMb,
+        COALESCE(MAX(rm."memoryHeapUsedMb"), 0) as peakHeapUsedMb,
+        COALESCE(AVG(rm."memoryRssMb"), 0) as avgRssMb,
+        COALESCE(AVG(rm."memoryHeapUsedMb"), 0) as avgHeapUsedMb,
+        COALESCE(AVG(rm."eventLoopUtilization"), 0) as avgEventLoopUtilization,
         CASE
-          WHEN COALESCE(MAX(rm.durationMs), 0) > 0
-            THEN COALESCE(MAX(rm.sentCount), 0) * 1000.0 / NULLIF(MAX(rm.durationMs), 0)
+          WHEN COALESCE(MAX(rm."durationMs"), 0) > 0
+            THEN COALESCE(MAX(rm."sentCount"), 0) * 1000.0 / NULLIF(MAX(rm."durationMs"), 0)
           ELSE 0
         END as emailsPerSecond,
         MAX(rm."createdAt") as sentAt
       FROM "Campaign" c
-      LEFT JOIN "ResourceMetric" rm ON rm."campaignId" = c.id AND rm.eventType = 'SEND_COMPLETE'
+      LEFT JOIN "ResourceMetric" rm ON rm."campaignId" = c.id AND rm."eventType" = 'SEND_COMPLETE'
       WHERE ${accessibleCampaignFilter.clause}
       AND c."createdAt" >= ?
-      GROUP BY c.id, c.name, c.subject, c.status, c.totalRecipients, c.sentCount, c.failedCount, c.skippedCount, c.durationSeconds
+      GROUP BY c.id, c.name, c.subject, c.status, c."totalRecipients", c."sentCount", c."failedCount", c."skippedCount", c."durationSeconds"
       ORDER BY sentAt DESC, c."createdAt" DESC
       LIMIT 30
     `,
@@ -488,7 +488,7 @@ export async function getResourceAnalyticsSummary(userId: string, role: Role, fr
   const deliverabilitySummary = queryRow<DeliverabilitySummary>(
     `
       SELECT
-        COALESCE(SUM(CASE WHEN e.type = 'SENT' THEN 1 ELSE 0 END), 0) as sentCount,
+        COALESCE(SUM(CASE WHEN e.type = 'SENT' THEN 1 ELSE 0 END), 0) as "sentCount",
         COALESCE(SUM(CASE WHEN e.type = 'DELIVERED' THEN 1 ELSE 0 END), 0) as deliveredCount,
         COALESCE(SUM(CASE WHEN e.type = 'OPENED' THEN 1 ELSE 0 END), 0) as openedCount,
         COALESCE(SUM(CASE WHEN e.type = 'BOUNCED' THEN 1 ELSE 0 END), 0) as bouncedCount,
@@ -529,7 +529,7 @@ export async function getResourceAnalyticsSummary(userId: string, role: Role, fr
     `
       SELECT
         date(e."createdAt") as day,
-        COALESCE(SUM(CASE WHEN e.type = 'SENT' THEN 1 ELSE 0 END), 0) as sentCount,
+        COALESCE(SUM(CASE WHEN e.type = 'SENT' THEN 1 ELSE 0 END), 0) as "sentCount",
         COALESCE(SUM(CASE WHEN e.type = 'DELIVERED' THEN 1 ELSE 0 END), 0) as deliveredCount,
         COALESCE(SUM(CASE WHEN e.type = 'OPENED' THEN 1 ELSE 0 END), 0) as openedCount,
         COALESCE(SUM(CASE WHEN e.type = 'BOUNCED' THEN 1 ELSE 0 END), 0) as bouncedCount,

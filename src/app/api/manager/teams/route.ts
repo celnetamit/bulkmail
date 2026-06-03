@@ -22,15 +22,15 @@ async function loadTeams(managerId: string) {
         t.id,
         t.name,
         t.description,
-        t.dailyCreditLimit,
-        t.managerId,
-        t.createdAt,
-        t.updatedAt,
-        (SELECT COUNT(*) FROM "TeamMember" tm WHERE tm.teamId = t.id) as memberCount,
-        COALESCE((SELECT SUM(tm.allocatedDailyLimit) FROM "TeamMember" tm WHERE tm.teamId = t.id), 0) as allocatedCredits
+        t."dailyCreditLimit",
+        t."managerId",
+        t."createdAt",
+        t."updatedAt",
+        (SELECT COUNT(*) FROM "TeamMember" tm WHERE tm."teamId" = t.id) as memberCount,
+        COALESCE((SELECT SUM(tm."allocatedDailyLimit") FROM "TeamMember" tm WHERE tm."teamId" = t.id), 0) as allocatedCredits
       FROM "Team" t
-      WHERE t.managerId = ?
-      ORDER BY t.createdAt DESC
+      WHERE t."managerId" = ?
+      ORDER BY t."createdAt" DESC
     `,
     [managerId],
   );
@@ -77,7 +77,7 @@ export async function POST(request: Request) {
   const createdAt = new Date().toISOString();
   executeSql(
     `
-      INSERT INTO "Team" (id, name, description, dailyCreditLimit, managerId, createdAt, updatedAt)
+      INSERT INTO "Team" (id, name, description, "dailyCreditLimit", "managerId", "createdAt", "updatedAt")
       VALUES (?, ?, ?, ?, ?, ?, ?)
     `,
     [id, name, description || null, dailyCreditLimit, auth.user.userId, createdAt, createdAt],
@@ -104,12 +104,12 @@ export async function POST(request: Request) {
         t.id,
         t.name,
         t.description,
-        t.dailyCreditLimit,
-        t.managerId,
-        t.createdAt,
-        t.updatedAt,
-        (SELECT COUNT(*) FROM "TeamMember" tm WHERE tm.teamId = t.id) as memberCount,
-        COALESCE((SELECT SUM(tm.allocatedDailyLimit) FROM "TeamMember" tm WHERE tm.teamId = t.id), 0) as allocatedCredits
+        t."dailyCreditLimit",
+        t."managerId",
+        t."createdAt",
+        t."updatedAt",
+        (SELECT COUNT(*) FROM "TeamMember" tm WHERE tm."teamId" = t.id) as memberCount,
+        COALESCE((SELECT SUM(tm."allocatedDailyLimit") FROM "TeamMember" tm WHERE tm."teamId" = t.id), 0) as allocatedCredits
       FROM "Team" t
       WHERE t.id = ?
       LIMIT 1

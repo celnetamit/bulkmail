@@ -8,7 +8,7 @@ type Params = { params: { id: string } };
 export async function GET(_: Request, { params }: Params) {
   const auth = await requireUserFromCookies();
   if ('error' in auth) return auth.error;
-  const ownerScope = buildOwnerScope(auth.user, 't.userId');
+  const ownerScope = buildOwnerScope(auth.user, 't."userId"');
 
   const template = queryRow<{
     id: string;
@@ -27,15 +27,15 @@ export async function GET(_: Request, { params }: Params) {
         t.id,
         t.name,
         t.subject,
-        t.bodyHtml,
-        t.userId,
-        t.createdAt,
-        t.updatedAt,
+        t."bodyHtml",
+        t."userId",
+        t."createdAt",
+        t."updatedAt",
         u.email as ownerEmail,
         u.name as ownerName,
         u.role as ownerRole
       FROM "Template" t
-      INNER JOIN "User" u ON u.id = t.userId
+      INNER JOIN "User" u ON u.id = t."userId"
       WHERE t.id = ? AND ${ownerScope.clause}
       LIMIT 1
     `,
@@ -72,18 +72,18 @@ export async function PATCH(request: Request, { params }: Params) {
   if (!name || !subject || !bodyHtml) return fail('name, subject and bodyHtml are required.', 400);
 
   const existing = queryRow<{ id: string }>(
-    'SELECT id FROM "Template" WHERE id = ? AND userId = ? LIMIT 1',
+    'SELECT id FROM "Template" WHERE id = ? AND "userId" = ? LIMIT 1',
     [params.id, auth.user.userId],
   );
   if (!existing) return fail('Template not found.', 404);
 
   executeSql(
-    'UPDATE "Template" SET name = ?, subject = ?, bodyHtml = ?, updatedAt = CURRENT_TIMESTAMP WHERE id = ? AND userId = ?',
+    'UPDATE "Template" SET name = ?, subject = ?, "bodyHtml" = ?, "updatedAt" = CURRENT_TIMESTAMP WHERE id = ? AND "userId" = ?',
     [name, subject, bodyHtml, params.id, auth.user.userId],
   );
 
   const template = queryRow(
-    'SELECT * FROM "Template" WHERE id = ? AND userId = ? LIMIT 1',
+    'SELECT * FROM "Template" WHERE id = ? AND "userId" = ? LIMIT 1',
     [params.id, auth.user.userId],
   );
 
@@ -95,11 +95,11 @@ export async function DELETE(_: Request, { params }: Params) {
   if ('error' in auth) return auth.error;
 
   const existing = queryRow<{ id: string }>(
-    'SELECT id FROM "Template" WHERE id = ? AND userId = ? LIMIT 1',
+    'SELECT id FROM "Template" WHERE id = ? AND "userId" = ? LIMIT 1',
     [params.id, auth.user.userId],
   );
   if (!existing) return fail('Template not found.', 404);
 
-  executeSql('DELETE FROM "Template" WHERE id = ? AND userId = ?', [params.id, auth.user.userId]);
+  executeSql('DELETE FROM "Template" WHERE id = ? AND "userId" = ?', [params.id, auth.user.userId]);
   return ok({ success: true });
 }

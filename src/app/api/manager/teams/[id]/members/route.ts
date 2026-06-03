@@ -13,10 +13,10 @@ function loadTeam(teamId: string, managerId: string) {
       SELECT
         t.id,
         t.name,
-        t.dailyCreditLimit,
-        COALESCE((SELECT SUM(tm.allocatedDailyLimit) FROM "TeamMember" tm WHERE tm.teamId = t.id), 0) as allocatedCredits
+        t."dailyCreditLimit",
+        COALESCE((SELECT SUM(tm."allocatedDailyLimit") FROM "TeamMember" tm WHERE tm."teamId" = t.id), 0) as allocatedCredits
       FROM "Team" t
-      WHERE t.id = ? AND t.managerId = ?
+      WHERE t.id = ? AND t."managerId" = ?
       LIMIT 1
     `,
     [teamId, managerId],
@@ -25,7 +25,7 @@ function loadTeam(teamId: string, managerId: string) {
 
 function loadMemberAllocation(teamId: string, userId: string) {
   return queryRow<{ userId: string; allocatedDailyLimit: number; teamId: string }>(
-    'SELECT userId, allocatedDailyLimit, teamId FROM "TeamMember" WHERE teamId = ? AND userId = ? LIMIT 1',
+    'SELECT "userId", "allocatedDailyLimit", "teamId" FROM "TeamMember" WHERE "teamId" = ? AND "userId" = ? LIMIT 1',
     [teamId, userId],
   );
 }
@@ -55,7 +55,7 @@ export async function POST(request: Request, { params }: Params) {
   if (!isValidEmailAddress(email)) return fail('Invalid email address.', 400);
 
   const existingUser = queryRow<{ id: string; role: string; dailyEmailLimit: number }>(
-    'SELECT id, role, dailyEmailLimit FROM "User" WHERE email = ? LIMIT 1',
+    'SELECT id, role, "dailyEmailLimit" FROM "User" WHERE email = ? LIMIT 1',
     [email],
   );
   if (existingUser && existingUser.role !== 'USER') {
@@ -80,7 +80,7 @@ export async function POST(request: Request, { params }: Params) {
     executeSql(
       `
         INSERT INTO "User" (
-          id, email, name, password, role, isActive, dailyEmailLimit, lastLoginAt, createdAt, updatedAt
+          id, email, name, password, role, "isActive", "dailyEmailLimit", "lastLoginAt", "createdAt", "updatedAt"
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
       [userId, email, name || null, passwordHash, 'USER', 1, dailyEmailLimit, null, now, now],
@@ -95,7 +95,7 @@ export async function POST(request: Request, { params }: Params) {
   const now = new Date().toISOString();
   executeSql(
     `
-      INSERT INTO "TeamMember" (id, teamId, userId, allocatedDailyLimit, createdAt, updatedAt)
+      INSERT INTO "TeamMember" (id, "teamId", "userId", "allocatedDailyLimit", "createdAt", "updatedAt")
       VALUES (?, ?, ?, ?, ?, ?)
     `,
     [crypto.randomUUID().replace(/-/g, ''), team.id, userId, dailyEmailLimit, now, now],
@@ -119,19 +119,19 @@ export async function POST(request: Request, { params }: Params) {
   const member = queryRow(
     `
       SELECT
-        tm.userId as memberId,
-        tm.teamId,
-        tm.allocatedDailyLimit,
+        tm."userId" as memberId,
+        tm."teamId",
+        tm."allocatedDailyLimit",
         u.email,
         u.name,
         u.role,
-        u.isActive,
-        u.dailyEmailLimit,
-        u.lastLoginAt,
-        u.createdAt
+        u."isActive",
+        u."dailyEmailLimit",
+        u."lastLoginAt",
+        u."createdAt"
       FROM "TeamMember" tm
-      INNER JOIN "User" u ON u.id = tm.userId
-      WHERE tm.teamId = ? AND tm.userId = ?
+      INNER JOIN "User" u ON u.id = tm."userId"
+      WHERE tm."teamId" = ? AND tm."userId" = ?
       LIMIT 1
     `,
     [team.id, userId],

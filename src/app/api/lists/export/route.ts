@@ -39,13 +39,13 @@ export async function GET(request: Request) {
         id,
         name,
         description,
-        userId,
-        CASE WHEN COALESCE(isDefaultTestList, FALSE) THEN 1 ELSE 0 END as isDefaultTestList,
-        CASE WHEN COALESCE(isArchived, FALSE) THEN 1 ELSE 0 END as isArchived,
-        createdAt,
-        updatedAt
+        "userId",
+        CASE WHEN COALESCE("isDefaultTestList", FALSE) THEN 1 ELSE 0 END as "isDefaultTestList",
+        CASE WHEN COALESCE("isArchived", FALSE) THEN 1 ELSE 0 END as "isArchived",
+        "createdAt",
+        "updatedAt"
       FROM "List"
-      WHERE userId = ? AND id IN (${placeholders(listIds.length)})
+      WHERE "userId" = ? AND id IN (${placeholders(listIds.length)})
     `,
     [auth.user.userId, ...listIds],
   );
@@ -75,10 +75,10 @@ export async function GET(request: Request) {
       updatedAt: string;
     }>(
       `
-        SELECT id, email, firstName, lastName, status, createdAt, updatedAt
+        SELECT id, email, "firstName", "lastName", status, "createdAt", "updatedAt"
         FROM "Contact"
-        WHERE listId = ?
-        ORDER BY createdAt ASC
+        WHERE "listId" = ?
+        ORDER BY "createdAt" ASC
       `,
       [listId],
     );

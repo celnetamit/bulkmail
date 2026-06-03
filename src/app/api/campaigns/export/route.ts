@@ -53,28 +53,28 @@ export async function GET(request: Request) {
         c.id,
         c.name,
         c.subject,
-        c.bodyHtml,
+        c."bodyHtml",
         c.status,
         c.provider,
-        CASE WHEN COALESCE(c.isArchived, FALSE) THEN 1 ELSE 0 END as isArchived,
-        c.totalRecipients,
-        c.sentCount,
-        c.failedCount,
-        c.skippedCount,
-        c.startedAt,
-        c.finishedAt,
-        c.durationSeconds,
-        c.userId,
-        c.listId,
-        c.templateId,
-        c.createdAt,
-        c.updatedAt,
+        CASE WHEN COALESCE(c."isArchived", FALSE) THEN 1 ELSE 0 END as "isArchived",
+        c."totalRecipients",
+        c."sentCount",
+        c."failedCount",
+        c."skippedCount",
+        c."startedAt",
+        c."finishedAt",
+        c."durationSeconds",
+        c."userId",
+        c."listId",
+        c."templateId",
+        c."createdAt",
+        c."updatedAt",
         l.name as listName,
         t.name as templateName
       FROM "Campaign" c
-      INNER JOIN "List" l ON l.id = c.listId
-      LEFT JOIN "Template" t ON t.id = c.templateId
-      WHERE c.userId = ? AND c.id IN (${placeholders(campaignIds.length)})
+      INNER JOIN "List" l ON l.id = c."listId"
+      LEFT JOIN "Template" t ON t.id = c."templateId"
+      WHERE c."userId" = ? AND c.id IN (${placeholders(campaignIds.length)})
     `,
     [auth.user.userId, ...campaignIds],
   );

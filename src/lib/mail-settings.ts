@@ -84,16 +84,16 @@ async function getStoredSettings(userId: string) {
     `
       SELECT
         provider,
-        awsRegion,
-        awsFromEmail,
-        awsAccessKeyIdEncrypted,
-        awsSecretAccessKeyEncrypted,
-        awsSessionTokenEncrypted,
-        resendApiKeyEncrypted,
-        resendFromEmail,
-        webhookSharedSecretEncrypted
+        "awsRegion",
+        "awsFromEmail",
+        "awsAccessKeyIdEncrypted",
+        "awsSecretAccessKeyEncrypted",
+        "awsSessionTokenEncrypted",
+        "resendApiKeyEncrypted",
+        "resendFromEmail",
+        "webhookSharedSecretEncrypted"
       FROM "MailSettings"
-      WHERE userId = ?
+      WHERE "userId" = ?
       LIMIT 1
     `,
     [userId],
@@ -173,16 +173,16 @@ export async function saveMailSettings(userId: string, input: MailSettingsInput)
         UPDATE "MailSettings"
         SET
           provider = ?,
-          awsRegion = ?,
-          awsFromEmail = ?,
-          awsAccessKeyIdEncrypted = ?,
-          awsSecretAccessKeyEncrypted = ?,
-          awsSessionTokenEncrypted = ?,
-          resendApiKeyEncrypted = ?,
-          resendFromEmail = ?,
-          webhookSharedSecretEncrypted = ?,
-          updatedAt = CURRENT_TIMESTAMP
-        WHERE userId = ?
+          "awsRegion" = ?,
+          "awsFromEmail" = ?,
+          "awsAccessKeyIdEncrypted" = ?,
+          "awsSecretAccessKeyEncrypted" = ?,
+          "awsSessionTokenEncrypted" = ?,
+          "resendApiKeyEncrypted" = ?,
+          "resendFromEmail" = ?,
+          "webhookSharedSecretEncrypted" = ?,
+          "updatedAt" = CURRENT_TIMESTAMP
+        WHERE "userId" = ?
       `,
       [
         payload.provider,
@@ -275,9 +275,9 @@ export async function resolveMailTransport(userId: string): Promise<ResolvedMail
 export async function getWebhookSharedSecret(userId: string) {
   const row = queryRow<{ webhookSharedSecretEncrypted: string | null }>(
     `
-      SELECT webhookSharedSecretEncrypted
+      SELECT "webhookSharedSecretEncrypted"
       FROM "MailSettings"
-      WHERE userId = ?
+      WHERE "userId" = ?
       LIMIT 1
     `,
     [userId],

@@ -39,12 +39,12 @@ export async function GET() {
         t.id,
         t.name,
         t.description,
-        t.dailyCreditLimit,
-        t.managerId,
-        t.createdAt,
-        t.updatedAt,
-        (SELECT COUNT(*) FROM "TeamMember" tm WHERE tm.teamId = t.id) as memberCount,
-        COALESCE((SELECT SUM(tm.allocatedDailyLimit) FROM "TeamMember" tm WHERE tm.teamId = t.id), 0) as allocatedCredits
+        t."dailyCreditLimit",
+        t."managerId",
+        t."createdAt",
+        t."updatedAt",
+        (SELECT COUNT(*) FROM "TeamMember" tm WHERE tm."teamId" = t.id) as memberCount,
+        COALESCE((SELECT SUM(tm."allocatedDailyLimit") FROM "TeamMember" tm WHERE tm."teamId" = t.id), 0) as allocatedCredits
       FROM "Team" t
       WHERE t."managerId" = ?
       ORDER BY t."createdAt" DESC
@@ -70,18 +70,18 @@ export async function GET() {
       }>(
         `
           SELECT
-            tm.teamId as teamId,
-            tm.userId as memberId,
+            tm."teamId" as "teamId",
+            tm."userId" as memberId,
             u.email,
             u.name,
             u.role,
-            u.isActive,
-            u.dailyEmailLimit,
-            u.lastLoginAt,
-            u.createdAt,
-            tm.allocatedDailyLimit
+            u."isActive",
+            u."dailyEmailLimit",
+            u."lastLoginAt",
+            u."createdAt",
+            tm."allocatedDailyLimit"
           FROM "TeamMember" tm
-          INNER JOIN "User" u ON u.id = tm.userId
+          INNER JOIN "User" u ON u.id = tm."userId"
           WHERE tm."teamId" IN (${teamIds.map(() => '?').join(', ')})
           ORDER BY u."createdAt" DESC
         `,
@@ -108,23 +108,23 @@ export async function GET() {
       }>(
         `
           SELECT
-            tm.teamId as teamId,
-            c.id as campaignId,
+            tm."teamId" as "teamId",
+            c.id as "campaignId",
             c.name as campaignName,
             c.subject,
             c.status,
             c.provider,
-            c.sentCount,
-            c.failedCount,
-            c.skippedCount,
-            c.createdAt,
-            c.startedAt,
-            c.finishedAt,
-            c.durationSeconds,
+            c."sentCount",
+            c."failedCount",
+            c."skippedCount",
+            c."createdAt",
+            c."startedAt",
+            c."finishedAt",
+            c."durationSeconds",
             u.email as ownerEmail
           FROM "Campaign" c
-          INNER JOIN "User" u ON u.id = c.userId
-          INNER JOIN "TeamMember" tm ON tm.userId = c.userId
+          INNER JOIN "User" u ON u.id = c."userId"
+          INNER JOIN "TeamMember" tm ON tm."userId" = c."userId"
           WHERE tm."teamId" IN (${teamIds.map(() => '?').join(', ')})
           ORDER BY c."createdAt" DESC
           LIMIT 40
@@ -136,12 +136,12 @@ export async function GET() {
   const sentTodayRows = teamIds.length
     ? queryRows<{ teamId: string; count: number }>(
         `
-          SELECT tm.teamId as teamId, COUNT(*) as count
+          SELECT tm."teamId" as "teamId", COUNT(*) as count
           FROM "Event" e
           INNER JOIN "Campaign" c ON c.id = e."campaignId"
-          INNER JOIN "TeamMember" tm ON tm.userId = c."userId"
+          INNER JOIN "TeamMember" tm ON tm."userId" = c."userId"
           WHERE e.type = 'SENT' AND e."createdAt" >= ? AND tm."teamId" IN (${teamIds.map(() => '?').join(', ')})
-          GROUP BY tm.teamId
+          GROUP BY tm."teamId"
         `,
         [from.toISOString(), ...teamIds],
       )
@@ -150,10 +150,10 @@ export async function GET() {
   const eventRows = teamIds.length
     ? queryRows<{ teamId: string; type: string; count: number }>(
         `
-          SELECT tm.teamId as teamId, e.type as type, COUNT(*) as count
+          SELECT tm."teamId" as "teamId", e.type as type, COUNT(*) as count
           FROM "Event" e
           INNER JOIN "Campaign" c ON c.id = e."campaignId"
-          INNER JOIN "TeamMember" tm ON tm.userId = c."userId"
+          INNER JOIN "TeamMember" tm ON tm."userId" = c."userId"
           WHERE tm."teamId" IN (${teamIds.map(() => '?').join(', ')})
           GROUP BY tm."teamId", e.type
         `,

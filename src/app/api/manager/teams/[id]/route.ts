@@ -24,14 +24,14 @@ function loadTeam(teamId: string, managerId: string) {
         t.id,
         t.name,
         t.description,
-        t.dailyCreditLimit,
-        t.managerId,
-        t.createdAt,
-        t.updatedAt,
-        (SELECT COUNT(*) FROM "TeamMember" tm WHERE tm.teamId = t.id) as memberCount,
-        COALESCE((SELECT SUM(tm.allocatedDailyLimit) FROM "TeamMember" tm WHERE tm.teamId = t.id), 0) as allocatedCredits
+        t."dailyCreditLimit",
+        t."managerId",
+        t."createdAt",
+        t."updatedAt",
+        (SELECT COUNT(*) FROM "TeamMember" tm WHERE tm."teamId" = t.id) as memberCount,
+        COALESCE((SELECT SUM(tm."allocatedDailyLimit") FROM "TeamMember" tm WHERE tm."teamId" = t.id), 0) as allocatedCredits
       FROM "Team" t
-      WHERE t.id = ? AND t.managerId = ?
+      WHERE t.id = ? AND t."managerId" = ?
       LIMIT 1
     `,
     [teamId, managerId],
@@ -47,7 +47,7 @@ export async function GET(request: Request, { params }: Params) {
   const team = loadTeam(params.id, auth.user.userId);
   if (!team) return fail('Team not found.', 404);
 
-  const members = queryRow<{ count: number }>('SELECT COUNT(*) as count FROM "TeamMember" WHERE teamId = ?', [team.id])?.count || 0;
+  const members = queryRow<{ count: number }>('SELECT COUNT(*) as count FROM "TeamMember" WHERE "teamId" = ?', [team.id])?.count || 0;
   return ok({ team: { ...team, memberCount: Number(members || team.memberCount), allocatedCredits: Number(team.allocatedCredits || 0) } });
 }
 
@@ -85,7 +85,7 @@ export async function PATCH(request: Request, { params }: Params) {
   if (!assignments.length) return fail('No changes provided.', 400);
 
   executeSql(
-    `UPDATE "Team" SET ${assignments.join(', ')}, "updatedAt" = CURRENT_TIMESTAMP WHERE id = ? AND managerId = ?`,
+    `UPDATE "Team" SET ${assignments.join(', ')}, "updatedAt" = CURRENT_TIMESTAMP WHERE id = ? AND "managerId" = ?`,
     [...paramsList, params.id, auth.user.userId],
   );
 
@@ -119,20 +119,20 @@ export async function DELETE(request: Request, { params }: Params) {
   const team = loadTeam(params.id, auth.user.userId);
   if (!team) return fail('Team not found.', 404);
 
-  const memberRows = queryRow<{ count: number }>('SELECT COUNT(*) as count FROM "TeamMember" WHERE teamId = ?', [team.id])?.count || 0;
+  const memberRows = queryRow<{ count: number }>('SELECT COUNT(*) as count FROM "TeamMember" WHERE "teamId" = ?', [team.id])?.count || 0;
   if (memberRows > 0) {
     executeSql(
       `
         UPDATE "User"
         SET "dailyEmailLimit" = 100000, "updatedAt" = CURRENT_TIMESTAMP
-        WHERE id IN (SELECT userId FROM "TeamMember" WHERE teamId = ?)
+        WHERE id IN (SELECT "userId" FROM "TeamMember" WHERE "teamId" = ?)
       `,
       [team.id],
     );
   }
 
-  executeSql('DELETE FROM "TeamMember" WHERE teamId = ?', [team.id]);
-  executeSql('DELETE FROM "Team" WHERE id = ? AND managerId = ?', [params.id, auth.user.userId]);
+  executeSql('DELETE FROM "TeamMember" WHERE "teamId" = ?', [team.id]);
+  executeSql('DELETE FROM "Team" WHERE id = ? AND "managerId" = ?', [params.id, auth.user.userId]);
 
   await recordAuditEvent({
     actorUserId: auth.user.userId,

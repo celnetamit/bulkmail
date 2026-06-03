@@ -30,7 +30,7 @@ export async function POST(_: Request, { params }: Params) {
     createdAt: string;
     updatedAt: string;
   }>(
-    'SELECT * FROM "Campaign" WHERE id = ? AND userId = ? LIMIT 1',
+    'SELECT * FROM "Campaign" WHERE id = ? AND "userId" = ? LIMIT 1',
     [params.id, auth.user.userId],
   );
 
@@ -44,10 +44,10 @@ export async function POST(_: Request, { params }: Params) {
   executeSql(
     `
       INSERT INTO "Campaign" (
-        id, name, subject, bodyHtml, status, provider,
-        totalRecipients, sentCount, failedCount, skippedCount,
-        startedAt, finishedAt, durationSeconds,
-        userId, listId, templateId, createdAt, updatedAt
+        id, name, subject, "bodyHtml", status, provider,
+        "totalRecipients", "sentCount", "failedCount", "skippedCount",
+        "startedAt", "finishedAt", "durationSeconds",
+        "userId", "listId", "templateId", "createdAt", "updatedAt"
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
     [
@@ -75,7 +75,7 @@ export async function POST(_: Request, { params }: Params) {
   try {
     replaceCampaignLists(id, auth.user.userId, listIds);
   } catch (error) {
-    executeSql('DELETE FROM "Campaign" WHERE id = ? AND userId = ?', [id, auth.user.userId]);
+    executeSql('DELETE FROM "Campaign" WHERE id = ? AND "userId" = ?', [id, auth.user.userId]);
     return fail(error instanceof Error ? error.message : 'Failed to duplicate campaign lists.', 400);
   }
 
@@ -85,27 +85,27 @@ export async function POST(_: Request, { params }: Params) {
         c.id,
         c.name,
         c.subject,
-        c.bodyHtml,
+        c."bodyHtml",
         c.status,
         c.provider,
-        c.totalRecipients,
-        c.sentCount,
-        c.failedCount,
-        c.skippedCount,
-        c.startedAt,
-        c.finishedAt,
-        c.durationSeconds,
-        c.userId,
-        c.listId,
-        c.templateId,
-        c.createdAt,
-        c.updatedAt,
+        c."totalRecipients",
+        c."sentCount",
+        c."failedCount",
+        c."skippedCount",
+        c."startedAt",
+        c."finishedAt",
+        c."durationSeconds",
+        c."userId",
+        c."listId",
+        c."templateId",
+        c."createdAt",
+        c."updatedAt",
         l.name as listName,
         t.name as templateName
       FROM "Campaign" c
-      INNER JOIN "List" l ON l.id = c.listId
-      LEFT JOIN "Template" t ON t.id = c.templateId
-      WHERE c.id = ? AND c.userId = ?
+      INNER JOIN "List" l ON l.id = c."listId"
+      LEFT JOIN "Template" t ON t.id = c."templateId"
+      WHERE c.id = ? AND c."userId" = ?
       LIMIT 1
     `,
     [id, auth.user.userId],

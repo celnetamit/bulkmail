@@ -82,8 +82,8 @@ export default async function HelpPage() {
     `
       SELECT COUNT(*) as count
       FROM "Contact" c
-      INNER JOIN "List" l ON l.id = c.listId
-      WHERE l.userId = ?
+      INNER JOIN "List" l ON l.id = c."listId"
+      WHERE l."userId" = ?
         AND c.status IN ('UNSUBSCRIBED', 'BOUNCED')
     `,
     [user.userId],

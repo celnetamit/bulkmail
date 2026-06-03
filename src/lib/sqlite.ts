@@ -10,6 +10,12 @@ type QueryPayload = {
   params: unknown[];
 };
 
+type SqlExecuteResult = {
+  rowCount?: number;
+  changes?: number;
+  lastrowid?: number;
+};
+
 function toPgSql(sql: string) {
   let index = 0;
   return sql.replace(/\?/g, () => `$${++index}`);
@@ -175,5 +181,5 @@ export function queryRow<T = Record<string, unknown>>(sql: string, params: unkno
 }
 
 export function executeSql(sql: string, params: unknown[] = []) {
-  return runSql<{ lastrowid: number; changes: number }>({ kind: 'execute', sql, params });
+  return runSql<SqlExecuteResult>({ kind: 'execute', sql, params });
 }

@@ -11,7 +11,7 @@ export async function POST(request: Request, { params }: Params) {
   if ('error' in auth) return auth.error;
 
   const existing = queryRow<{ id: string; status: string }>(
-    'SELECT id, status FROM "Campaign" WHERE id = ? AND userId = ? LIMIT 1',
+    'SELECT id, status FROM "Campaign" WHERE id = ? AND "userId" = ? LIMIT 1',
     [params.id, auth.user.userId],
   );
   if (!existing) return fail('Campaign not found.', 404);
@@ -27,10 +27,10 @@ export async function POST(request: Request, { params }: Params) {
 
   try {
     // Remove any queued/send jobs for this campaign and reset campaign counters/timestamps.
-    executeSql('DELETE FROM "CampaignSendJob" WHERE campaignId = ?', [params.id]);
+    executeSql('DELETE FROM "CampaignSendJob" WHERE "campaignId" = ?', [params.id]);
 
     if (wipeEvents) {
-      executeSql('DELETE FROM "Event" WHERE campaignId = ?', [params.id]);
+      executeSql('DELETE FROM "Event" WHERE "campaignId" = ?', [params.id]);
     }
 
     executeSql(
@@ -46,7 +46,7 @@ export async function POST(request: Request, { params }: Params) {
         "finishedAt" = NULL,
         "durationSeconds" = NULL,
         "updatedAt" = CURRENT_TIMESTAMP
-      WHERE id = ? AND userId = ?`,
+      WHERE id = ? AND "userId" = ?`,
       [params.id, auth.user.userId],
     );
 

@@ -316,7 +316,7 @@ function getDeliverabilityItems(userId: string): CampaignRiskItem[] {
   }>(
     `
       SELECT
-        COALESCE(SUM(CASE WHEN e.type = 'SENT' THEN 1 ELSE 0 END), 0) as sentCount,
+        COALESCE(SUM(CASE WHEN e.type = 'SENT' THEN 1 ELSE 0 END), 0) as "sentCount",
         COALESCE(SUM(CASE WHEN e.type = 'BOUNCED' THEN 1 ELSE 0 END), 0) as bouncedCount,
         COALESCE(SUM(CASE WHEN e.type = 'UNSUBSCRIBED' THEN 1 ELSE 0 END), 0) as unsubscribedCount
       FROM "Event" e
@@ -366,7 +366,7 @@ async function getComplianceRiskItems(userId: string, suppressedContacts: number
       dmarcVerified: number | boolean;
     }>(
       `
-        SELECT sendingDomain, spfVerified, dkimVerified, dmarcVerified
+        SELECT "sendingDomain", "spfVerified", "dkimVerified", "dmarcVerified"
           FROM "PlatformSettings"
           WHERE "id" = 'global'
         LIMIT 1
@@ -446,9 +446,9 @@ function buildResult(items: CampaignRiskItem[], audience: CampaignRiskResult['au
 export async function analyzeCampaignRisk(userId: string, campaignId: string) {
   const campaign = queryRow<CampaignRiskCampaign>(
     `
-      SELECT id, name, subject, bodyHtml, status, CASE WHEN COALESCE(isArchived, FALSE) THEN 1 ELSE 0 END as isArchived, listId
+      SELECT id, name, subject, "bodyHtml", status, CASE WHEN COALESCE("isArchived", FALSE) THEN 1 ELSE 0 END as "isArchived", "listId"
       FROM "Campaign"
-      WHERE id = ? AND userId = ?
+      WHERE id = ? AND "userId" = ?
       LIMIT 1
     `,
     [campaignId, userId],
@@ -463,8 +463,8 @@ export async function analyzeCampaignRisk(userId: string, campaignId: string) {
         `
           SELECT c.id, c.email, c.status
           FROM "Contact" c
-          INNER JOIN "List" l ON l.id = c.listId
-          WHERE l.id IN (${effectiveListIds.map(() => '?').join(', ')}) AND l.userId = ?
+          INNER JOIN "List" l ON l.id = c."listId"
+          WHERE l.id IN (${effectiveListIds.map(() => '?').join(', ')}) AND l."userId" = ?
         `,
         [...effectiveListIds, userId],
       )

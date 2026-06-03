@@ -39,8 +39,8 @@ export async function PATCH(request: Request, { params }: Params) {
     `
       SELECT c.id
       FROM "Contact" c
-      INNER JOIN "List" l ON l.id = c.listId
-      WHERE c.id = ? AND l.userId = ?
+      INNER JOIN "List" l ON l.id = c."listId"
+      WHERE c.id = ? AND l."userId" = ?
       LIMIT 1
     `,
     [params.id, auth.user.userId],
@@ -87,8 +87,8 @@ export async function DELETE(_: Request, { params }: Params) {
     `
       SELECT c.id
       FROM "Contact" c
-      INNER JOIN "List" l ON l.id = c.listId
-      WHERE c.id = ? AND l.userId = ?
+      INNER JOIN "List" l ON l.id = c."listId"
+      WHERE c.id = ? AND l."userId" = ?
       LIMIT 1
     `,
     [params.id, auth.user.userId],

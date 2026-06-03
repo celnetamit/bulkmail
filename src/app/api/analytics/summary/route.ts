@@ -25,8 +25,8 @@ export async function GET(request: Request) {
     const listId = searchParams.get('listId')?.trim() || undefined;
     const from = parseDate(searchParams.get('from'));
     const to = parseDate(searchParams.get('to'));
-    const campaignScope = buildOwnerScope(auth.user, 'c.userId');
-    const listScope = buildOwnerScope(auth.user, 'l.userId');
+    const campaignScope = buildOwnerScope(auth.user, 'c."userId"');
+    const listScope = buildOwnerScope(auth.user, 'l."userId"');
 
     recordResourceMetric({
       scopeType: 'GLOBAL',
@@ -39,11 +39,11 @@ export async function GET(request: Request) {
       getUserAnalyticsSummary(auth.user.userId, { campaignId, listId, from, to, role: auth.user.role }),
       queryRows<{ id: string; name: string; listId: string; ownerEmail: string; ownerName: string | null; ownerRole: string }>(
         `
-          SELECT c.id, c.name, c.listId, u.email as ownerEmail, u.name as ownerName, u.role as ownerRole
+          SELECT c.id, c.name, c."listId", u.email as ownerEmail, u.name as ownerName, u.role as ownerRole
           FROM "Campaign" c
-          INNER JOIN "User" u ON u.id = c.userId
+          INNER JOIN "User" u ON u.id = c."userId"
           WHERE ${campaignScope.clause}
-          ORDER BY c.createdAt DESC
+          ORDER BY c."createdAt" DESC
         `,
         campaignScope.params,
       ),
@@ -51,9 +51,9 @@ export async function GET(request: Request) {
         `
           SELECT l.id, l.name, u.email as ownerEmail, u.name as ownerName, u.role as ownerRole
           FROM "List" l
-          INNER JOIN "User" u ON u.id = l.userId
+          INNER JOIN "User" u ON u.id = l."userId"
           WHERE ${listScope.clause}
-          ORDER BY l.createdAt DESC
+          ORDER BY l."createdAt" DESC
         `,
         listScope.params,
       ),

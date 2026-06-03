@@ -10,7 +10,7 @@ type Params = { params: { id: string } };
 export async function GET(_: Request, { params }: Params) {
   const auth = await requireUserFromCookies();
   if ('error' in auth) return auth.error;
-  const ownerScope = buildOwnerScope(auth.user, 'l.userId');
+  const ownerScope = buildOwnerScope(auth.user, 'l."userId"');
 
   const list = queryRow<{
     id: string;
@@ -32,18 +32,18 @@ export async function GET(_: Request, { params }: Params) {
         l.id,
         l.name,
         l.description,
-        l.userId,
-        CASE WHEN COALESCE(l.isDefaultTestList, FALSE) THEN 1 ELSE 0 END as isDefaultTestList,
-        CASE WHEN COALESCE(l.isArchived, FALSE) THEN 1 ELSE 0 END as isArchived,
-        l.createdAt,
-        l.updatedAt,
-        (SELECT COUNT(*) FROM "Contact" c WHERE c.listId = l.id) as contactsCount,
-        (SELECT COUNT(*) FROM "CampaignList" cl WHERE cl.listId = l.id) as campaignsCount,
+        l."userId",
+        CASE WHEN COALESCE(l."isDefaultTestList", FALSE) THEN 1 ELSE 0 END as "isDefaultTestList",
+        CASE WHEN COALESCE(l."isArchived", FALSE) THEN 1 ELSE 0 END as "isArchived",
+        l."createdAt",
+        l."updatedAt",
+        (SELECT COUNT(*) FROM "Contact" c WHERE c."listId" = l.id) as contactsCount,
+        (SELECT COUNT(*) FROM "CampaignList" cl WHERE cl."listId" = l.id) as campaignsCount,
         u.email as ownerEmail,
         u.name as ownerName,
         u.role as ownerRole
       FROM "List" l
-      INNER JOIN "User" u ON u.id = l.userId
+      INNER JOIN "User" u ON u.id = l."userId"
       WHERE l.id = ? AND ${ownerScope.clause}
       LIMIT 1
     `,
@@ -93,14 +93,14 @@ export async function PATCH(request: Request, { params }: Params) {
   if (!name) return fail('List name is required.', 400);
 
   const existing = queryRow<{ id: string }>(
-    'SELECT id FROM "List" WHERE id = ? AND userId = ? LIMIT 1',
+    'SELECT id FROM "List" WHERE id = ? AND "userId" = ? LIMIT 1',
     [params.id, auth.user.userId],
   );
 
   if (!existing) return fail('List not found.', 404);
 
   executeSql(
-    'UPDATE "List" SET name = ?, description = ?, updatedAt = CURRENT_TIMESTAMP WHERE id = ? AND userId = ?',
+    'UPDATE "List" SET name = ?, description = ?, "updatedAt" = CURRENT_TIMESTAMP WHERE id = ? AND "userId" = ?',
     [name, description || null, params.id, auth.user.userId],
   );
 
@@ -108,7 +108,7 @@ export async function PATCH(request: Request, { params }: Params) {
     setDefaultTestList(params.id, auth.user.userId);
   } else if (isDefaultTestList === false) {
     executeSql(
-      'UPDATE "List" SET isDefaultTestList = FALSE, updatedAt = CURRENT_TIMESTAMP WHERE id = ? AND userId = ?',
+      'UPDATE "List" SET "isDefaultTestList" = FALSE, "updatedAt" = CURRENT_TIMESTAMP WHERE id = ? AND "userId" = ?',
       [params.id, auth.user.userId],
     );
   }
@@ -130,7 +130,7 @@ export async function PATCH(request: Request, { params }: Params) {
   });
 
   const list = queryRow(
-    'SELECT * FROM "List" WHERE id = ? AND userId = ? LIMIT 1',
+    'SELECT * FROM "List" WHERE id = ? AND "userId" = ? LIMIT 1',
     [params.id, auth.user.userId],
   );
 
@@ -142,13 +142,13 @@ export async function DELETE(_: Request, { params }: Params) {
   if ('error' in auth) return auth.error;
 
   const existing = queryRow<{ id: string }>(
-    'SELECT id FROM "List" WHERE id = ? AND userId = ? LIMIT 1',
+    'SELECT id FROM "List" WHERE id = ? AND "userId" = ? LIMIT 1',
     [params.id, auth.user.userId],
   );
 
   if (!existing) return fail('List not found.', 404);
 
-  executeSql('DELETE FROM "List" WHERE id = ? AND userId = ?', [params.id, auth.user.userId]);
+  executeSql('DELETE FROM "List" WHERE id = ? AND "userId" = ?', [params.id, auth.user.userId]);
   await recordAuditEvent({
     actorUserId: auth.user.userId,
     actorEmail: auth.user.email,

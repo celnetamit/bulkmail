@@ -64,7 +64,7 @@ export async function POST(request: Request) {
       `
         SELECT id
         FROM "List"
-        WHERE userId = ? AND id IN (${placeholders(listIds.length)})
+        WHERE "userId" = ? AND id IN (${placeholders(listIds.length)})
       `,
       [auth.user.userId, ...listIds],
     );
@@ -74,7 +74,7 @@ export async function POST(request: Request) {
 
     if (templateId) {
       const template = queryRow<{ id: string }>(
-        'SELECT id FROM "Template" WHERE id = ? AND userId = ? LIMIT 1',
+        'SELECT id FROM "Template" WHERE id = ? AND "userId" = ? LIMIT 1',
         [templateId, auth.user.userId],
       );
       if (!template) {
@@ -87,10 +87,10 @@ export async function POST(request: Request) {
     executeSql(
       `
         INSERT INTO "Campaign" (
-          id, name, subject, bodyHtml, status, provider,
-          isArchived, totalRecipients, sentCount, failedCount, skippedCount,
-          startedAt, finishedAt, durationSeconds,
-          userId, listId, templateId, createdAt, updatedAt
+          id, name, subject, "bodyHtml", status, provider,
+          "isArchived", "totalRecipients", "sentCount", "failedCount", "skippedCount",
+          "startedAt", "finishedAt", "durationSeconds",
+          "userId", "listId", "templateId", "createdAt", "updatedAt"
         ) VALUES (?, ?, ?, ?, 'DRAFT', NULL, ?, 0, 0, 0, 0, NULL, NULL, NULL, ?, ?, ?, ?, ?)
       `,
       [
@@ -110,7 +110,7 @@ export async function POST(request: Request) {
     try {
       replaceCampaignLists(id, auth.user.userId, listIds);
     } catch (error) {
-      executeSql('DELETE FROM "Campaign" WHERE id = ? AND userId = ?', [id, auth.user.userId]);
+      executeSql('DELETE FROM "Campaign" WHERE id = ? AND "userId" = ?', [id, auth.user.userId]);
       return fail(error instanceof Error ? error.message : 'Failed to import campaign lists.', 400);
     }
 
@@ -138,28 +138,28 @@ export async function POST(request: Request) {
             c.id,
             c.name,
             c.subject,
-            c.bodyHtml,
+            c."bodyHtml",
             c.status,
             c.provider,
-            CASE WHEN COALESCE(c.isArchived, FALSE) THEN 1 ELSE 0 END as isArchived,
-            c.totalRecipients,
-            c.sentCount,
-            c.failedCount,
-            c.skippedCount,
-            c.startedAt,
-            c.finishedAt,
-            c.durationSeconds,
-            c.userId,
-            c.listId,
-            c.templateId,
-            c.createdAt,
-            c.updatedAt,
+            CASE WHEN COALESCE(c."isArchived", FALSE) THEN 1 ELSE 0 END as "isArchived",
+            c."totalRecipients",
+            c."sentCount",
+            c."failedCount",
+            c."skippedCount",
+            c."startedAt",
+            c."finishedAt",
+            c."durationSeconds",
+            c."userId",
+            c."listId",
+            c."templateId",
+            c."createdAt",
+            c."updatedAt",
             l.name as listName,
             t.name as templateName
           FROM "Campaign" c
-          INNER JOIN "List" l ON l.id = c.listId
-          LEFT JOIN "Template" t ON t.id = c.templateId
-          WHERE c.id = ? AND c.userId = ?
+          INNER JOIN "List" l ON l.id = c."listId"
+          LEFT JOIN "Template" t ON t.id = c."templateId"
+          WHERE c.id = ? AND c."userId" = ?
           LIMIT 1
         `,
         [createdCampaignIds[0], auth.user.userId],

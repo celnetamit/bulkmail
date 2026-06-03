@@ -19,7 +19,7 @@ export async function POST(_: Request, { params }: Params) {
     isArchived: number | boolean;
     userId: string;
   }>(
-    'SELECT id, name, subject, bodyHtml, CASE WHEN COALESCE(isArchived, FALSE) THEN 1 ELSE 0 END as isArchived, userId FROM "Campaign" WHERE id = ? AND userId = ? LIMIT 1',
+    'SELECT id, name, subject, "bodyHtml", CASE WHEN COALESCE("isArchived", FALSE) THEN 1 ELSE 0 END as "isArchived", "userId" FROM "Campaign" WHERE id = ? AND "userId" = ? LIMIT 1',
     [params.id, auth.user.userId],
   );
 
@@ -35,8 +35,8 @@ export async function POST(_: Request, { params }: Params) {
     `
       SELECT id, email
       FROM "Contact"
-      WHERE listId = ? AND status = 'SUBSCRIBED'
-      ORDER BY createdAt ASC
+      WHERE "listId" = ? AND status = 'SUBSCRIBED'
+      ORDER BY "createdAt" ASC
     `,
     [testList.id],
   );

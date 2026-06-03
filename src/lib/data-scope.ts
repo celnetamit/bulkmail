@@ -22,10 +22,10 @@ export function getAccessibleUserIdsForRole(userId: string, role: string) {
     ensureManagerSchema();
     const managedUsers = queryRows<{ userId: string }>(
       `
-        SELECT DISTINCT tm.userId as userId
+        SELECT DISTINCT tm."userId" as "userId"
         FROM "Team" t
-        INNER JOIN "TeamMember" tm ON tm.teamId = t.id
-        WHERE t.managerId = ?
+        INNER JOIN "TeamMember" tm ON tm."teamId" = t.id
+        WHERE t."managerId" = ?
       `,
       [userId],
     ).map((row) => row.userId);

@@ -12,8 +12,8 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const ownerSelfOnly = url.searchParams.get('owner') === 'self';
   const ownerScope = ownerSelfOnly
-    ? { clause: 't.userId = ?', params: [auth.user.userId] as unknown[], scope: 'SELF' as const }
-    : buildOwnerScope(auth.user, 't.userId');
+    ? { clause: 't."userId" = ?', params: [auth.user.userId] as unknown[], scope: 'SELF' as const }
+    : buildOwnerScope(auth.user, 't."userId"');
 
   const templates = queryRows<{
     id: string;
@@ -32,17 +32,17 @@ export async function GET(request: Request) {
         t.id,
         t.name,
         t.subject,
-        t.bodyHtml,
-        t.userId,
-        t.createdAt,
-        t.updatedAt,
+        t."bodyHtml",
+        t."userId",
+        t."createdAt",
+        t."updatedAt",
         u.email as ownerEmail,
         u.name as ownerName,
         u.role as ownerRole
       FROM "Template" t
-      INNER JOIN "User" u ON u.id = t.userId
+      INNER JOIN "User" u ON u.id = t."userId"
       WHERE ${ownerScope.clause}
-      ORDER BY t.createdAt DESC
+      ORDER BY t."createdAt" DESC
     `,
     ownerScope.params,
   );
@@ -78,12 +78,12 @@ export async function POST(request: Request) {
   const id = crypto.randomUUID().replace(/-/g, '');
   const createdAt = new Date().toISOString();
   executeSql(
-    'INSERT INTO "Template" (id, name, subject, bodyHtml, userId, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    'INSERT INTO "Template" (id, name, subject, "bodyHtml", "userId", "createdAt", "updatedAt") VALUES (?, ?, ?, ?, ?, ?, ?)',
     [id, name, subject, bodyHtml, auth.user.userId, createdAt, createdAt],
   );
 
   const template = queryRow(
-    'SELECT * FROM "Template" WHERE id = ? AND userId = ? LIMIT 1',
+    'SELECT * FROM "Template" WHERE id = ? AND "userId" = ? LIMIT 1',
     [id, auth.user.userId],
   );
 

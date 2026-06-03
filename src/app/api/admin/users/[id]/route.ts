@@ -88,7 +88,7 @@ export async function PATCH(request: Request, { params }: Params) {
   });
 
   const user = queryRow(
-    'SELECT id, email, name, role, isActive, dailyEmailLimit, imageUploadLimitKb, createdAt, lastLoginAt FROM "User" WHERE id = ? LIMIT 1',
+    'SELECT id, email, name, role, "isActive", "dailyEmailLimit", "imageUploadLimitKb", "createdAt", "lastLoginAt" FROM "User" WHERE id = ? LIMIT 1',
     [params.id],
   );
 

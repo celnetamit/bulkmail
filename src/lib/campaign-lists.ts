@@ -20,7 +20,7 @@ export function getCampaignLists(campaignId: string, userId: string) {
       SELECT
         l.id,
         l.name,
-        CASE WHEN COALESCE(l.isDefaultTestList, FALSE) THEN 1 ELSE 0 END as isDefaultTestList
+        CASE WHEN COALESCE(l."isDefaultTestList", FALSE) THEN 1 ELSE 0 END as "isDefaultTestList"
       FROM "CampaignList" cl
       INNER JOIN "Campaign" c ON c.id = cl."campaignId"
       INNER JOIN "List" l ON l.id = cl."listId"
@@ -79,7 +79,7 @@ export function getDefaultTestList(userId: string) {
       SELECT
         id,
         name,
-        CASE WHEN COALESCE(isDefaultTestList, FALSE) THEN 1 ELSE 0 END as isDefaultTestList
+        CASE WHEN COALESCE("isDefaultTestList", FALSE) THEN 1 ELSE 0 END as "isDefaultTestList"
       FROM "List"
       WHERE "userId" = ? AND COALESCE("isDefaultTestList", FALSE) = TRUE
       ORDER BY "updatedAt" DESC
@@ -95,9 +95,9 @@ export function setDefaultTestList(listId: string, userId: string) {
       SELECT
         id,
         name,
-        CASE WHEN COALESCE(isDefaultTestList, FALSE) THEN 1 ELSE 0 END as isDefaultTestList
+        CASE WHEN COALESCE("isDefaultTestList", FALSE) THEN 1 ELSE 0 END as "isDefaultTestList"
       FROM "List"
-      WHERE id = ? AND userId = ?
+      WHERE id = ? AND "userId" = ?
       LIMIT 1
     `,
     [listId, userId],

@@ -30,8 +30,8 @@ export async function GET(request: Request) {
     `
       SELECT c.id
       FROM "Contact" c
-      INNER JOIN "List" l ON l.id = c.listId
-      WHERE c.id = ? AND lower(c.email) = lower(?) AND l.userId = ?
+      INNER JOIN "List" l ON l.id = c."listId"
+      WHERE c.id = ? AND lower(c.email) = lower(?) AND l."userId" = ?
       LIMIT 1
     `,
     [payload.contactId, payload.email, payload.userId],
@@ -42,12 +42,12 @@ export async function GET(request: Request) {
     executeSql(
       `
         INSERT INTO "Event" (
-          id, type, provider, providerEventId, providerMessageId,
-          contactId, campaignId, createdAt
+          id, type, provider, "providerEventId", "providerMessageId",
+          "contactId", "campaignId", "createdAt"
         ) VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-        ON CONFLICT(providerEventId) DO UPDATE SET
+        ON CONFLICT("providerEventId") DO UPDATE SET
           type = excluded.type,
-          providerMessageId = excluded.providerMessageId
+          "providerMessageId" = excluded."providerMessageId"
       `,
       [crypto.randomUUID().replace(/-/g, ''), 'OPENED', 'open-pixel', providerEventId, null, contact.id, payload.campaignId],
     );
