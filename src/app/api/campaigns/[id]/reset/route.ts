@@ -6,7 +6,7 @@ import { executeSql, queryRow } from '@/lib/sqlite';
 
 type Params = { params: { id: string } };
 
-export async function POST(_: Request, { params }: Params) {
+export async function POST(request: Request, { params }: Params) {
   const auth = await requireUserFromCookies();
   if ('error' in auth) return auth.error;
 
@@ -19,9 +19,19 @@ export async function POST(_: Request, { params }: Params) {
     return fail('Cannot reset a queued or sending campaign.', 409);
   }
 
+  let wipeEvents = false;
+  try {
+    const body = await request.json().catch(() => ({}));
+    wipeEvents = !!(body && (body as any).wipeEvents);
+  } catch {}
+
   try {
     // Remove any queued/send jobs for this campaign and reset campaign counters/timestamps.
     executeSql('DELETE FROM "CampaignSendJob" WHERE campaignId = ?', [params.id]);
+
+    if (wipeEvents) {
+      executeSql('DELETE FROM "Event" WHERE campaignId = ?', [params.id]);
+    }
 
     executeSql(
       `UPDATE "Campaign" SET

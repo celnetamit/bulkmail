@@ -17,6 +17,7 @@ type Campaign = {
   list: { id: string; name: string };
   lists?: { id: string; name: string; isDefaultTestList: number | boolean }[];
   template: { id: string; name: string } | null;
+  lastJob?: { skipReason?: string | null; lastError?: string | null; status?: string | null; finishedAt?: string | null } | null;
 };
 
 type CampaignRiskSeverity = 'block' | 'warning' | 'info';
@@ -74,6 +75,7 @@ export function CampaignCreateClient({ campaignId, templateIdFromQuery }: Campai
   const [loading, setLoading] = useState(true);
   const [riskLoading, setRiskLoading] = useState(false);
   const [risk, setRisk] = useState<CampaignRiskResult | null>(null);
+  const [lastJob, setLastJob] = useState<{ skipReason?: string | null; lastError?: string | null; status?: string | null; finishedAt?: string | null } | null>(null);
   const skipTemplateApplyRef = useRef(false);
   const [editingCampaignId, setEditingCampaignId] = useState<string | null>(campaignId || null);
 
@@ -120,6 +122,7 @@ export function CampaignCreateClient({ campaignId, templateIdFromQuery }: Campai
           setTemplateId(campaign.template?.id || '');
           setSubject(campaign.subject);
           setBodyHtml(campaign.bodyHtml);
+          setLastJob((campaign as any).lastJob || null);
           setMessage(`Editing ${campaign.name}.`);
           await loadCampaignRisk(campaign.id);
         }
@@ -239,6 +242,11 @@ export function CampaignCreateClient({ campaignId, templateIdFromQuery }: Campai
             <div>
               <h2>Campaign Risk Check</h2>
               <p>{riskLoading ? 'Checking compliance, spam, audience, and deliverability signals...' : risk?.summary || 'Run a scan after saving the draft.'}</p>
+              {lastJob ? (
+                <p style={{ marginTop: '0.4rem', color: '#94a3b8' }}>
+                  Last send: {lastJob.status || 'N/A'}{lastJob.finishedAt ? ` — ${new Date(lastJob.finishedAt).toLocaleString()}` : ''}
+                </p>
+              ) : null}
             </div>
             {risk ? <span className={`badge ${riskStatusClass}`}>{risk.status}</span> : null}
           </div>
@@ -268,7 +276,15 @@ export function CampaignCreateClient({ campaignId, templateIdFromQuery }: Campai
                   ))
                 )}
               </div>
-              <button className="mini-btn" type="button" onClick={() => loadCampaignRisk(editingCampaignId)} disabled={riskLoading}>
+                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                  {lastJob?.skipReason ? <p className="form-note">Skip reason: {lastJob.skipReason}</p> : null}
+                  {lastJob?.lastError ? (
+                    <button className="mini-btn" type="button" onClick={() => alert(lastJob.lastError)}>
+                      View last error
+                    </button>
+                  ) : null}
+                </div>
+                <button className="mini-btn" type="button" onClick={() => loadCampaignRisk(editingCampaignId)} disabled={riskLoading}>
                 {riskLoading ? 'Checking...' : 'Refresh Check'}
               </button>
             </>
