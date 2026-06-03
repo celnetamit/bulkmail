@@ -118,7 +118,7 @@ export default function SearchableMultiSelect({ lists, selectedIds, onChange, pl
               return (
                 <div
                   key={l.id}
-                  ref={(el) => (itemsRef.current[idx] = el)}
+                  ref={(el) => { itemsRef.current[idx] = el; }}
                   tabIndex={0}
                   className={`searchable-multiselect__item ${sel ? 'searchable-multiselect__item--selected' : ''}`}
                   onClick={() => toggle(l.id)}
