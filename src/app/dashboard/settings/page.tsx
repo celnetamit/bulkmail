@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { FormEvent, useEffect, useState } from 'react';
+import { useToast } from '@/components/toast-provider';
 
 type Settings = {
   provider: 'mock' | 'resend' | 'aws-ses';
@@ -21,18 +22,32 @@ type Settings = {
   source: 'database' | 'env';
 };
 
+type SenderIdentity = {
+  defaultFromEmail: string;
+  defaultReplyToEmail: string;
+  fromEmail: string;
+  replyToEmail: string;
+  senderFromEmail: string;
+  senderReplyToEmail: string;
+};
+
 type CurrentUser = {
   role: 'ADMIN' | 'MANAGER' | 'USER';
+  userId: string;
   email: string;
   name: string | null;
+  senderFromEmail: string | null;
+  senderReplyToEmail: string | null;
   capabilities: string[];
 };
 
 export default function SettingsPage() {
+  const toast = useToast();
   const [settings, setSettings] = useState<Settings | null>(null);
+  const [senderIdentity, setSenderIdentity] = useState<SenderIdentity | null>(null);
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
-  const [message, setMessage] = useState('');
   const [saving, setSaving] = useState(false);
+  const [savingSenderIdentity, setSavingSenderIdentity] = useState(false);
   const [sendingTest, setSendingTest] = useState(false);
 
   const [provider, setProvider] = useState<'mock' | 'resend' | 'aws-ses'>('mock');
@@ -49,6 +64,8 @@ export default function SettingsPage() {
   const [spfVerified, setSpfVerified] = useState(false);
   const [dkimVerified, setDkimVerified] = useState(false);
   const [dmarcVerified, setDmarcVerified] = useState(false);
+  const [senderFromEmail, setSenderFromEmail] = useState('');
+  const [senderReplyToEmail, setSenderReplyToEmail] = useState('');
 
   const [testToEmail, setTestToEmail] = useState('');
   const [testSubject, setTestSubject] = useState('MailFlow test email');
@@ -59,25 +76,28 @@ export default function SettingsPage() {
     const meData = (await meResponse.json()) as { user?: CurrentUser; error?: string };
 
     if (!meResponse.ok || !meData.user) {
-      setMessage(meData.error || 'Failed to load account details.');
+      toast.error('Account load failed', meData.error || 'Account details could not be loaded.');
       return;
     }
 
     setCurrentUser(meData.user);
 
-    if (!meData.user.capabilities?.includes('manage_settings')) {
+    const res = await fetch('/api/settings', { cache: 'no-store' });
+    const data = (await res.json()) as { settings?: Settings; senderIdentity?: SenderIdentity; error?: string };
+    if (!res.ok) {
+      toast.error('Settings load failed', data.error || 'Settings could not be loaded.');
+      return;
+    }
+
+    setSenderIdentity(data.senderIdentity || null);
+    setSenderFromEmail(data.senderIdentity?.senderFromEmail || '');
+    setSenderReplyToEmail(data.senderIdentity?.senderReplyToEmail || '');
+
+    if (!data.settings) {
       setSettings(null);
       return;
     }
 
-    const res = await fetch('/api/settings', { cache: 'no-store' });
-    const data = (await res.json()) as { settings?: Settings; error?: string };
-    if (!res.ok) {
-      setMessage(data.error || 'Failed to load settings.');
-      return;
-    }
-
-    if (!data.settings) return;
     setSettings(data.settings);
     setProvider(data.settings.provider);
     setAwsRegion(data.settings.awsRegion);
@@ -94,14 +114,40 @@ export default function SettingsPage() {
     loadSessionAndSettings();
   }, []);
 
+  async function saveSenderSettings(event: FormEvent) {
+    event.preventDefault();
+    setSavingSenderIdentity(true);
+
+    const res = await fetch('/api/settings', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        senderFromEmail,
+        senderReplyToEmail,
+      }),
+    });
+
+    const data = (await res.json()) as { error?: string; senderIdentity?: SenderIdentity };
+    setSavingSenderIdentity(false);
+
+    if (!res.ok) {
+      toast.error('Sender settings failed', data.error || 'Your sender identity could not be saved.');
+      return;
+    }
+
+    setSenderIdentity(data.senderIdentity || null);
+    setSenderFromEmail(data.senderIdentity?.senderFromEmail || '');
+    setSenderReplyToEmail(data.senderIdentity?.senderReplyToEmail || '');
+    toast.success('Sender settings saved', 'Your from and reply-to defaults were updated.');
+  }
+
   async function saveSettings(event: FormEvent) {
     event.preventDefault();
     if (!currentUser?.capabilities?.includes('manage_settings')) {
-      setMessage('Mail Provider settings are admin-only.');
+      toast.warning('Admin only', 'Mail Provider settings are admin-only.');
       return;
     }
     setSaving(true);
-    setMessage('');
 
     const res = await fetch('/api/settings', {
       method: 'PUT',
@@ -127,22 +173,24 @@ export default function SettingsPage() {
     const data = (await res.json()) as { error?: string; settings?: Settings };
     setSaving(false);
 
-    if (!res.ok) return setMessage(data.error || 'Failed to save settings.');
+    if (!res.ok) {
+      toast.error('Settings save failed', data.error || 'The settings could not be saved.');
+      return;
+    }
 
-    setMessage('Settings saved.');
+    toast.success('Settings saved', 'Mail and compliance settings were updated.');
     setAwsAccessKeyId('');
     setAwsSecretAccessKey('');
-      setAwsSessionToken('');
-      setResendApiKey('');
-      setWebhookSharedSecret('');
-      setSendingDomain(data.settings?.sendingDomain || '');
-      await loadSessionAndSettings();
+    setAwsSessionToken('');
+    setResendApiKey('');
+    setWebhookSharedSecret('');
+    setSendingDomain(data.settings?.sendingDomain || '');
+    await loadSessionAndSettings();
   }
 
   async function sendTestEmail(event: FormEvent) {
     event.preventDefault();
     setSendingTest(true);
-    setMessage('');
 
     const res = await fetch('/api/settings/test-email', {
       method: 'POST',
@@ -157,9 +205,12 @@ export default function SettingsPage() {
     const data = (await res.json()) as { error?: string; provider?: string };
     setSendingTest(false);
 
-    if (!res.ok) return setMessage(data.error || 'Failed to send test email.');
+    if (!res.ok) {
+      toast.error('Test email failed', data.error || 'The test email could not be sent.');
+      return;
+    }
 
-    setMessage(`Test email sent via ${data.provider || provider}.`);
+    toast.success('Test email sent', `Sent via ${data.provider || provider}.`);
   }
 
   return (
@@ -175,9 +226,30 @@ export default function SettingsPage() {
           </div>
         </div>
       </header>
-
-      {message ? <p className="form-note">{message}</p> : null}
-
+      <div className="card dashboard-panel" style={{ marginBottom: '1rem' }}>
+        <h2>Personal Sender Identity</h2>
+        <form className="auth-form" onSubmit={saveSenderSettings}>
+          <input
+            type="email"
+            value={senderFromEmail}
+            onChange={(e) => setSenderFromEmail(e.target.value)}
+            placeholder={currentUser?.email || 'your@email.com'}
+          />
+          <input
+            type="email"
+            value={senderReplyToEmail}
+            onChange={(e) => setSenderReplyToEmail(e.target.value)}
+            placeholder={senderFromEmail || senderIdentity?.defaultReplyToEmail || currentUser?.email || 'reply-to@email.com'}
+          />
+          <button className="btn-primary" type="submit" disabled={savingSenderIdentity}>
+            {savingSenderIdentity ? 'Saving...' : 'Save Sender Identity'}
+          </button>
+        </form>
+        <p className="form-note">
+          Leave From email blank to use your login email: <strong>{senderIdentity?.defaultFromEmail || currentUser?.email || 'Not available'}</strong>.
+          Leave Reply-to blank to use the current From email automatically.
+        </p>
+      </div>
       {currentUser?.capabilities?.includes('manage_settings') ? (
         <div className="card dashboard-panel" style={{ marginBottom: '1rem' }}>
           <h2>Mail Provider</h2>
@@ -270,7 +342,7 @@ export default function SettingsPage() {
             {sendingTest ? 'Sending...' : 'Send Test Email'}
           </button>
         </form>
-        <p className="form-note">This uses the currently selected provider and settings. It does not create a campaign record.</p>
+        <p className="form-note">This uses your current sender identity together with the selected provider credentials. It does not create a campaign record.</p>
       </div>
     </div>
   );

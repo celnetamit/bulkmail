@@ -1,5 +1,5 @@
 import { SESv2Client, SendEmailCommand } from '@aws-sdk/client-sesv2';
-import { resolveMailTransport } from '@/lib/mail-settings';
+import { getSenderIdentity, resolveMailTransport } from '@/lib/mail-settings';
 import { createUnsubscribeToken } from '@/lib/unsubscribe';
 import { createOpenTrackingToken } from '@/lib/tracking';
 import { isValidEmailAddress, normalizeEmailAddress } from '@/lib/email-address';
@@ -100,7 +100,7 @@ async function sendViaMock(
 
 async function sendViaResend(
   input: { subject: string; bodyHtml: string; recipients: CampaignRecipient[] },
-  transport: { resendApiKey: string; resendFromEmail: string },
+  transport: { resendApiKey: string; fromEmail: string; replyToEmail: string },
 ): Promise<SendResult> {
   const results: SendResult = [];
 
@@ -112,7 +112,8 @@ async function sendViaResend(
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        from: transport.resendFromEmail,
+        from: transport.fromEmail,
+        reply_to: transport.replyToEmail,
         to: [contact.email],
         subject: input.subject,
         html: input.bodyHtml,
@@ -135,7 +136,8 @@ async function sendViaAwsSes(
   input: { subject: string; bodyHtml: string; recipients: CampaignRecipient[] },
   transport: {
     awsRegion: string;
-    awsFromEmail: string;
+    fromEmail: string;
+    replyToEmail: string;
     userId?: string;
     campaignId?: string;
     awsCredentials?: {
@@ -155,7 +157,8 @@ async function sendViaAwsSes(
   for (const contact of input.recipients) {
     const response = await client.send(
       new SendEmailCommand({
-        FromEmailAddress: transport.awsFromEmail,
+        FromEmailAddress: transport.fromEmail,
+        ReplyToAddresses: [transport.replyToEmail],
         Destination: { ToAddresses: [contact.email] },
         EmailTags: [
           ...(transport.userId ? [{ Name: 'user_id', Value: transport.userId }] : []),
@@ -189,24 +192,27 @@ async function sendEmailBatch(
   input: { subject: string; bodyHtml: string; recipients: CampaignRecipient[]; campaignId?: string },
 ) {
   const transport = await resolveMailTransport(userId);
+  const senderIdentity = await getSenderIdentity(userId);
 
   if (transport.provider === 'resend') {
-    if (!transport.resendApiKey || !transport.resendFromEmail) {
-      throw new Error('Resend settings are incomplete. Set API key and from email in Settings.');
+    if (!transport.resendApiKey) {
+      throw new Error('Resend settings are incomplete. Set the API key in Settings.');
     }
     return sendViaResend(input, {
       resendApiKey: transport.resendApiKey,
-      resendFromEmail: transport.resendFromEmail,
+      fromEmail: senderIdentity.fromEmail,
+      replyToEmail: senderIdentity.replyToEmail,
     });
   }
 
   if (transport.provider === 'aws-ses') {
-    if (!transport.awsRegion || !transport.awsFromEmail) {
-      throw new Error('AWS SES settings are incomplete. Set region and from email in Settings.');
+    if (!transport.awsRegion) {
+      throw new Error('AWS SES settings are incomplete. Set the region in Settings.');
     }
     return sendViaAwsSes(input, {
       awsRegion: transport.awsRegion,
-      awsFromEmail: transport.awsFromEmail,
+      fromEmail: senderIdentity.fromEmail,
+      replyToEmail: senderIdentity.replyToEmail,
       userId,
       campaignId: input.campaignId,
       awsCredentials: transport.awsCredentials,

@@ -7,6 +7,8 @@ CREATE TABLE IF NOT EXISTS "User" (
   "isActive" BOOLEAN NOT NULL DEFAULT TRUE,
   "dailyEmailLimit" INTEGER NOT NULL DEFAULT 100000,
   "imageUploadLimitKb" INTEGER,
+  "senderFromEmail" TEXT,
+  "senderReplyToEmail" TEXT,
   "lastLoginAt" TIMESTAMPTZ,
   "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   "updatedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW()

@@ -1,5 +1,6 @@
 import { randomUUID } from 'crypto';
 import { decryptSecret, encryptSecret } from '@/lib/crypto';
+import { isValidEmailAddress, normalizeEmailAddress } from '@/lib/email-address';
 import { executeSql, queryRow } from '@/lib/sqlite';
 
 export type MailProvider = 'mock' | 'resend' | 'aws-ses';
@@ -54,6 +55,57 @@ export type ResolvedMailTransport = {
   resendFromEmail?: string;
 };
 
+type SenderIdentityRow = {
+  email: string;
+  senderFromEmail: string | null;
+  senderReplyToEmail: string | null;
+};
+
+export type SenderIdentityView = {
+  defaultFromEmail: string;
+  defaultReplyToEmail: string;
+  fromEmail: string;
+  replyToEmail: string;
+  senderFromEmail: string;
+  senderReplyToEmail: string;
+};
+
+let senderIdentitySchemaInitialized = false;
+
+function isDuplicateColumnError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error || '');
+  return /duplicate column name|already exists/i.test(message);
+}
+
+function normalizeOptionalEmail(value: string | null | undefined) {
+  const trimmed = String(value || '').trim();
+  if (!trimmed) return '';
+  return normalizeEmailAddress(trimmed);
+}
+
+function validateOptionalEmail(value: string, fieldLabel: string) {
+  if (value && !isValidEmailAddress(value)) {
+    throw new Error(`${fieldLabel} must be a valid email address.`);
+  }
+}
+
+export function ensureSenderIdentitySchema() {
+  if (senderIdentitySchemaInitialized) return;
+
+  for (const statement of [
+    'ALTER TABLE "User" ADD COLUMN "senderFromEmail" TEXT',
+    'ALTER TABLE "User" ADD COLUMN "senderReplyToEmail" TEXT',
+  ]) {
+    try {
+      executeSql(statement);
+    } catch (error) {
+      if (!isDuplicateColumnError(error)) throw error;
+    }
+  }
+
+  senderIdentitySchemaInitialized = true;
+}
+
 function normalizeProvider(value: string | null | undefined): MailProvider {
   const provider = String(value || process.env.MAIL_PROVIDER || 'mock').toLowerCase();
   if (provider === 'resend' || provider === 'aws-ses') return provider;
@@ -80,6 +132,7 @@ function getEnvTransport(): ResolvedMailTransport {
 }
 
 async function getStoredSettings(userId: string) {
+  ensureSenderIdentitySchema();
   return queryRow<StoredMailSettings>(
     `
       SELECT
@@ -98,6 +151,78 @@ async function getStoredSettings(userId: string) {
     `,
     [userId],
   );
+}
+
+async function getSenderIdentityRow(userId: string) {
+  ensureSenderIdentitySchema();
+  return queryRow<SenderIdentityRow>(
+    `
+      SELECT
+        email,
+        "senderFromEmail",
+        "senderReplyToEmail"
+      FROM "User"
+      WHERE "id" = ?
+      LIMIT 1
+    `,
+    [userId],
+  );
+}
+
+export async function getSenderIdentity(userId: string): Promise<SenderIdentityView> {
+  const row = await getSenderIdentityRow(userId);
+  if (!row) {
+    throw new Error('User account not found.');
+  }
+
+  const defaultFromEmail = normalizeEmailAddress(row.email);
+  const storedFromEmail = normalizeOptionalEmail(row.senderFromEmail);
+  const storedReplyToEmail = normalizeOptionalEmail(row.senderReplyToEmail);
+  const fromEmail = storedFromEmail || defaultFromEmail;
+  const replyToEmail = storedReplyToEmail || fromEmail;
+
+  return {
+    defaultFromEmail,
+    defaultReplyToEmail: fromEmail,
+    fromEmail,
+    replyToEmail,
+    senderFromEmail: storedFromEmail,
+    senderReplyToEmail: storedReplyToEmail,
+  };
+}
+
+export async function saveSenderIdentity(
+  userId: string,
+  input: { senderFromEmail?: string; senderReplyToEmail?: string },
+) {
+  ensureSenderIdentitySchema();
+
+  const current = await getSenderIdentity(userId);
+  const nextSenderFromEmail =
+    input.senderFromEmail !== undefined ? normalizeOptionalEmail(input.senderFromEmail) : current.senderFromEmail;
+  const fallbackFromEmail = nextSenderFromEmail || current.defaultFromEmail;
+  const nextSenderReplyToEmail =
+    input.senderReplyToEmail !== undefined
+      ? normalizeOptionalEmail(input.senderReplyToEmail)
+      : current.senderReplyToEmail;
+
+  validateOptionalEmail(nextSenderFromEmail, 'From email');
+  validateOptionalEmail(nextSenderReplyToEmail, 'Reply-to email');
+  validateOptionalEmail(fallbackFromEmail, 'From email');
+
+  executeSql(
+    `
+      UPDATE "User"
+      SET
+        "senderFromEmail" = ?,
+        "senderReplyToEmail" = ?,
+        "updatedAt" = CURRENT_TIMESTAMP
+      WHERE "id" = ?
+    `,
+    [nextSenderFromEmail || null, nextSenderReplyToEmail || null, userId],
+  );
+
+  return getSenderIdentity(userId);
 }
 
 export async function getMailSettings(userId: string): Promise<MailSettingsView> {

@@ -16,6 +16,8 @@ export async function GET() {
       role: auth.user.role,
       isActive: auth.user.isActive,
       imageUploadLimitKb: auth.user.imageUploadLimitKb,
+      senderFromEmail: auth.user.senderFromEmail,
+      senderReplyToEmail: auth.user.senderReplyToEmail,
       capabilities: getCapabilities(auth.user.role),
     },
   });

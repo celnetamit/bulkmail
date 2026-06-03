@@ -4,6 +4,7 @@ import { SignJWT, jwtVerify } from 'jose';
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 import { startCampaignSendQueueWorker } from '@/lib/campaign-send-queue';
+import { ensureSenderIdentitySchema } from '@/lib/mail-settings';
 import { ensurePlatformSettingsSchema } from '@/lib/platform-settings';
 import { hasCapability } from '@/lib/permissions';
 import { executeSql, queryRow } from '@/lib/sqlite';
@@ -43,6 +44,8 @@ export type AuthUser = {
   isActive: boolean;
   dailyEmailLimit: number;
   imageUploadLimitKb: number | null;
+  senderFromEmail: string | null;
+  senderReplyToEmail: string | null;
   lastLoginAt: Date | null;
 };
 
@@ -89,6 +92,7 @@ async function getUserRecordFromSession() {
 
 async function getUserRecordFromToken(token: string | null) {
   ensurePlatformSettingsSchema();
+  ensureSenderIdentitySchema();
   startCampaignSendQueueWorker();
 
   if (!token) return null;
@@ -104,9 +108,11 @@ async function getUserRecordFromToken(token: string | null) {
     isActive: number | boolean;
     dailyEmailLimit: number;
     imageUploadLimitKb: number | null;
+    senderFromEmail: string | null;
+    senderReplyToEmail: string | null;
     lastLoginAt: string | null;
   }>(
-    'SELECT id, email, name, role, "isActive", "dailyEmailLimit", "imageUploadLimitKb", "lastLoginAt" FROM "User" WHERE id = ? LIMIT 1',
+    'SELECT id, email, name, role, "isActive", "dailyEmailLimit", "imageUploadLimitKb", "senderFromEmail", "senderReplyToEmail", "lastLoginAt" FROM "User" WHERE id = ? LIMIT 1',
     [session.userId],
   );
 
@@ -125,6 +131,8 @@ async function getUserRecordFromToken(token: string | null) {
     isActive: Boolean(user.isActive),
     dailyEmailLimit: user.dailyEmailLimit,
     imageUploadLimitKb: user.imageUploadLimitKb ?? null,
+    senderFromEmail: user.senderFromEmail ?? null,
+    senderReplyToEmail: user.senderReplyToEmail ?? null,
     lastLoginAt: user.lastLoginAt ? new Date(user.lastLoginAt) : null,
   } satisfies AuthUser;
 }

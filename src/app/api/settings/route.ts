@@ -1,7 +1,7 @@
 import { requireUserFromCookies } from '@/lib/auth';
 import { recordAuditEvent } from '@/lib/audit';
 import { fail, ok } from '@/lib/http';
-import { getMailSettings, saveMailSettings } from '@/lib/mail-settings';
+import { getMailSettings, getSenderIdentity, saveMailSettings, saveSenderIdentity } from '@/lib/mail-settings';
 import { getPlatformSettings, savePlatformSettings } from '@/lib/platform-settings';
 import { hasCapability } from '@/lib/permissions';
 
@@ -12,13 +12,17 @@ export async function GET() {
   const auth = await requireUserFromCookies();
   if ('error' in auth) return auth.error;
 
-  if (!hasCapability(auth.user.role, 'manage_settings')) {
-    return fail('Mail Provider settings are admin-only.', 403);
+  const canManageSettings = hasCapability(auth.user.role, 'manage_settings');
+  const senderIdentity = await getSenderIdentity(auth.user.userId);
+
+  if (!canManageSettings) {
+    return ok({ senderIdentity });
   }
 
   const settings = await getMailSettings(auth.user.userId);
   const platformSettings = await getPlatformSettings();
   return ok({
+    senderIdentity,
     settings: {
       ...settings,
       imageUploadLimitKb: platformSettings.imageUploadLimitKb,
@@ -35,10 +39,6 @@ export async function PUT(request: Request) {
   const auth = await requireUserFromCookies();
   if ('error' in auth) return auth.error;
 
-  if (!hasCapability(auth.user.role, 'manage_settings')) {
-    return fail('Mail Provider settings are admin-only.', 403);
-  }
-
   let body: unknown;
   try {
     body = await request.json();
@@ -49,27 +49,51 @@ export async function PUT(request: Request) {
   if (!body || typeof body !== 'object') {
     return fail('Settings payload is required.', 400);
   }
+  const payload = body as Record<string, unknown>;
+  const canManageSettings = hasCapability(auth.user.role, 'manage_settings');
 
-  const provider = 'provider' in body ? String((body as Record<string, unknown>).provider).trim() : '';
+  const senderIdentity = await saveSenderIdentity(auth.user.userId, {
+    senderFromEmail: 'senderFromEmail' in payload ? String(payload.senderFromEmail || '') : undefined,
+    senderReplyToEmail: 'senderReplyToEmail' in payload ? String(payload.senderReplyToEmail || '') : undefined,
+  });
+
+  if (!canManageSettings) {
+    await recordAuditEvent({
+      actorUserId: auth.user.userId,
+      actorEmail: auth.user.email,
+      actorRole: auth.user.role,
+      action: 'settings_update',
+      entityType: 'UserSenderIdentity',
+      entityId: auth.user.userId,
+      scopeType: 'SELF',
+      metadata: {
+        senderFromEmail: senderIdentity.senderFromEmail || null,
+        senderReplyToEmail: senderIdentity.senderReplyToEmail || null,
+      },
+    });
+    return ok({ senderIdentity, saved: 'sender-identity' });
+  }
+
+  const provider = 'provider' in payload ? String(payload.provider).trim() : '';
   if (!provider) return fail('provider is required.', 400);
 
   await saveMailSettings(auth.user.userId, {
     provider,
-    awsRegion: 'awsRegion' in body ? String((body as Record<string, unknown>).awsRegion || '').trim() : undefined,
-    awsFromEmail: 'awsFromEmail' in body ? String((body as Record<string, unknown>).awsFromEmail || '').trim() : undefined,
-    awsAccessKeyId: 'awsAccessKeyId' in body ? String((body as Record<string, unknown>).awsAccessKeyId || '').trim() : undefined,
-    awsSecretAccessKey: 'awsSecretAccessKey' in body ? String((body as Record<string, unknown>).awsSecretAccessKey || '').trim() : undefined,
-    awsSessionToken: 'awsSessionToken' in body ? String((body as Record<string, unknown>).awsSessionToken || '').trim() : undefined,
-    resendApiKey: 'resendApiKey' in body ? String((body as Record<string, unknown>).resendApiKey || '').trim() : undefined,
-    resendFromEmail: 'resendFromEmail' in body ? String((body as Record<string, unknown>).resendFromEmail || '').trim() : undefined,
-    webhookSharedSecret: 'webhookSharedSecret' in body ? String((body as Record<string, unknown>).webhookSharedSecret || '').trim() : undefined,
+    awsRegion: 'awsRegion' in payload ? String(payload.awsRegion || '').trim() : undefined,
+    awsFromEmail: 'awsFromEmail' in payload ? String(payload.awsFromEmail || '').trim() : undefined,
+    awsAccessKeyId: 'awsAccessKeyId' in payload ? String(payload.awsAccessKeyId || '').trim() : undefined,
+    awsSecretAccessKey: 'awsSecretAccessKey' in payload ? String(payload.awsSecretAccessKey || '').trim() : undefined,
+    awsSessionToken: 'awsSessionToken' in payload ? String(payload.awsSessionToken || '').trim() : undefined,
+    resendApiKey: 'resendApiKey' in payload ? String(payload.resendApiKey || '').trim() : undefined,
+    resendFromEmail: 'resendFromEmail' in payload ? String(payload.resendFromEmail || '').trim() : undefined,
+    webhookSharedSecret: 'webhookSharedSecret' in payload ? String(payload.webhookSharedSecret || '').trim() : undefined,
   });
 
-  const imageUploadLimitKbRaw = 'imageUploadLimitKb' in body ? Number((body as Record<string, unknown>).imageUploadLimitKb) : undefined;
-  const sendingDomain = 'sendingDomain' in body ? String((body as Record<string, unknown>).sendingDomain || '').trim() : undefined;
-  const spfVerified = 'spfVerified' in body ? Boolean((body as Record<string, unknown>).spfVerified) : undefined;
-  const dkimVerified = 'dkimVerified' in body ? Boolean((body as Record<string, unknown>).dkimVerified) : undefined;
-  const dmarcVerified = 'dmarcVerified' in body ? Boolean((body as Record<string, unknown>).dmarcVerified) : undefined;
+  const imageUploadLimitKbRaw = 'imageUploadLimitKb' in payload ? Number(payload.imageUploadLimitKb) : undefined;
+  const sendingDomain = 'sendingDomain' in payload ? String(payload.sendingDomain || '').trim() : undefined;
+  const spfVerified = 'spfVerified' in payload ? Boolean(payload.spfVerified) : undefined;
+  const dkimVerified = 'dkimVerified' in payload ? Boolean(payload.dkimVerified) : undefined;
+  const dmarcVerified = 'dmarcVerified' in payload ? Boolean(payload.dmarcVerified) : undefined;
   if (imageUploadLimitKbRaw !== undefined) {
     const imageUploadLimitKb = Number.isFinite(imageUploadLimitKbRaw) && imageUploadLimitKbRaw > 0 ? Math.floor(imageUploadLimitKbRaw) : 50;
     await savePlatformSettings({
@@ -100,6 +124,8 @@ export async function PUT(request: Request) {
     scopeType: 'GLOBAL',
     metadata: {
       provider,
+      senderFromEmail: senderIdentity.senderFromEmail || null,
+      senderReplyToEmail: senderIdentity.senderReplyToEmail || null,
       imageUploadLimitKb: imageUploadLimitKbRaw,
       sendingDomain,
       spfVerified,
@@ -111,6 +137,7 @@ export async function PUT(request: Request) {
   const settings = await getMailSettings(auth.user.userId);
   const platformSettings = await getPlatformSettings();
   return ok({
+    senderIdentity,
     settings: {
       ...settings,
       imageUploadLimitKb: platformSettings.imageUploadLimitKb,

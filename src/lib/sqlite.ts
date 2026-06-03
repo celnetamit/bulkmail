@@ -36,6 +36,8 @@ const postgresIdentifiersToQuote = [
   'allocatedDailyLimit',
   'dailyEmailLimit',
   'imageUploadLimitKb',
+  'senderFromEmail',
+  'senderReplyToEmail',
   'sendingDomain',
   'spfVerified',
   'dkimVerified',
