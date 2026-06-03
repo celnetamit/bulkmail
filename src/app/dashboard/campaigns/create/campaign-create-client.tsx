@@ -6,6 +6,7 @@ import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { EmailRichEditor, starterTemplate } from '@/components/email-rich-editor';
 import { EmailMagicComposer } from '@/components/email-magic-composer';
 import SearchableMultiSelect from '@/components/searchable-multiselect';
+import { useToast } from '@/components/toast-provider';
 
 type List = { id: string; name: string; isDefaultTestList?: number | boolean; contactsCount?: number; campaignsCount?: number };
 type Template = { id: string; name: string; subject: string; bodyHtml: string };
@@ -68,9 +69,9 @@ async function readJsonResponse<T>(response: Response): Promise<T | null> {
 
 export function CampaignCreateClient({ campaignId, templateIdFromQuery }: CampaignCreateClientProps) {
   const router = useRouter();
+  const toast = useToast();
   const [lists, setLists] = useState<List[]>([]);
   const [templates, setTemplates] = useState<Template[]>([]);
-  const [message, setMessage] = useState('');
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -124,9 +125,10 @@ export function CampaignCreateClient({ campaignId, templateIdFromQuery }: Campai
           setSubject(campaign.subject);
           setBodyHtml(campaign.bodyHtml);
           setLastJob((campaign as any).lastJob || null);
-          setMessage(`Editing ${campaign.name}.`);
           await loadCampaignRisk(campaign.id);
         }
+      } else {
+        toast.error('Campaign load failed', 'The requested campaign draft could not be opened.');
       }
     }
 
@@ -155,18 +157,17 @@ export function CampaignCreateClient({ campaignId, templateIdFromQuery }: Campai
     setSubject('');
     setBodyHtml(starterTemplate('Campaign body'));
     setRisk(null);
-    setMessage('');
     router.replace(`/dashboard/campaigns/create${templateIdFromQuery ? `?templateId=${templateIdFromQuery}` : ''}`);
+    toast.info('Form reset', 'The campaign draft has been reset.');
   }
 
   async function saveCampaign(event: FormEvent) {
     event.preventDefault();
     setSaving(true);
-    setMessage('');
 
     if (selectedListIds.length === 0) {
       setSaving(false);
-      setMessage('Select at least one list.');
+      toast.warning('Select a list', 'Choose at least one audience list before saving the campaign.');
       return;
     }
 
@@ -186,11 +187,17 @@ export function CampaignCreateClient({ campaignId, templateIdFromQuery }: Campai
     const data = (await readJsonResponse<{ error?: string }>(res)) || null;
     setSaving(false);
     if (!res.ok) {
-      setMessage(data?.error || (editingCampaignId ? 'Failed to update campaign.' : 'Failed to create campaign.'));
+      toast.error(
+        editingCampaignId ? 'Campaign update failed' : 'Campaign creation failed',
+        data?.error || 'Please review the draft and try again.',
+      );
       return;
     }
 
-    setMessage(editingCampaignId ? 'Campaign draft updated.' : 'Campaign draft created.');
+    toast.success(
+      editingCampaignId ? 'Campaign updated' : 'Campaign created',
+      editingCampaignId ? 'The draft changes were saved.' : 'The new campaign draft is ready.',
+    );
     router.push('/dashboard/campaigns');
   }
 
@@ -198,18 +205,20 @@ export function CampaignCreateClient({ campaignId, templateIdFromQuery }: Campai
     if (!editingCampaignId) return;
 
     setTesting(true);
-    setMessage('');
 
     const res = await fetch(`/api/campaigns/${editingCampaignId}/test`, { method: 'POST' });
     const data = (await readJsonResponse<{ error?: string; sentCount?: number; failedCount?: number; testList?: { name?: string } }>(res)) || {};
     setTesting(false);
 
     if (!res.ok) {
-      setMessage(data?.error || 'Failed to send test campaign.');
+      toast.error('Test send failed', data?.error || 'The test campaign could not be sent.');
       return;
     }
 
-    setMessage(`Test sent to ${data.testList?.name || 'your test list'}. Sent: ${data.sentCount ?? 0}, Failed: ${data.failedCount ?? 0}.`);
+    toast.success(
+      'Test campaign sent',
+      `Sent to ${data.testList?.name || 'your test list'}. Sent: ${data.sentCount ?? 0}, Failed: ${data.failedCount ?? 0}.`,
+    );
   }
 
 
@@ -242,9 +251,6 @@ export function CampaignCreateClient({ campaignId, templateIdFromQuery }: Campai
           <Link className="btn-secondary" href="/dashboard/campaigns">Back to Campaigns</Link>
         </div>
       </header>
-
-      {message ? <p className="form-note">{message}</p> : null}
-
       {editingCampaignId ? (
         <section className="card campaign-risk-panel">
           <div className="campaign-risk-panel__header">

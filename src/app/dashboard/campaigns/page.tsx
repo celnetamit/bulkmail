@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { IconHelp, IconImport, IconPlus } from '@/components/dashboard-icons';
+import { useToast } from '@/components/toast-provider';
 
 type Campaign = {
   id: string;
@@ -65,10 +66,10 @@ function formatPercent(value: number) {
 
 export default function CampaignsPage() {
   const router = useRouter();
+  const toast = useToast();
   const campaignImportRef = useRef<HTMLInputElement | null>(null);
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [lists, setLists] = useState<ListOption[]>([]);
-  const [message, setMessage] = useState('');
   const [sendingId, setSendingId] = useState<string | null>(null);
   const [testingId, setTestingId] = useState<string | null>(null);
   const [selectedCampaignIds, setSelectedCampaignIds] = useState<string[]>([]);
@@ -81,8 +82,16 @@ export default function CampaignsPage() {
       fetch(`/api/campaigns${showArchived ? '?includeArchived=true' : ''}`, { cache: 'no-store' }),
       fetch('/api/lists?all=true&owner=self', { cache: 'no-store' }),
     ]);
-    const campaignsData = (await campaignsRes.json()) as { campaigns: Campaign[] };
-    const listsData = (await listsRes.json()) as { lists: ListOption[] };
+    const campaignsData = (await campaignsRes.json()) as { campaigns: Campaign[]; error?: string };
+    const listsData = (await listsRes.json()) as { lists: ListOption[]; error?: string };
+    if (!campaignsRes.ok) {
+      toast.error('Campaign load failed', campaignsData.error || 'The campaign list could not be loaded.');
+      return;
+    }
+    if (!listsRes.ok) {
+      toast.error('List load failed', listsData.error || 'Audience lists could not be loaded for this page.');
+      return;
+    }
     setCampaigns(campaignsData.campaigns || []);
     setLists(listsData.lists || []);
     setSelectedCampaignIds([]);
@@ -152,12 +161,11 @@ export default function CampaignsPage() {
   async function runBulkCampaignAction(action: 'archive' | 'unarchive' | 'duplicate' | 'retarget') {
     if (selectedCampaignIds.length === 0) return;
     if (action === 'retarget' && retargetListIds.length === 0) {
-      setMessage('Choose at least one retarget list first.');
+      toast.warning('Choose a retarget list', 'Select one or more lists before retargeting campaigns.');
       return;
     }
 
     setBulkLoading(true);
-    setMessage('');
     const response = await fetch('/api/campaigns/bulk', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -170,17 +178,28 @@ export default function CampaignsPage() {
     const data = (await response.json()) as BulkCampaignResponse;
     setBulkLoading(false);
     if (!response.ok) {
-      setMessage(data.error || `Failed to ${action} campaigns.`);
+      toast.error(
+        `Campaign ${action} failed`,
+        data.error || `The selected campaigns could not be processed.`,
+      );
       return;
     }
 
+    const affectedCount = selectedCampaignIds.length;
     setSelectedCampaignIds([]);
-    setMessage(
+    toast.success(
       action === 'duplicate'
-        ? `${data.createdCampaignIds?.length || selectedCampaignIds.length} campaign${(data.createdCampaignIds?.length || selectedCampaignIds.length) === 1 ? '' : 's'} duplicated.`
+        ? 'Campaigns duplicated'
         : action === 'retarget'
-          ? `${selectedCampaignIds.length} campaign${selectedCampaignIds.length === 1 ? '' : 's'} retargeted.`
-          : `${selectedCampaignIds.length} campaign${selectedCampaignIds.length === 1 ? '' : 's'} ${action === 'archive' ? 'archived' : 'restored'}.`,
+          ? 'Campaigns retargeted'
+          : action === 'archive'
+            ? 'Campaigns archived'
+            : 'Campaigns restored',
+      action === 'duplicate'
+        ? `${data.createdCampaignIds?.length || affectedCount} campaign${(data.createdCampaignIds?.length || affectedCount) === 1 ? '' : 's'} duplicated.`
+        : action === 'retarget'
+          ? `${affectedCount} campaign${affectedCount === 1 ? '' : 's'} retargeted.`
+          : `${affectedCount} campaign${affectedCount === 1 ? '' : 's'} ${action === 'archive' ? 'archived' : 'restored'}.`,
     );
     await loadAll();
   }
@@ -190,7 +209,7 @@ export default function CampaignsPage() {
     const response = await fetch(`/api/campaigns/export?campaignIds=${encodeURIComponent(campaignIds.join(','))}`, { cache: 'no-store' });
     const data = await response.json();
     if (!response.ok) {
-      setMessage(data.error || 'Failed to export campaigns.');
+      toast.error('Campaign export failed', data.error || 'The campaigns could not be exported.');
       return;
     }
 
@@ -201,7 +220,7 @@ export default function CampaignsPage() {
     anchor.download = `campaigns-export-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
     anchor.click();
     URL.revokeObjectURL(url);
-    setMessage(`Exported ${campaignIds.length} campaign${campaignIds.length === 1 ? '' : 's'}.`);
+    toast.success('Campaigns exported', `Exported ${campaignIds.length} campaign${campaignIds.length === 1 ? '' : 's'}.`);
   }
 
   async function importCampaigns(event: ChangeEvent<HTMLInputElement>) {
@@ -213,7 +232,7 @@ export default function CampaignsPage() {
     try {
       payload = JSON.parse(await file.text());
     } catch {
-      setMessage('Import file must be valid JSON.');
+      toast.error('Import failed', 'Import file must be valid JSON.');
       return;
     }
 
@@ -226,11 +245,11 @@ export default function CampaignsPage() {
     const data = (await response.json()) as BulkCampaignResponse;
     setBulkLoading(false);
     if (!response.ok) {
-      setMessage(data.error || 'Failed to import campaigns.');
+      toast.error('Campaign import failed', data.error || 'The campaigns could not be imported.');
       return;
     }
 
-    setMessage(`Imported ${data.createdCampaignIds?.length || 0} campaign${(data.createdCampaignIds?.length || 0) === 1 ? '' : 's'}.`);
+    toast.success('Campaigns imported', `Imported ${data.createdCampaignIds?.length || 0} campaign${(data.createdCampaignIds?.length || 0) === 1 ? '' : 's'}.`);
     await loadAll();
   }
 
@@ -249,22 +268,34 @@ export default function CampaignsPage() {
         templateId: campaign.template?.id || null,
       }),
     });
-    if (!res.ok) return setMessage('Failed to update campaign.');
-    setMessage('Campaign updated.');
+    const data = (await res.json().catch(() => ({}))) as { error?: string };
+    if (!res.ok) {
+      toast.error('Campaign update failed', data.error || 'The campaign could not be updated.');
+      return;
+    }
+    toast.success('Campaign updated', 'The campaign changes were saved.');
     await loadAll();
   }
 
   async function deleteCampaign(id: string) {
     const res = await fetch(`/api/campaigns/${id}`, { method: 'DELETE' });
-    if (!res.ok) return setMessage('Failed to delete campaign.');
-    setMessage('Campaign deleted.');
+    const data = (await res.json().catch(() => ({}))) as { error?: string };
+    if (!res.ok) {
+      toast.error('Campaign delete failed', data.error || 'The campaign could not be deleted.');
+      return;
+    }
+    toast.success('Campaign deleted', 'The campaign was removed.');
     await loadAll();
   }
 
   async function duplicateCampaign(id: string) {
     const res = await fetch(`/api/campaigns/${id}/duplicate`, { method: 'POST' });
-    if (!res.ok) return setMessage('Failed to duplicate campaign.');
-    setMessage('Campaign duplicated as a new draft.');
+    const data = (await res.json().catch(() => ({}))) as { error?: string };
+    if (!res.ok) {
+      toast.error('Campaign duplicate failed', data.error || 'The campaign could not be duplicated.');
+      return;
+    }
+    toast.success('Campaign duplicated', 'A new draft was created from this campaign.');
     await loadAll();
   }
 
@@ -273,8 +304,11 @@ export default function CampaignsPage() {
     const res = await fetch(`/api/campaigns/${id}/test`, { method: 'POST' });
     const data = (await res.json()) as { error?: string; sentCount?: number; failedCount?: number; testList?: { name?: string } };
     setTestingId(null);
-    if (!res.ok) return setMessage(data.error || 'Failed to send test campaign.');
-    setMessage(`Test sent to ${data.testList?.name || 'your test list'}. Sent: ${data.sentCount ?? 0}, Failed: ${data.failedCount ?? 0}.`);
+    if (!res.ok) {
+      toast.error('Test send failed', data.error || 'The test campaign could not be sent.');
+      return;
+    }
+    toast.success('Test campaign sent', `Sent to ${data.testList?.name || 'your test list'}. Sent: ${data.sentCount ?? 0}, Failed: ${data.failedCount ?? 0}.`);
   }
 
   async function sendCampaign(id: string) {
@@ -293,13 +327,17 @@ export default function CampaignsPage() {
     setSendingId(null);
     if (!res.ok) {
       const blockers = data.risk?.items?.filter((item) => item.severity === 'block').map((item) => item.title).slice(0, 3) || [];
-      return setMessage(blockers.length > 0 ? `${data.error || 'Failed to send campaign.'} Fix: ${blockers.join(', ')}.` : data.error || 'Failed to send campaign.');
+      toast.error(
+        'Campaign send failed',
+        blockers.length > 0 ? `${data.error || 'Failed to send campaign.'} Fix: ${blockers.join(', ')}.` : data.error || 'Failed to send campaign.',
+      );
+      return;
     }
     if (data.queued) {
-      setMessage(`Campaign queued${data.jobId ? ` as job ${data.jobId}` : ''}. It will send in the background.`);
+      toast.info('Campaign queued', `Campaign queued${data.jobId ? ` as job ${data.jobId}` : ''}. It will send in the background.`);
     } else {
       const quotaNote = data.quotaSkippedCount ? ` ${data.quotaSkippedCount} skipped because of the daily limit.` : '';
-      setMessage(`Campaign sent via ${data.provider}. Sent count: ${data.sentCount ?? 0}.${quotaNote}`);
+      toast.success('Campaign sent', `Sent via ${data.provider}. Sent count: ${data.sentCount ?? 0}.${quotaNote}`);
     }
     await loadAll();
   }
@@ -328,9 +366,6 @@ export default function CampaignsPage() {
           </div>
         </div>
       </header>
-
-      {message ? <p className="form-note">{message}</p> : null}
-
       <div className="stats-grid dashboard-stats">
         <div className="stat-card"><h3>Sent Campaigns</h3><p className="stat-value">{summary.sentCampaigns}</p></div>
         <div className="stat-card"><h3>Total Sent</h3><p className="stat-value">{summary.sent}</p></div>
@@ -539,8 +574,12 @@ export default function CampaignsPage() {
                         onClick={async () => {
                           if (!confirm('Reset this campaign to a fresh state? This will clear send counts and remove queued jobs.')) return;
                           const res = await fetch(`/api/campaigns/${c.id}/reset`, { method: 'POST' });
-                          if (!res.ok) return setMessage('Failed to reset campaign.');
-                          setMessage('Campaign reset to fresh state.');
+                          const data = (await res.json().catch(() => ({}))) as { error?: string };
+                          if (!res.ok) {
+                            toast.error('Campaign reset failed', data.error || 'The campaign could not be reset.');
+                            return;
+                          }
+                          toast.success('Campaign reset', 'The campaign was reset to a fresh state.');
                           await loadAll();
                         }}
                         disabled={!canManageCampaign || c.status === 'QUEUED' || c.status === 'RETRYING' || c.status === 'SENDING' || Boolean(c.isArchived)}

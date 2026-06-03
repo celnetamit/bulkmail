@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { IconHelp, IconPlus } from '@/components/dashboard-icons';
+import { useToast } from '@/components/toast-provider';
 
 type Template = {
   id: string;
@@ -16,12 +17,16 @@ type Template = {
 
 export default function TemplatesPage() {
   const router = useRouter();
+  const toast = useToast();
   const [templates, setTemplates] = useState<Template[]>([]);
-  const [message, setMessage] = useState('');
 
   async function load() {
     const res = await fetch('/api/templates', { cache: 'no-store' });
-    const data = (await res.json()) as { templates: Template[] };
+    const data = (await res.json()) as { templates: Template[]; error?: string };
+    if (!res.ok) {
+      toast.error('Template load failed', data.error || 'The template index could not be loaded.');
+      return;
+    }
     setTemplates(data.templates || []);
   }
 
@@ -29,8 +34,12 @@ export default function TemplatesPage() {
 
   async function deleteTemplate(id: string) {
     const res = await fetch(`/api/templates/${id}`, { method: 'DELETE' });
-    if (!res.ok) return setMessage('Failed to delete template.');
-    setMessage('Template deleted.');
+    const data = (await res.json().catch(() => ({}))) as { error?: string };
+    if (!res.ok) {
+      toast.error('Template delete failed', data.error || 'The template could not be deleted.');
+      return;
+    }
+    toast.success('Template deleted', 'The template was removed successfully.');
     await load();
   }
 
@@ -54,9 +63,6 @@ export default function TemplatesPage() {
           </div>
         </div>
       </header>
-
-      {message ? <p className="form-note">{message}</p> : null}
-
       <div className="card">
         <div className="table-wrap">
           <table className="data-table">

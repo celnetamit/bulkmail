@@ -3,6 +3,7 @@
 import { ChangeEvent, FormEvent, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { IconHelp, IconImport, IconPlus } from '@/components/dashboard-icons';
+import { useToast } from '@/components/toast-provider';
 
 type ListItem = {
   id: string;
@@ -93,6 +94,7 @@ function PaginationControls({
 
 export default function ListsPage() {
   const router = useRouter();
+  const toast = useToast();
   const listImportRef = useRef<HTMLInputElement | null>(null);
   const [lists, setLists] = useState<ListItem[]>([]);
   const [listsPagination, setListsPagination] = useState<Pagination>({
@@ -105,7 +107,6 @@ export default function ListsPage() {
     order: 'desc',
   });
   const [selectedListId, setSelectedListId] = useState('');
-  const [message, setMessage] = useState('');
   const [listSearch, setListSearch] = useState('');
   const [listSearchDraft, setListSearchDraft] = useState('');
   const [listPage, setListPage] = useState(1);
@@ -134,12 +135,12 @@ export default function ListsPage() {
     const response = await fetch(`/api/lists?${params.toString()}`, { cache: 'no-store' });
     const data = (await readJsonResponse<ListResponse & { error?: string }>(response)) || null;
     if (!response.ok) {
-      setMessage(data?.error || 'Failed to load lists.');
+      toast.error('List load failed', data?.error || 'The list index could not be loaded.');
       return;
     }
 
     if (!data) {
-      setMessage('Failed to load lists.');
+      toast.error('List load failed', 'The list index returned no usable data.');
       return;
     }
     const nextLists = data.lists || [];
@@ -164,7 +165,6 @@ export default function ListsPage() {
 
   async function createList(event: FormEvent) {
     event.preventDefault();
-    setMessage('');
 
     const response = await fetch('/api/lists', {
       method: 'POST',
@@ -178,14 +178,14 @@ export default function ListsPage() {
 
     const data = (await readJsonResponse<{ error?: string; list?: ListItem }>(response)) || {};
     if (!response.ok) {
-      setMessage(data?.error || 'Failed to create list.');
+      toast.error('List creation failed', data?.error || 'The new list could not be created.');
       return;
     }
 
     setNewListName('');
     setNewListDescription('');
     setNewListIsDefaultTestList(false);
-    setMessage('List created.');
+    toast.success('List created', 'The new list is ready.');
     await loadLists();
     if (data.list?.id) {
       router.push(`/dashboard/lists/${data.list.id}`);
@@ -205,11 +205,11 @@ export default function ListsPage() {
 
     const data = await readResponseMessage(response, 'Failed to update list.');
     if (!response.ok) {
-      setMessage(data?.error || 'Failed to update list.');
+      toast.error('List update failed', data?.error || 'The list could not be updated.');
       return;
     }
 
-    setMessage('List updated.');
+    toast.success('List updated', 'The list changes were saved.');
     await loadLists();
   }
 
@@ -219,18 +219,17 @@ export default function ListsPage() {
     const response = await fetch(`/api/lists/${list.id}`, { method: 'DELETE' });
     const data = await readResponseMessage(response, 'Failed to delete list.');
     if (!response.ok) {
-      setMessage(data?.error || 'Failed to delete list.');
+      toast.error('List delete failed', data?.error || 'The list could not be deleted.');
       return;
     }
 
-    setMessage('List deleted.');
+    toast.success('List deleted', 'The list was removed.');
     await loadLists();
   }
 
   async function archiveLists(listIds: string[], archived: boolean) {
     if (listIds.length === 0) return;
     setBulkLoading(true);
-    setMessage('');
 
     const response = await fetch('/api/lists/bulk', {
       method: 'POST',
@@ -241,19 +240,24 @@ export default function ListsPage() {
     const data = (await readJsonResponse<BulkListResponse>(response)) || {};
     setBulkLoading(false);
     if (!response.ok) {
-      setMessage(data?.error || `Failed to ${archived ? 'archive' : 'restore'} lists.`);
+      toast.error(
+        archived ? 'List archive failed' : 'List restore failed',
+        data?.error || `The selected lists could not be ${archived ? 'archived' : 'restored'}.`,
+      );
       return;
     }
 
     setSelectedListIds([]);
-    setMessage(`${listIds.length} list${listIds.length === 1 ? '' : 's'} ${archived ? 'archived' : 'restored'}.`);
+    toast.success(
+      archived ? 'Lists archived' : 'Lists restored',
+      `${listIds.length} list${listIds.length === 1 ? '' : 's'} ${archived ? 'archived' : 'restored'}.`,
+    );
     await loadLists();
   }
 
   async function duplicateLists(listIds: string[]) {
     if (listIds.length === 0) return;
     setBulkLoading(true);
-    setMessage('');
 
     const response = await fetch('/api/lists/bulk', {
       method: 'POST',
@@ -264,12 +268,15 @@ export default function ListsPage() {
     const data = (await readJsonResponse<BulkListResponse>(response)) || {};
     setBulkLoading(false);
     if (!response.ok) {
-      setMessage(data?.error || 'Failed to duplicate lists.');
+      toast.error('List duplicate failed', data?.error || 'The selected lists could not be duplicated.');
       return;
     }
 
     setSelectedListIds([]);
-    setMessage(`${data.createdListIds?.length || listIds.length} list${(data.createdListIds?.length || listIds.length) === 1 ? '' : 's'} duplicated.`);
+    toast.success(
+      'Lists duplicated',
+      `${data.createdListIds?.length || listIds.length} list${(data.createdListIds?.length || listIds.length) === 1 ? '' : 's'} duplicated.`,
+    );
     await loadLists();
   }
 
@@ -278,7 +285,7 @@ export default function ListsPage() {
     const response = await fetch(`/api/lists/export?listIds=${encodeURIComponent(listIds.join(','))}`, { cache: 'no-store' });
     const data = (await readJsonResponse<Record<string, unknown>>(response)) || null;
     if (!response.ok) {
-      setMessage((data?.error as string) || 'Failed to export lists.');
+      toast.error('List export failed', (data?.error as string) || 'The selected lists could not be exported.');
       return;
     }
 
@@ -289,7 +296,7 @@ export default function ListsPage() {
     anchor.download = `lists-export-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
     anchor.click();
     URL.revokeObjectURL(url);
-    setMessage(`Exported ${listIds.length} list${listIds.length === 1 ? '' : 's'}.`);
+    toast.success('Lists exported', `Exported ${listIds.length} list${listIds.length === 1 ? '' : 's'}.`);
   }
 
   async function importLists(event: ChangeEvent<HTMLInputElement>) {
@@ -301,7 +308,7 @@ export default function ListsPage() {
     try {
       payload = JSON.parse(await file.text());
     } catch {
-      setMessage('Import file must be valid JSON.');
+      toast.error('Import failed', 'Import file must be valid JSON.');
       return;
     }
 
@@ -315,11 +322,11 @@ export default function ListsPage() {
     setBulkLoading(false);
 
     if (!response.ok) {
-      setMessage(data?.error || 'Failed to import lists.');
+      toast.error('List import failed', data?.error || 'The lists could not be imported.');
       return;
     }
 
-    setMessage(`Imported ${data.createdListIds?.length || 0} list${(data.createdListIds?.length || 0) === 1 ? '' : 's'}.`);
+    toast.success('Lists imported', `Imported ${data.createdListIds?.length || 0} list${(data.createdListIds?.length || 0) === 1 ? '' : 's'}.`);
     await loadLists();
   }
 
@@ -368,9 +375,6 @@ export default function ListsPage() {
           </div>
         </div>
       </header>
-
-      {message ? <p className="form-note">{message}</p> : null}
-
       <div className="stats-grid dashboard-stats">
         <div className="stat-card">
           <h3>Total Lists</h3>

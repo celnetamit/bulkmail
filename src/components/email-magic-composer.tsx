@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import { useToast } from '@/components/toast-provider';
 
 type ComposerMessage = {
   role: 'user' | 'assistant';
@@ -45,6 +46,7 @@ export function EmailMagicComposer({
   disabled = false,
   onApply,
 }: Props) {
+  const toast = useToast();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [prompt, setPrompt] = useState('');
@@ -90,6 +92,7 @@ export function EmailMagicComposer({
     if (!response.ok || !data.reply || typeof data.subject !== 'string' || typeof data.bodyHtml !== 'string') {
       setHistory(history);
       setStatus(data.error || 'AI Magic could not build the draft.');
+      toast.error('AI Magic failed', data.error || 'The draft could not be generated right now.');
       return;
     }
 
@@ -98,6 +101,7 @@ export function EmailMagicComposer({
     setPrompt('');
     setCandidate({ reply: data.reply, subject: data.subject, bodyHtml: data.bodyHtml });
     setStatus('AI Magic prepared a new draft. Review it below before applying it.');
+    toast.info('AI draft ready', 'Review the proposed subject and preview before applying it.');
   }
 
   return (
@@ -157,6 +161,7 @@ export function EmailMagicComposer({
                       onApply({ subject: candidate.subject, bodyHtml: candidate.bodyHtml });
                       setCandidate(null);
                       setStatus('AI draft applied to the subject and email body.');
+                      toast.success('Draft applied', 'The AI proposal is now in your editor.');
                     }}
                     disabled={busy || disabled}
                   >
@@ -168,6 +173,7 @@ export function EmailMagicComposer({
                     onClick={() => {
                       setCandidate(null);
                       setStatus('Kept the current draft.');
+                      toast.info('Current draft kept', 'The AI proposal was dismissed.');
                     }}
                     disabled={busy || disabled}
                   >

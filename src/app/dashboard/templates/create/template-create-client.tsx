@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { EmailRichEditor, starterTemplate } from '@/components/email-rich-editor';
 import { EmailMagicComposer } from '@/components/email-magic-composer';
+import { useToast } from '@/components/toast-provider';
 
 type Template = { id: string; name: string; subject: string; bodyHtml: string };
 
@@ -14,7 +15,7 @@ type TemplateCreateClientProps = {
 
 export function TemplateCreateClient({ templateId }: TemplateCreateClientProps) {
   const router = useRouter();
-  const [message, setMessage] = useState('');
+  const toast = useToast();
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
   const [editingTemplateId, setEditingTemplateId] = useState<string | null>(templateId || null);
@@ -33,8 +34,10 @@ export function TemplateCreateClient({ templateId }: TemplateCreateClientProps) 
           setName(data.template.name);
           setSubject(data.template.subject);
           setBodyHtml(data.template.bodyHtml);
-          setMessage(`Editing ${data.template.name}.`);
         }
+      }
+      else {
+        toast.error('Template load failed', 'The requested template could not be opened.');
       }
     }
     setLoading(false);
@@ -47,14 +50,13 @@ export function TemplateCreateClient({ templateId }: TemplateCreateClientProps) 
     setName('');
     setSubject('');
     setBodyHtml(starterTemplate('Hello {{firstName}},'));
-    setMessage('');
     router.replace(`/dashboard/templates/create${templateId ? `?templateId=${templateId}` : ''}`);
+    toast.info('Form reset', 'The template draft has been reset.');
   }
 
   async function saveTemplate(event: FormEvent) {
     event.preventDefault();
     setSaving(true);
-    setMessage('');
 
     const res = editingTemplateId
       ? await fetch(`/api/templates/${editingTemplateId}`, {
@@ -70,11 +72,17 @@ export function TemplateCreateClient({ templateId }: TemplateCreateClientProps) 
 
     setSaving(false);
     if (!res.ok) {
-      setMessage(editingTemplateId ? 'Failed to update template.' : 'Failed to create template.');
+      toast.error(
+        editingTemplateId ? 'Template update failed' : 'Template creation failed',
+        'Please review the draft and try again.',
+      );
       return;
     }
 
-    setMessage(editingTemplateId ? 'Template updated.' : 'Template created.');
+    toast.success(
+      editingTemplateId ? 'Template updated' : 'Template created',
+      editingTemplateId ? 'Your changes were saved successfully.' : 'The new template draft is ready.',
+    );
     router.push('/dashboard/templates');
   }
 
@@ -91,9 +99,6 @@ export function TemplateCreateClient({ templateId }: TemplateCreateClientProps) 
           <Link className="btn-secondary" href="/dashboard/templates">Back to Templates</Link>
         </div>
       </header>
-
-      {message ? <p className="form-note">{message}</p> : null}
-
       <div className="card" style={{ padding: '1rem' }}>
         <form className="auth-form" onSubmit={saveTemplate}>
           <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Template name" required />

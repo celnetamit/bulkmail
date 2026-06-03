@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
+import { useToast } from '@/components/toast-provider';
 
 type MediaItem = {
   fileName: string;
@@ -45,11 +46,11 @@ function normalizeTags(value: string) {
 }
 
 export default function MediaLibraryClient({ pickMode }: { pickMode: boolean }) {
+  const toast = useToast();
   const [items, setItems] = useState<MediaItem[]>([]);
   const [search, setSearch] = useState('');
   const [folderFilter, setFolderFilter] = useState('all');
   const [tagFilter, setTagFilter] = useState('');
-  const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
@@ -61,12 +62,11 @@ export default function MediaLibraryClient({ pickMode }: { pickMode: boolean }) 
 
   async function load() {
     setLoading(true);
-    setMessage('');
     const response = await fetch('/api/uploads/media', { cache: 'no-store' });
     const data = (await response.json()) as { uploads?: MediaItem[]; error?: string };
 
     if (!response.ok) {
-      setMessage(data.error || 'Failed to load uploaded media.');
+      toast.error('Media load failed', data.error || 'Uploaded media could not be loaded.');
       setItems([]);
       setLoading(false);
       return;
@@ -117,7 +117,7 @@ export default function MediaLibraryClient({ pickMode }: { pickMode: boolean }) 
   async function copyUrl(url: string) {
     try {
       await navigator.clipboard.writeText(url);
-      setMessage('Image URL copied.');
+      toast.success('Image URL copied', 'The media URL is ready to paste.');
     } catch {
       window.prompt('Copy this URL', url);
     }
@@ -126,7 +126,7 @@ export default function MediaLibraryClient({ pickMode }: { pickMode: boolean }) 
   function insertIntoEditor(url: string) {
     const target = window.opener;
     if (!target) {
-      setMessage('Open this page from the editor to insert directly.');
+      toast.warning('Insert unavailable', 'Open this page from the editor to insert directly.');
       return;
     }
 
@@ -136,7 +136,7 @@ export default function MediaLibraryClient({ pickMode }: { pickMode: boolean }) 
 
   async function uploadSelected() {
     if (!uploadFile) {
-      setMessage('Choose an image first.');
+      toast.warning('Choose an image', 'Select an image before uploading.');
       return;
     }
 
@@ -147,7 +147,6 @@ export default function MediaLibraryClient({ pickMode }: { pickMode: boolean }) 
     formData.append('title', uploadTitle);
 
     setUploading(true);
-    setMessage('');
 
     try {
       const response = await fetch('/api/uploads/media', {
@@ -157,7 +156,7 @@ export default function MediaLibraryClient({ pickMode }: { pickMode: boolean }) 
 
       const data = (await response.json()) as UploadResponse;
       if (!response.ok) {
-        setMessage(data.error || 'Upload failed.');
+        toast.error('Upload failed', data.error || 'The image could not be uploaded.');
         return;
       }
 
@@ -165,10 +164,10 @@ export default function MediaLibraryClient({ pickMode }: { pickMode: boolean }) 
       setUploadFolder('');
       setUploadTags('');
       setUploadTitle('');
-      setMessage('Image uploaded.');
+      toast.success('Image uploaded', 'The media file is now available in the library.');
       await load();
     } catch {
-      setMessage('Upload failed. Please try again.');
+      toast.error('Upload failed', 'Please try the upload again.');
     } finally {
       setUploading(false);
     }
@@ -191,7 +190,6 @@ export default function MediaLibraryClient({ pickMode }: { pickMode: boolean }) 
     if (!draft) return;
 
     setSavingKey(item.relativeUrl);
-    setMessage('');
 
     try {
       const response = await fetch('/api/uploads/media', {
@@ -207,11 +205,11 @@ export default function MediaLibraryClient({ pickMode }: { pickMode: boolean }) 
 
       const data = (await response.json()) as UploadResponse;
       if (!response.ok) {
-        setMessage(data.error || 'Failed to save metadata.');
+        toast.error('Metadata save failed', data.error || 'The media details could not be saved.');
         return;
       }
 
-      setMessage(`Saved metadata for ${item.fileName}.`);
+      toast.success('Media updated', `Saved metadata for ${item.fileName}.`);
       await load();
     } finally {
       setSavingKey('');
@@ -234,7 +232,6 @@ export default function MediaLibraryClient({ pickMode }: { pickMode: boolean }) 
       </header>
 
       {pickMode ? <p className="form-note">Pick mode is on. Click Insert to send an image back to the editor.</p> : null}
-      {message ? <p className="form-note">{message}</p> : null}
 
       <div className="card dashboard-panel" style={{ marginBottom: '1rem' }}>
         <div className="section-header section-header--compact">

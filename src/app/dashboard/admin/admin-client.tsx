@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { buildComplianceItems } from '@/lib/compliance';
+import { useToast } from '@/components/toast-provider';
 
 type UserRow = {
   id: string;
@@ -156,9 +157,9 @@ function normalizeDismissedAlerts(value: unknown): string[] {
 }
 
 export default function AdminDashboardClient() {
+  const toast = useToast();
   const [summary, setSummary] = useState<SummaryResponse | null>(null);
   const [settings, setSettings] = useState<Settings | null>(null);
-  const [message, setMessage] = useState('');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [role, setRole] = useState('USER');
@@ -175,7 +176,11 @@ export default function AdminDashboardClient() {
       fetch('/api/settings', { cache: 'no-store' }),
     ]);
 
-    const data = (await overviewResponse.json()) as SummaryResponse;
+    const data = (await overviewResponse.json()) as SummaryResponse & { error?: string };
+    if (!overviewResponse.ok) {
+      toast.error('Admin overview failed', data.error || 'The admin dashboard data could not be loaded.');
+      return;
+    }
     setSummary(data);
 
     if (settingsResponse.ok) {
@@ -254,9 +259,12 @@ export default function AdminDashboardClient() {
       });
 
     const data = await response.json();
-    if (!response.ok) return setMessage(data.error || 'Failed to create user.');
+    if (!response.ok) {
+      toast.error('User creation failed', data.error || 'The user could not be created.');
+      return;
+    }
 
-    setMessage(`User created: ${data.user.email}`);
+    toast.success('User created', data.user.email);
     setName('');
     setEmail('');
     setRole('USER');
@@ -294,9 +302,12 @@ export default function AdminDashboardClient() {
 
     const data = await response.json();
     setSavingId(null);
-    if (!response.ok) return setMessage(data.error || 'Failed to update user.');
+    if (!response.ok) {
+      toast.error('User update failed', data.error || 'The user could not be updated.');
+      return;
+    }
 
-    setMessage(`Updated ${data.user.email}`);
+    toast.success('User updated', data.user.email);
     await load();
   }
 
@@ -353,9 +364,6 @@ export default function AdminDashboardClient() {
           </div>
         </div>
       </header>
-
-      {message ? <p className="form-note">{message}</p> : null}
-
       <div className="stats-grid dashboard-stats">
         <div className="stat-card"><h3>Users</h3><p className="stat-value">{summary?.totals.users ?? 0}</p></div>
         <div className="stat-card"><h3>Active Users</h3><p className="stat-value">{summary?.totals.activeUsers ?? 0}</p></div>
