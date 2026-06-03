@@ -1294,6 +1294,37 @@ p {
 .searchable-multiselect__item:hover { background: rgba(59,130,246,0.06); }
 .searchable-multiselect__item--selected { font-weight: 600; }
 
+.searchable-multiselect__control:focus {
+  outline: 2px solid rgba(59,130,246,0.25);
+}
+.searchable-multiselect__tags {
+  display: flex;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.searchable-multiselect__tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.25rem 0.45rem;
+  border-radius: 999px;
+  background: rgba(59,130,246,0.12);
+  color: var(--text-color);
+  border: 1px solid rgba(59,130,246,0.18);
+  font-size: 0.85rem;
+}
+.searchable-multiselect__tag-remove {
+  background: transparent;
+  border: none;
+  color: var(--text-color);
+  cursor: pointer;
+  font-weight: 700;
+  padding: 0 0.25rem;
+}
+.searchable-multiselect__tag-remove:focus { outline: none; }
+.searchable-multiselect__item:focus { outline: 2px solid rgba(59,130,246,0.12); }
+
 .campaign-risk-panel {
   padding: 1rem;
   margin-bottom: 1rem;
