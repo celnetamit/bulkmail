@@ -234,10 +234,10 @@ export function queueCampaignSendJob(userId: string, campaignId: string) {
   executeSql(
     `
       INSERT INTO "CampaignSendJob" (
-        id, campaignId, userId, status, attempts, provider,
-          totalRecipients, sentCount, failedCount, skippedCount,
-            "quotaSkippedCount", "remainingToday", requestedAt, startedAt,
-        nextRunAt, finishedAt, lastError, skipReason, createdAt, updatedAt
+        id, "campaignId", "userId", status, attempts, provider,
+          "totalRecipients", "sentCount", "failedCount", "skippedCount",
+            "quotaSkippedCount", "remainingToday", "requestedAt", "startedAt",
+        "nextRunAt", "finishedAt", "lastError", "skipReason", "createdAt", "updatedAt"
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
     [
@@ -274,9 +274,9 @@ export function queueCampaignSendJob(userId: string, campaignId: string) {
         sentCount = 0,
         failedCount = 0,
         skippedCount = 0,
-        startedAt = NULL,
-        nextRunAt = NULL,
-        finishedAt = NULL,
+        "startedAt" = NULL,
+        "nextRunAt" = NULL,
+        "finishedAt" = NULL,
         durationSeconds = NULL,
         updatedAt = CURRENT_TIMESTAMP
       WHERE id = ? AND userId = ?
@@ -300,7 +300,7 @@ async function processQueuedCampaignSendJob(job: CampaignSendJobRow) {
     executeSql(
       `
         UPDATE "CampaignSendJob"
-        SET status = ?, lastError = ?, skipReason = ?, nextRunAt = NULL, finishedAt = CURRENT_TIMESTAMP, updatedAt = CURRENT_TIMESTAMP
+        SET status = ?, "lastError" = ?, "skipReason" = ?, "nextRunAt" = NULL, "finishedAt" = CURRENT_TIMESTAMP, "updatedAt" = CURRENT_TIMESTAMP
         WHERE id = ?
       `,
       ['SKIPPED', 'Campaign not found.', 'Campaign was removed before sending.', job.id],
@@ -325,10 +325,10 @@ async function processQueuedCampaignSendJob(job: CampaignSendJobRow) {
         skippedCount = 0,
         "quotaSkippedCount" = 0,
         "remainingToday" = 0,
-        startedAt = COALESCE(startedAt, CURRENT_TIMESTAMP),
-        nextRunAt = NULL,
+        "startedAt" = COALESCE("startedAt", CURRENT_TIMESTAMP),
+        "nextRunAt" = NULL,
         updatedAt = CURRENT_TIMESTAMP,
-        lastError = NULL
+        "lastError" = NULL
       WHERE id = ? AND status IN ('QUEUED', 'RETRYING')
     `,
     ['RUNNING', campaign.provider, contacts.length, job.id],
@@ -360,11 +360,11 @@ async function processQueuedCampaignSendJob(job: CampaignSendJobRow) {
           skippedCount = ?,
           "quotaSkippedCount" = ?,
           "remainingToday" = ?,
-          nextRunAt = NULL,
-          finishedAt = CURRENT_TIMESTAMP,
-          updatedAt = CURRENT_TIMESTAMP,
-          lastError = NULL,
-          skipReason = ?
+          "nextRunAt" = NULL,
+          "finishedAt" = CURRENT_TIMESTAMP,
+          "updatedAt" = CURRENT_TIMESTAMP,
+          "lastError" = NULL,
+          "skipReason" = ?
         WHERE id = ?
       `,
       [
@@ -421,7 +421,7 @@ async function processQueuedCampaignSendJob(job: CampaignSendJobRow) {
     executeSql(
       `
         UPDATE "CampaignSendJob"
-        SET status = ?, nextRunAt = ?, finishedAt = ?, updatedAt = CURRENT_TIMESTAMP, lastError = ?, skipReason = ?
+        SET status = ?, "nextRunAt" = ?, "finishedAt" = ?, "updatedAt" = CURRENT_TIMESTAMP, "lastError" = ?, "skipReason" = ?
         WHERE id = ?
       `,
       [
@@ -475,14 +475,14 @@ async function drainCampaignSendQueue() {
       const nextJob = queryRow<CampaignSendJobRow>(
         `
           SELECT
-            id, campaignId, userId, status, attempts, provider,
-            totalRecipients, sentCount, failedCount, skippedCount,
-              "quotaSkippedCount", "remainingToday", requestedAt, startedAt,
-            nextRunAt, finishedAt, lastError, skipReason, createdAt, updatedAt
-          FROM "CampaignSendJob"
-          WHERE status IN ('QUEUED', 'RETRYING')
-            AND COALESCE(nextRunAt, requestedAt) <= ?
-          ORDER BY requestedAt ASC, createdAt ASC
+                id, "campaignId", "userId", status, attempts, provider,
+                "totalRecipients", "sentCount", "failedCount", "skippedCount",
+                  "quotaSkippedCount", "remainingToday", "requestedAt", "startedAt",
+                "nextRunAt", "finishedAt", "lastError", "skipReason", "createdAt", "updatedAt"
+              FROM "CampaignSendJob"
+              WHERE status IN ('QUEUED', 'RETRYING')
+                AND COALESCE("nextRunAt", "requestedAt") <= ?
+              ORDER BY "requestedAt" ASC, "createdAt" ASC
           LIMIT 1
         `,
         [new Date().toISOString()],
