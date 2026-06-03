@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { EmailRichEditor, starterTemplate } from '@/components/email-rich-editor';
+import SearchableMultiSelect from '@/components/searchable-multiselect';
 
 type List = { id: string; name: string; isDefaultTestList?: number | boolean; contactsCount?: number; campaignsCount?: number };
 type Template = { id: string; name: string; subject: string; bodyHtml: string };
@@ -207,14 +208,6 @@ export function CampaignCreateClient({ campaignId, templateIdFromQuery }: Campai
     setMessage(`Test sent to ${data.testList?.name || 'your test list'}. Sent: ${data.sentCount ?? 0}, Failed: ${data.failedCount ?? 0}.`);
   }
 
-  function toggleList(listId: string) {
-    setSelectedListIds((current) => {
-      if (current.includes(listId)) {
-        return current.filter((currentId) => currentId !== listId);
-      }
-      return [...current, listId];
-    });
-  }
 
   const pageTitle = useMemo(() => (editingCampaignId ? 'Edit Campaign Draft' : 'Create Campaign Draft'), [editingCampaignId]);
   const hasDefaultTestList = useMemo(() => lists.some((list) => Boolean(list.isDefaultTestList)), [lists]);
@@ -286,30 +279,12 @@ export function CampaignCreateClient({ campaignId, templateIdFromQuery }: Campai
       <div className="card" style={{ padding: '1rem' }}>
         <form className="auth-form" onSubmit={saveCampaign}>
           <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Campaign name" required />
-          <div className="multi-select-panel">
-            <div className="multi-select-panel__header">
-              <span>Lists</span>
-              <span>{selectedListIds.length} selected</span>
-            </div>
-            <div className="multi-select-panel__body">
-              {lists.length === 0 ? (
-                <p className="form-note">No lists yet. Create at least one list before saving the campaign.</p>
-              ) : (
-                lists.map((list) => (
-                  <label key={list.id} className={`multi-select-option ${selectedListIds.includes(list.id) ? 'is-selected' : ''}`}>
-                    <input
-                      type="checkbox"
-                      checked={selectedListIds.includes(list.id)}
-                      onChange={() => toggleList(list.id)}
-                    />
-                    <span className="multi-select-option__content">
-                      <strong>{list.name}</strong>
-                      {list.isDefaultTestList ? <span className="badge badge-success">Test list</span> : null}
-                    </span>
-                  </label>
-                ))
-              )}
-            </div>
+          <div style={{ marginBottom: '0.5rem' }}>
+            <label style={{ display: 'block', marginBottom: '.5rem', color: 'var(--muted-text)' }}>Lists</label>
+            <SearchableMultiSelect lists={lists} selectedIds={selectedListIds} onChange={setSelectedListIds} placeholder="Select lists..." />
+            {lists.length === 0 ? (
+              <p className="form-note">No lists yet. Create at least one list before saving the campaign.</p>
+            ) : null}
           </div>
           <p className="form-note">
             {hasDefaultTestList

@@ -1192,7 +1192,7 @@ p {
   gap: 0.75rem;
   border: 1px solid var(--border-color);
   border-radius: 0.75rem;
-  background: rgba(15, 23, 42, 0.66);
+  background: var(--card-bg);
   padding: 0.85rem;
 }
 
@@ -1219,7 +1219,7 @@ p {
   gap: 0.7rem;
   border: 1px solid var(--border-color);
   border-radius: 0.7rem;
-  background: rgba(15, 23, 42, 0.78);
+  background: var(--card-bg);
   padding: 0.75rem 0.8rem;
   cursor: pointer;
 }
@@ -1240,7 +1240,59 @@ p {
   gap: 0.5rem;
   flex-wrap: wrap;
   min-width: 0;
+  color: var(--text-color);
 }
+
+/* Searchable multi-select dropdown styles */
+.searchable-multiselect {
+  position: relative;
+  width: 100%;
+}
+.searchable-multiselect__control {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--border-color);
+  border-radius: 0.6rem;
+  background: var(--card-bg);
+  color: var(--text-color);
+  cursor: pointer;
+}
+.searchable-multiselect__placeholder { color: var(--muted-text); }
+.searchable-multiselect__menu {
+  position: absolute;
+  left: 0;
+  right: 0;
+  margin-top: 0.5rem;
+  z-index: 40;
+  border: 1px solid var(--border-color);
+  border-radius: 0.6rem;
+  background: var(--card-bg);
+  max-height: 14rem;
+  overflow: auto;
+  padding: 0.5rem;
+}
+.searchable-multiselect__search {
+  width: 100%;
+  padding: 0.5rem;
+  margin-bottom: 0.5rem;
+  border: 1px solid var(--border-color);
+  border-radius: 0.5rem;
+  background: transparent;
+  color: var(--text-color);
+}
+.searchable-multiselect__item {
+  display: flex;
+  gap: 0.6rem;
+  padding: 0.45rem 0.5rem;
+  align-items: center;
+  border-radius: 0.45rem;
+  cursor: pointer;
+}
+.searchable-multiselect__item:hover { background: rgba(59,130,246,0.06); }
+.searchable-multiselect__item--selected { font-weight: 600; }
 
 .campaign-risk-panel {
   padding: 1rem;
