@@ -48,6 +48,9 @@ type InsertBlock =
   | 'header'
   | 'footer';
 
+const UNSUBSCRIBE_URL_PLACEHOLDER = '{{unsubscribeUrl}}';
+const UNSUBSCRIBE_URL_PREVIEW_VALUE = '#unsubscribe';
+
 export const starterTemplate = (headline: string) => `<!doctype html>
 <html>
   <head>
@@ -199,7 +202,7 @@ function insertBlock(block: InsertBlock) {
         <tr>
           <td style="padding:16px 0;font-size:12px;line-height:1.7;color:#64748b;">
             You’re receiving this email because you subscribed to updates.<br />
-            <a href="https://example.com" style="color:#2563eb;text-decoration:underline;">Unsubscribe</a>
+            <a href="${UNSUBSCRIBE_URL_PLACEHOLDER}" style="color:#2563eb;text-decoration:underline;">Unsubscribe</a>
           </td>
         </tr>
       </table>`,
@@ -208,9 +211,13 @@ function insertBlock(block: InsertBlock) {
   document.execCommand('insertHTML', false, blocks[block]);
 }
 
+function applyPreviewPlaceholders(value: string) {
+  return value.split(UNSUBSCRIBE_URL_PLACEHOLDER).join(UNSUBSCRIBE_URL_PREVIEW_VALUE);
+}
+
 function buildPreviewDoc(value: string, placeholder: string) {
   const { headHtml, bodyHtml } = extractDocumentParts(value, placeholder);
-  return composeDocument(headHtml, bodyHtml);
+  return composeDocument(headHtml, applyPreviewPlaceholders(bodyHtml));
 }
 
 export function EmailRichEditor({
@@ -438,6 +445,9 @@ export function EmailRichEditor({
           Preview
         </button>
       </div>
+      <p className="form-note">
+        Use <code>{UNSUBSCRIBE_URL_PLACEHOLDER}</code> in a link, or insert the Footer block, to place the live unsubscribe link.
+      </p>
 
       {mode === 'visual' ? (
         <div className="email-editor__panel">

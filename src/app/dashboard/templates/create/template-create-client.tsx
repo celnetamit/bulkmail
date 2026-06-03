@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { EmailRichEditor, starterTemplate } from '@/components/email-rich-editor';
+import { EmailMagicComposer } from '@/components/email-magic-composer';
 
 type Template = { id: string; name: string; subject: string; bodyHtml: string };
 
@@ -97,6 +98,17 @@ export function TemplateCreateClient({ templateId }: TemplateCreateClientProps) 
         <form className="auth-form" onSubmit={saveTemplate}>
           <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Template name" required />
           <input value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="Email subject" required />
+          <EmailMagicComposer
+            surface="template"
+            draftName={name}
+            subject={subject}
+            bodyHtml={bodyHtml}
+            disabled={saving || loading}
+            onApply={({ subject: nextSubject, bodyHtml: nextBodyHtml }) => {
+              setSubject(nextSubject);
+              setBodyHtml(nextBodyHtml);
+            }}
+          />
           <EmailRichEditor value={bodyHtml} onChange={setBodyHtml} placeholder="Compose the template body..." />
           <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
             <button className="btn-primary" type="submit" disabled={saving || loading}>

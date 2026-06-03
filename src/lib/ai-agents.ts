@@ -123,9 +123,39 @@ export type AgentChatResult = {
   executed?: Array<{ type: string; result: string }>;
 };
 
+export type EmailComposerMessage = {
+  role: 'user' | 'assistant';
+  content: string;
+};
+
+export type EmailComposerInput = {
+  surface: 'campaign' | 'template';
+  prompt: string;
+  subject?: string;
+  bodyHtml?: string;
+  draftName?: string;
+  linkedTemplateName?: string | null;
+  listNames?: string[];
+  history?: EmailComposerMessage[];
+};
+
+export type EmailComposerResult = {
+  reply: string;
+  subject: string;
+  bodyHtml: string;
+  provider: AiProvider;
+  model: string;
+};
+
 type NormalizedCompletion = {
   reply: string;
   actions: AgentAction[];
+};
+
+type NormalizedEmailComposerResult = {
+  reply: string;
+  subject: string;
+  bodyHtml: string;
 };
 
 const DEFAULT_AI_PROVIDER: AiProvider = 'openrouter';
@@ -854,6 +884,147 @@ function normalizeCompletion(raw: string, agentKey: AiAgentKey): NormalizedCompl
   } catch {
     return { reply: fallbackReply, actions: [] };
   }
+}
+
+function stripJsonCodeFence(raw: string) {
+  const trimmed = raw.trim();
+  if (!trimmed.startsWith('```')) return trimmed;
+  return trimmed.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+}
+
+function normalizeEmailComposerResult(raw: string, fallbackSubject: string, fallbackBodyHtml: string): NormalizedEmailComposerResult {
+  const cleaned = stripJsonCodeFence(raw);
+  const fallbackReply = cleaned || 'Draft updated.';
+
+  try {
+    const parsed = JSON.parse(cleaned) as { reply?: unknown; subject?: unknown; bodyHtml?: unknown };
+    const reply = typeof parsed.reply === 'string' && parsed.reply.trim() ? parsed.reply.trim() : fallbackReply;
+    const subject = typeof parsed.subject === 'string' && parsed.subject.trim() ? parsed.subject.trim() : fallbackSubject;
+    const bodyHtml = typeof parsed.bodyHtml === 'string' && parsed.bodyHtml.trim() ? parsed.bodyHtml.trim() : fallbackBodyHtml;
+    return { reply, subject, bodyHtml };
+  } catch {
+    return {
+      reply: fallbackReply,
+      subject: fallbackSubject,
+      bodyHtml: fallbackBodyHtml,
+    };
+  }
+}
+
+function getStoredProfileRow(agentKey: AiAgentKey) {
+  return queryRow<StoredAiAgentProfile>(
+    `
+      SELECT
+        "agentKey",
+        label,
+        description,
+        provider,
+        model,
+        "baseUrl",
+        "apiKeyEncrypted",
+        "systemPrompt",
+        "temperature",
+        "maxOutputTokens",
+        "isEnabled",
+        "createdAt",
+        "updatedAt"
+      FROM "AiAgentProfile"
+      WHERE "agentKey" = ?
+      LIMIT 1
+    `,
+    [agentKey],
+  );
+}
+
+function buildEmailComposerPrompt(input: EmailComposerInput) {
+  const context = [
+    `Surface: ${input.surface}`,
+    input.draftName ? `Draft name: ${input.draftName}` : null,
+    input.linkedTemplateName ? `Linked template: ${input.linkedTemplateName}` : null,
+    input.listNames?.length ? `Selected lists: ${input.listNames.join(', ')}` : null,
+    `Current subject:\n${input.subject?.trim() || '(empty)'}`,
+    `Current body HTML:\n${input.bodyHtml?.trim() || '(empty)'}`,
+  ]
+    .filter(Boolean)
+    .join('\n\n');
+
+  return [
+    {
+      role: 'system',
+      content: [
+        'You are MailFlow AI Magic, an email writing assistant inside the campaign and template editor.',
+        'Help the user create or refine email copy while keeping the result production-ready for HTML email sending.',
+        'Return strict JSON only with keys: reply, subject, bodyHtml.',
+        'The reply must be concise, helpful, and mention the main improvement you made.',
+        'The subject must be plain text only.',
+        'The bodyHtml must be complete email HTML suitable for direct editing in MailFlow.',
+        'Prefer clean table-based email markup with inline styles.',
+        'When appropriate, preserve or introduce personalization placeholders such as {{firstName}}.',
+        'Include an unsubscribe link using {{unsubscribeUrl}} in the footer when you create or significantly revise the email.',
+        'Never wrap the JSON in markdown fences.',
+      ].join(' '),
+    },
+    {
+      role: 'system',
+      content: context,
+    },
+    ...(input.history || []).slice(-8).map((message) => ({
+      role: message.role,
+      content: message.content,
+    })),
+    {
+      role: 'user',
+      content: input.prompt.trim(),
+    },
+  ] as Array<{ role: string; content: string }>;
+}
+
+export async function runEmailComposer(
+  user: { userId: string; email: string; role: AgentRole },
+  input: EmailComposerInput,
+): Promise<EmailComposerResult> {
+  ensureAiAgentsSchema();
+
+  const prompt = input.prompt.trim();
+  if (!prompt) {
+    throw new Error('Prompt is required.');
+  }
+
+  const profile = await resolveAiAgentProfile('support');
+  if (!profile.isEnabled) {
+    throw new Error(`${profile.label} is currently disabled.`);
+  }
+
+  const profileRow = getStoredProfileRow('support');
+  const apiKey = getAiAgentApiKey(profile, profileRow?.apiKeyEncrypted || null);
+  const messages = buildEmailComposerPrompt(input);
+  const rawReply = await callProvider(profile, apiKey, messages);
+  const normalized = normalizeEmailComposerResult(rawReply, input.subject?.trim() || '', input.bodyHtml?.trim() || '');
+
+  await recordAuditEvent({
+    actorUserId: user.userId,
+    actorEmail: user.email,
+    actorRole: user.role,
+    action: 'ai_email_composer',
+    entityType: input.surface === 'campaign' ? 'Campaign' : 'Template',
+    entityId: input.draftName || user.userId,
+    scopeType: 'SELF',
+    metadata: {
+      surface: input.surface,
+      provider: profile.provider,
+      model: profile.model,
+      promptLength: prompt.length,
+      listCount: input.listNames?.length || 0,
+    },
+  });
+
+  return {
+    reply: normalized.reply,
+    subject: normalized.subject,
+    bodyHtml: normalized.bodyHtml,
+    provider: profile.provider,
+    model: profile.model,
+  };
 }
 
 async function createEntityFromAction(

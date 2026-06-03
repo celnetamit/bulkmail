@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { EmailRichEditor, starterTemplate } from '@/components/email-rich-editor';
+import { EmailMagicComposer } from '@/components/email-magic-composer';
 import SearchableMultiSelect from '@/components/searchable-multiselect';
 
 type List = { id: string; name: string; isDefaultTestList?: number | boolean; contactsCount?: number; campaignsCount?: number };
@@ -215,6 +216,14 @@ export function CampaignCreateClient({ campaignId, templateIdFromQuery }: Campai
   const pageTitle = useMemo(() => (editingCampaignId ? 'Edit Campaign Draft' : 'Create Campaign Draft'), [editingCampaignId]);
   const hasDefaultTestList = useMemo(() => lists.some((list) => Boolean(list.isDefaultTestList)), [lists]);
   const riskStatusClass = risk?.status === 'ready' ? 'badge-success' : risk?.status === 'blocked' ? 'badge-danger' : 'badge-warning';
+  const selectedListNames = useMemo(
+    () => lists.filter((list) => selectedListIds.includes(list.id)).map((list) => list.name),
+    [lists, selectedListIds],
+  );
+  const linkedTemplateName = useMemo(
+    () => templates.find((template) => template.id === templateId)?.name || null,
+    [templateId, templates],
+  );
 
   function severityClass(severity: CampaignRiskSeverity) {
     if (severity === 'block') return 'badge-danger';
@@ -312,6 +321,19 @@ export function CampaignCreateClient({ campaignId, templateIdFromQuery }: Campai
             {templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
           </select>
           <input value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="Subject" required />
+          <EmailMagicComposer
+            surface="campaign"
+            draftName={name}
+            subject={subject}
+            bodyHtml={bodyHtml}
+            linkedTemplateName={linkedTemplateName}
+            listNames={selectedListNames}
+            disabled={saving || testing || loading}
+            onApply={({ subject: nextSubject, bodyHtml: nextBodyHtml }) => {
+              setSubject(nextSubject);
+              setBodyHtml(nextBodyHtml);
+            }}
+          />
           <EmailRichEditor value={bodyHtml} onChange={setBodyHtml} placeholder="Compose the campaign body..." />
           <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
             <button className="btn-primary" type="submit" disabled={saving || loading}>

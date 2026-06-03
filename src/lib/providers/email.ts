@@ -28,6 +28,8 @@ type TestEmailInput = {
 
 type SendResult = Array<{ contactId: string; provider: string; messageId: string }>;
 
+const UNSUBSCRIBE_URL_PLACEHOLDER = '{{unsubscribeUrl}}';
+
 function dedupeRecipients(recipients: CampaignRecipient[]) {
   const seen = new Set<string>();
   const unique: CampaignRecipient[] = [];
@@ -72,6 +74,10 @@ function appendUnsubscribeFooter(bodyHtml: string, unsubscribeUrl: string) {
       <p style="margin:0 0 8px;">If you do not want to receive these emails, you can <a href="${unsubscribeUrl}" style="color:#2563eb;text-decoration:underline;">unsubscribe here</a>.</p>
     </div>`,
   );
+}
+
+function injectUnsubscribeUrl(bodyHtml: string, unsubscribeUrl: string) {
+  return bodyHtml.split(UNSUBSCRIBE_URL_PLACEHOLDER).join(unsubscribeUrl);
 }
 
 function appendOpenTrackingPixel(bodyHtml: string, trackingUrl: string) {
@@ -365,7 +371,12 @@ export async function dispatchCampaignEmails(userId: string, input: SendInput) {
       email: contact.email,
     });
     const trackingUrl = `${input.appUrl.replace(/\/$/, '')}/api/track/open?token=${encodeURIComponent(trackingToken)}`;
-    const html = appendOpenTrackingPixel(appendUnsubscribeFooter(input.bodyHtml, unsubscribeUrl), trackingUrl);
+    const htmlWithInjectedUnsubscribe = injectUnsubscribeUrl(input.bodyHtml, unsubscribeUrl);
+    const htmlWithUnsubscribe =
+      htmlWithInjectedUnsubscribe === input.bodyHtml
+        ? appendUnsubscribeFooter(input.bodyHtml, unsubscribeUrl)
+        : htmlWithInjectedUnsubscribe;
+    const html = appendOpenTrackingPixel(htmlWithUnsubscribe, trackingUrl);
 
     try {
       const sent = await sendEmailBatch(userId, {
