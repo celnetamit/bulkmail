@@ -235,8 +235,8 @@ export function queueCampaignSendJob(userId: string, campaignId: string) {
     `
       INSERT INTO "CampaignSendJob" (
         id, campaignId, userId, status, attempts, provider,
-        totalRecipients, sentCount, failedCount, skippedCount,
-        quotaSkippedCount, remainingToday, requestedAt, startedAt,
+          totalRecipients, sentCount, failedCount, skippedCount,
+            "quotaSkippedCount", "remainingToday", requestedAt, startedAt,
         nextRunAt, finishedAt, lastError, skipReason, createdAt, updatedAt
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
@@ -323,8 +323,8 @@ async function processQueuedCampaignSendJob(job: CampaignSendJobRow) {
         sentCount = 0,
         failedCount = 0,
         skippedCount = 0,
-        quotaSkippedCount = 0,
-        remainingToday = 0,
+        "quotaSkippedCount" = 0,
+        "remainingToday" = 0,
         startedAt = COALESCE(startedAt, CURRENT_TIMESTAMP),
         nextRunAt = NULL,
         updatedAt = CURRENT_TIMESTAMP,
@@ -358,8 +358,8 @@ async function processQueuedCampaignSendJob(job: CampaignSendJobRow) {
           sentCount = ?,
           failedCount = ?,
           skippedCount = ?,
-          quotaSkippedCount = ?,
-          remainingToday = ?,
+          "quotaSkippedCount" = ?,
+          "remainingToday" = ?,
           nextRunAt = NULL,
           finishedAt = CURRENT_TIMESTAMP,
           updatedAt = CURRENT_TIMESTAMP,
@@ -477,7 +477,7 @@ async function drainCampaignSendQueue() {
           SELECT
             id, campaignId, userId, status, attempts, provider,
             totalRecipients, sentCount, failedCount, skippedCount,
-            quotaSkippedCount, remainingToday, requestedAt, startedAt,
+              "quotaSkippedCount", "remainingToday", requestedAt, startedAt,
             nextRunAt, finishedAt, lastError, skipReason, createdAt, updatedAt
           FROM "CampaignSendJob"
           WHERE status IN ('QUEUED', 'RETRYING')
