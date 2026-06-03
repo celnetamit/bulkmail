@@ -275,9 +275,21 @@ export default function CampaignsPage() {
   async function sendCampaign(id: string) {
     setSendingId(id);
     const res = await fetch(`/api/campaigns/${id}/send`, { method: 'POST' });
-    const data = (await res.json()) as { error?: string; queued?: boolean; jobId?: string; sentCount?: number; provider?: string; quotaSkippedCount?: number; remainingToday?: number };
+    const data = (await res.json()) as {
+      error?: string;
+      queued?: boolean;
+      jobId?: string;
+      sentCount?: number;
+      provider?: string;
+      quotaSkippedCount?: number;
+      remainingToday?: number;
+      risk?: { items?: { title: string; severity: string }[] };
+    };
     setSendingId(null);
-    if (!res.ok) return setMessage(data.error || 'Failed to send campaign.');
+    if (!res.ok) {
+      const blockers = data.risk?.items?.filter((item) => item.severity === 'block').map((item) => item.title).slice(0, 3) || [];
+      return setMessage(blockers.length > 0 ? `${data.error || 'Failed to send campaign.'} Fix: ${blockers.join(', ')}.` : data.error || 'Failed to send campaign.');
+    }
     if (data.queued) {
       setMessage(`Campaign queued${data.jobId ? ` as job ${data.jobId}` : ''}. It will send in the background.`);
     } else {

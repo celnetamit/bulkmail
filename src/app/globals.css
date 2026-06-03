@@ -114,6 +114,7 @@ p {
   --border-color: #d6e0ee;
   --primary-color: #14b8a6;
   --primary-hover: #0f9f90;
+  --muted-text: #64748b;
 }
 
 .sidebar {
@@ -1240,6 +1241,78 @@ p {
   min-width: 0;
 }
 
+.campaign-risk-panel {
+  padding: 1rem;
+  margin-bottom: 1rem;
+}
+
+.campaign-risk-panel__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  margin-bottom: 0.9rem;
+}
+
+.campaign-risk-panel__header h2 {
+  margin: 0 0 0.35rem;
+  font-size: 1.05rem;
+}
+
+.campaign-risk-panel__header p,
+.campaign-risk-item p {
+  margin: 0;
+  color: var(--muted-text);
+  line-height: 1.5;
+}
+
+.campaign-risk-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 0.6rem;
+  margin-bottom: 0.9rem;
+}
+
+.campaign-risk-stats span {
+  border: 1px solid var(--border-color);
+  border-radius: 0.5rem;
+  padding: 0.65rem 0.75rem;
+  color: var(--muted-text);
+  background: rgba(15, 23, 42, 0.38);
+}
+
+.campaign-risk-stats strong {
+  display: block;
+  color: var(--text-color);
+  font-size: 1.05rem;
+}
+
+.campaign-risk-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 0.9rem;
+}
+
+.campaign-risk-item {
+  border: 1px solid var(--border-color);
+  border-radius: 0.5rem;
+  padding: 0.8rem;
+  background: rgba(15, 23, 42, 0.42);
+}
+
+.campaign-risk-item__head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-bottom: 0.55rem;
+}
+
+.campaign-risk-item h3 {
+  margin: 0 0 0.35rem;
+  font-size: 0.95rem;
+}
+
 @media (max-width: 860px) {
   .list-create-form {
     grid-template-columns: 1fr;
@@ -1300,6 +1373,11 @@ p {
 .badge-warning {
   background-color: rgba(234, 179, 8, 0.2);
   color: #facc15;
+}
+
+.badge-danger {
+  background-color: rgba(239, 68, 68, 0.2);
+  color: #fca5a5;
 }
 
 .badge-info {

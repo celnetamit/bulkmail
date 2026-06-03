@@ -53,6 +53,8 @@ export default async function DashboardOverview() {
         <div className="stat-card"><h3>Open Rate</h3><p className="stat-value">{metrics.openRate.toFixed(2)}%</p></div>
         <div className="stat-card"><h3>Bounce Rate</h3><p className="stat-value text-red">{metrics.bounceRate.toFixed(2)}%</p></div>
         <div className="stat-card"><h3>Unsubscribe Rate</h3><p className="stat-value text-yellow">{metrics.unsubscribeRate.toFixed(2)}%</p></div>
+        <div className="stat-card"><h3>Spam Complaints</h3><p className="stat-value text-red">{metrics.spamComplaints}</p></div>
+        <div className="stat-card"><h3>Provider Blocks</h3><p className="stat-value text-red">{metrics.providerBlocks}</p></div>
         <div className="stat-card"><h3>Daily Limit</h3><p className="stat-value">{quota.sentToday}/{quota.dailyLimit}</p></div>
         <div className="stat-card"><h3>Remaining</h3><p className="stat-value">{quota.remainingToday}</p></div>
       </div>

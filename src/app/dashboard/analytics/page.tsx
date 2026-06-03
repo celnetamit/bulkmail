@@ -14,10 +14,37 @@ type SummaryResponse = {
     clickRate: number;
     bounceRate: number;
     unsubscribeRate: number;
+    spamComplaints: number;
+    providerBlocks: number;
+    spamComplaintRate: number;
+    providerBlockRate: number;
+    suppressedContacts: number;
+    contactStats: {
+      total: number;
+      subscribed: number;
+      bounced: number;
+      unsubscribed: number;
+    };
+    detections: Array<{
+      key: string;
+      title: string;
+      status: 'healthy' | 'watch' | 'critical' | 'idle';
+      value: number;
+      count: number;
+      unit: 'percent' | 'count';
+      detail: string;
+    }>;
   };
   campaigns: Array<{ id: string; name: string; listId: string }>;
   lists: Array<{ id: string; name: string }>;
 };
+
+function detectionBadgeClass(status: SummaryResponse['metrics']['detections'][number]['status']) {
+  if (status === 'healthy') return 'badge-success';
+  if (status === 'critical') return 'badge-danger';
+  if (status === 'watch') return 'badge-warning';
+  return 'badge-info';
+}
 
 export default function AnalyticsPage() {
   const [summary, setSummary] = useState<SummaryResponse | null>(null);
@@ -80,6 +107,9 @@ export default function AnalyticsPage() {
         <div className="stat-card"><h3>Clicked</h3><p className="stat-value">{metrics?.clicked ?? 0}</p></div>
         <div className="stat-card"><h3>Bounced</h3><p className="stat-value text-red">{metrics?.bounced ?? 0}</p></div>
         <div className="stat-card"><h3>Unsubscribed</h3><p className="stat-value text-yellow">{metrics?.unsubscribed ?? 0}</p></div>
+        <div className="stat-card"><h3>Spam Complaints</h3><p className="stat-value text-red">{metrics?.spamComplaints ?? 0}</p></div>
+        <div className="stat-card"><h3>Provider Blocks</h3><p className="stat-value text-red">{metrics?.providerBlocks ?? 0}</p></div>
+        <div className="stat-card"><h3>Suppressed Contacts</h3><p className="stat-value text-yellow">{metrics?.suppressedContacts ?? 0}</p></div>
       </div>
 
       <div className="card" style={{ padding: '1rem', marginTop: '1rem' }}>
@@ -92,6 +122,43 @@ export default function AnalyticsPage() {
               <tr><td>Click Rate</td><td>{(metrics?.clickRate ?? 0).toFixed(2)}%</td></tr>
               <tr><td>Bounce Rate</td><td>{(metrics?.bounceRate ?? 0).toFixed(2)}%</td></tr>
               <tr><td>Unsubscribe Rate</td><td>{(metrics?.unsubscribeRate ?? 0).toFixed(2)}%</td></tr>
+              <tr><td>Spam Complaint Rate</td><td>{(metrics?.spamComplaintRate ?? 0).toFixed(2)}%</td></tr>
+              <tr><td>Provider Block Rate</td><td>{(metrics?.providerBlockRate ?? 0).toFixed(2)}%</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="card" style={{ padding: '1rem', marginTop: '1rem' }}>
+        <h2>Detection</h2>
+        <div className="table-wrap">
+          <table className="data-table">
+            <thead><tr><th>Signal</th><th>Status</th><th>Value</th><th>Detail</th></tr></thead>
+            <tbody>
+              {(metrics?.detections || []).map((detection) => (
+                <tr key={detection.key}>
+                  <td>{detection.title}</td>
+                  <td><span className={`badge ${detectionBadgeClass(detection.status)}`}>{detection.status}</span></td>
+                  <td>{detection.unit === 'percent' ? `${detection.value.toFixed(2)}%` : detection.count}</td>
+                  <td>{detection.detail}</td>
+                </tr>
+              ))}
+              {(!metrics?.detections || metrics.detections.length === 0) ? <tr><td colSpan={4}>No detection data yet.</td></tr> : null}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="card" style={{ padding: '1rem', marginTop: '1rem' }}>
+        <h2>Audience Status</h2>
+        <div className="table-wrap">
+          <table className="data-table">
+            <thead><tr><th>Status</th><th>Contacts</th></tr></thead>
+            <tbody>
+              <tr><td>Subscribed</td><td>{metrics?.contactStats.subscribed ?? 0}</td></tr>
+              <tr><td>Bounced</td><td>{metrics?.contactStats.bounced ?? 0}</td></tr>
+              <tr><td>Unsubscribed</td><td>{metrics?.contactStats.unsubscribed ?? 0}</td></tr>
+              <tr><td>Total</td><td>{metrics?.contactStats.total ?? 0}</td></tr>
             </tbody>
           </table>
         </div>

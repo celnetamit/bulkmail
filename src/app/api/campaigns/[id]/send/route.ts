@@ -1,8 +1,10 @@
+import { NextResponse } from 'next/server';
 import { requireUserFromCookies } from '@/lib/auth';
 import { recordAuditEvent } from '@/lib/audit';
 import { recordSystemEvent } from '@/lib/observability';
 import { fail, ok } from '@/lib/http';
 import { queueCampaignSendJob } from '@/lib/campaign-send-queue';
+import { analyzeCampaignRisk } from '@/lib/campaign-risk';
 
 type Params = { params: { id: string } };
 
@@ -11,6 +13,18 @@ export async function POST(_: Request, { params }: Params) {
   if ('error' in auth) return auth.error;
 
   try {
+    const risk = await analyzeCampaignRisk(auth.user.userId, params.id);
+    if (!risk) return fail('Campaign not found.', 404);
+    if (risk.status === 'blocked') {
+      return NextResponse.json(
+        {
+          error: `Campaign risk check blocked sending: ${risk.summary}`,
+          risk,
+        },
+        { status: 400 },
+      );
+    }
+
     const job = queueCampaignSendJob(auth.user.userId, params.id);
     await recordAuditEvent({
       actorUserId: auth.user.userId,
@@ -24,6 +38,8 @@ export async function POST(_: Request, { params }: Params) {
         jobId: job.jobId,
         status: job.status,
         listCount: job.listCount,
+        riskStatus: risk.status,
+        riskScore: risk.score,
       },
     });
     return ok(

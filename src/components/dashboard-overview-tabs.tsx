@@ -5,9 +5,14 @@ import { useMemo, useState } from 'react';
 
 type OverviewMetrics = {
   sent: number;
+  delivered: number;
+  opened: number;
   openRate: number;
   bounceRate: number;
   unsubscribeRate: number;
+  spamComplaints: number;
+  providerBlocks: number;
+  suppressedContacts: number;
 };
 
 type Quota = {
@@ -63,7 +68,7 @@ export function DashboardOverviewTabs({
         chips: [
           { label: 'Bounce Rate', value: `${metrics.bounceRate.toFixed(2)}%` },
           { label: 'Unsubscribe', value: `${metrics.unsubscribeRate.toFixed(2)}%` },
-          { label: 'Suppression', value: 'Active' },
+          { label: 'Suppressed', value: metrics.suppressedContacts.toLocaleString() },
           { label: 'Lists', value: 'Managed' },
         ],
         action: { label: 'Open Lists', href: '/dashboard/lists' },
@@ -91,16 +96,17 @@ export function DashboardOverviewTabs({
         summary:
           'Open rates, bounce trends, and unsubscribes are all easiest to interpret when they sit in the same weekly view.',
         chips: [
-          { label: 'Delivered', value: `${Math.round(metrics.sent * 0.92).toLocaleString()}` },
-          { label: 'Opened', value: `${Math.round(metrics.sent * metrics.openRate / 100).toLocaleString()}` },
+          { label: 'Delivered', value: metrics.delivered.toLocaleString() },
+          { label: 'Opened', value: metrics.opened.toLocaleString() },
           { label: 'Bounced', value: `${metrics.bounceRate.toFixed(2)}%` },
-          { label: 'Trend', value: 'Weekly' },
+          { label: 'Blocks', value: metrics.providerBlocks.toLocaleString() },
+          { label: 'Spam', value: metrics.spamComplaints.toLocaleString() },
         ],
         action: { label: 'Open Analytics', href: '/dashboard/analytics' },
         footnote: 'The performance curve is easiest to read after a few sends have completed.',
       },
     ],
-    [metrics.bounceRate, metrics.openRate, metrics.sent, metrics.unsubscribeRate, quota.dailyLimit, quota.remainingToday, quota.sentToday],
+    [metrics.bounceRate, metrics.delivered, metrics.openRate, metrics.opened, metrics.providerBlocks, metrics.sent, metrics.spamComplaints, metrics.suppressedContacts, metrics.unsubscribeRate, quota.dailyLimit, quota.remainingToday, quota.sentToday],
   );
 
   const current = tabs.find((tab) => tab.key === activeTab) || tabs[0];

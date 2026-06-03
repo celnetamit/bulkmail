@@ -18,6 +18,35 @@ type Campaign = {
   template: { id: string; name: string } | null;
 };
 
+type CampaignRiskSeverity = 'block' | 'warning' | 'info';
+type CampaignRiskStatus = 'blocked' | 'warning' | 'ready';
+type CampaignRiskItem = {
+  key: string;
+  title: string;
+  detail: string;
+  severity: CampaignRiskSeverity;
+  category: 'compliance' | 'spam' | 'audience' | 'deliverability';
+};
+type CampaignRiskResult = {
+  status: CampaignRiskStatus;
+  score: number;
+  summary: string;
+  counts: {
+    blocks: number;
+    warnings: number;
+    infos: number;
+  };
+  audience: {
+    lists: number;
+    totalContacts: number;
+    subscribedContacts: number;
+    suppressedContacts: number;
+    invalidContacts: number;
+    duplicateContacts: number;
+  };
+  items: CampaignRiskItem[];
+};
+
 type CampaignCreateClientProps = {
   campaignId?: string;
   templateIdFromQuery?: string;
@@ -42,6 +71,8 @@ export function CampaignCreateClient({ campaignId, templateIdFromQuery }: Campai
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [riskLoading, setRiskLoading] = useState(false);
+  const [risk, setRisk] = useState<CampaignRiskResult | null>(null);
   const skipTemplateApplyRef = useRef(false);
   const [editingCampaignId, setEditingCampaignId] = useState<string | null>(campaignId || null);
 
@@ -50,6 +81,14 @@ export function CampaignCreateClient({ campaignId, templateIdFromQuery }: Campai
   const [templateId, setTemplateId] = useState('');
   const [subject, setSubject] = useState('');
   const [bodyHtml, setBodyHtml] = useState(starterTemplate('Campaign body'));
+
+  async function loadCampaignRisk(nextCampaignId: string) {
+    setRiskLoading(true);
+    const riskRes = await fetch(`/api/campaigns/${nextCampaignId}/risk`, { cache: 'no-store' });
+    const riskData = (await readJsonResponse<{ risk?: CampaignRiskResult }>(riskRes)) || {};
+    setRisk(riskRes.ok ? riskData.risk || null : null);
+    setRiskLoading(false);
+  }
 
   async function loadAll() {
     setLoading(true);
@@ -81,6 +120,7 @@ export function CampaignCreateClient({ campaignId, templateIdFromQuery }: Campai
           setSubject(campaign.subject);
           setBodyHtml(campaign.bodyHtml);
           setMessage(`Editing ${campaign.name}.`);
+          await loadCampaignRisk(campaign.id);
         }
       }
     }
@@ -109,6 +149,7 @@ export function CampaignCreateClient({ campaignId, templateIdFromQuery }: Campai
     setTemplateId(templateIdFromQuery || '');
     setSubject('');
     setBodyHtml(starterTemplate('Campaign body'));
+    setRisk(null);
     setMessage('');
     router.replace(`/dashboard/campaigns/create${templateIdFromQuery ? `?templateId=${templateIdFromQuery}` : ''}`);
   }
@@ -177,6 +218,13 @@ export function CampaignCreateClient({ campaignId, templateIdFromQuery }: Campai
 
   const pageTitle = useMemo(() => (editingCampaignId ? 'Edit Campaign Draft' : 'Create Campaign Draft'), [editingCampaignId]);
   const hasDefaultTestList = useMemo(() => lists.some((list) => Boolean(list.isDefaultTestList)), [lists]);
+  const riskStatusClass = risk?.status === 'ready' ? 'badge-success' : risk?.status === 'blocked' ? 'badge-danger' : 'badge-warning';
+
+  function severityClass(severity: CampaignRiskSeverity) {
+    if (severity === 'block') return 'badge-danger';
+    if (severity === 'warning') return 'badge-warning';
+    return 'badge-info';
+  }
 
   return (
     <div className="overview">
@@ -191,6 +239,49 @@ export function CampaignCreateClient({ campaignId, templateIdFromQuery }: Campai
       </header>
 
       {message ? <p className="form-note">{message}</p> : null}
+
+      {editingCampaignId ? (
+        <section className="card campaign-risk-panel">
+          <div className="campaign-risk-panel__header">
+            <div>
+              <h2>Campaign Risk Check</h2>
+              <p>{riskLoading ? 'Checking compliance, spam, audience, and deliverability signals...' : risk?.summary || 'Run a scan after saving the draft.'}</p>
+            </div>
+            {risk ? <span className={`badge ${riskStatusClass}`}>{risk.status}</span> : null}
+          </div>
+
+          {risk ? (
+            <>
+              <div className="campaign-risk-stats">
+                <span><strong>{risk.score}</strong> risk score</span>
+                <span><strong>{risk.counts.blocks}</strong> blocks</span>
+                <span><strong>{risk.counts.warnings}</strong> warnings</span>
+                <span><strong>{risk.audience.subscribedContacts}</strong> subscribed</span>
+                <span><strong>{risk.audience.suppressedContacts}</strong> suppressed</span>
+              </div>
+              <div className="campaign-risk-list">
+                {risk.items.length === 0 ? (
+                  <p className="form-note">No campaign risk issues detected.</p>
+                ) : (
+                  risk.items.map((item) => (
+                    <article className="campaign-risk-item" key={item.key}>
+                      <div className="campaign-risk-item__head">
+                        <span className={`badge ${severityClass(item.severity)}`}>{item.severity}</span>
+                        <span className="badge badge-info">{item.category}</span>
+                      </div>
+                      <h3>{item.title}</h3>
+                      <p>{item.detail}</p>
+                    </article>
+                  ))
+                )}
+              </div>
+              <button className="mini-btn" type="button" onClick={() => loadCampaignRisk(editingCampaignId)} disabled={riskLoading}>
+                {riskLoading ? 'Checking...' : 'Refresh Check'}
+              </button>
+            </>
+          ) : null}
+        </section>
+      ) : null}
 
       <div className="card" style={{ padding: '1rem' }}>
         <form className="auth-form" onSubmit={saveCampaign}>
