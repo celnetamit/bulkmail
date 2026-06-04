@@ -1629,6 +1629,89 @@ p {
   background: rgba(20, 184, 166, 0.05);
 }
 
+.campaigns-table {
+  min-width: 1080px;
+  table-layout: fixed;
+}
+
+.campaigns-table th,
+.campaigns-table td {
+  white-space: normal;
+  vertical-align: top;
+  padding: 0.95rem 1rem;
+}
+
+.campaigns-table__select {
+  width: 52px;
+  text-align: center;
+}
+
+.campaigns-table__title {
+  font-size: 1.02rem;
+  font-weight: 600;
+  color: #1e293b;
+  line-height: 1.35;
+}
+
+.campaigns-table__meta {
+  margin-top: 0.32rem;
+  font-size: 0.84rem;
+  line-height: 1.45;
+  color: #64748b;
+}
+
+.campaigns-table__meta--compact {
+  margin-top: 0.24rem;
+}
+
+.campaigns-table__meta--spaced {
+  margin-top: 0.5rem;
+}
+
+.campaigns-table__meta--muted {
+  color: #94a3b8;
+}
+
+.campaigns-table__badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.4rem;
+}
+
+.campaigns-table__lists,
+.campaigns-table__progress,
+.campaigns-table__timing,
+.campaigns-table__actions {
+  min-width: 0;
+}
+
+.campaigns-table__progress .progress-track {
+  max-width: 230px;
+}
+
+.campaigns-table__action-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.4rem;
+}
+
+.campaigns-table__action-row:first-child {
+  margin-top: 0;
+}
+
+.campaigns-table__action-row--select .status-select {
+  width: 100%;
+  max-width: 180px;
+  margin-right: 0;
+}
+
+.campaigns-table-wrap {
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
 .is-selected-row--bulk {
   background: rgba(59, 130, 246, 0.11);
 }
@@ -2808,6 +2891,68 @@ p {
 
   .data-table th {
     font-size: 0.74rem;
+  }
+
+  .campaigns-table {
+    min-width: 0;
+    table-layout: auto;
+  }
+
+  .campaigns-table thead {
+    display: none;
+  }
+
+  .campaigns-table,
+  .campaigns-table tbody,
+  .campaigns-table tr,
+  .campaigns-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .campaigns-table tbody tr {
+    padding: 0.9rem;
+    border-bottom: 1px solid var(--border-color);
+  }
+
+  .campaigns-table tbody tr:last-child {
+    border-bottom: none;
+  }
+
+  .campaigns-table td {
+    border-bottom: none;
+    padding: 0.45rem 0;
+  }
+
+  .campaigns-table td::before {
+    content: attr(data-label);
+    display: block;
+    margin-bottom: 0.22rem;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: #94a3b8;
+  }
+
+  .campaigns-table__select {
+    padding-top: 0;
+  }
+
+  .campaigns-table__select::before {
+    display: none;
+  }
+
+  .campaigns-table__progress .progress-track,
+  .campaigns-table__action-row--select .status-select {
+    max-width: none;
+  }
+
+  .campaigns-table__action-row .mini-btn,
+  .campaigns-table__action-row .status-select,
+  .campaigns-table__action-row a.mini-btn {
+    width: 100%;
+    justify-content: center;
   }
 
   .list-create-form {

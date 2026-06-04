@@ -460,8 +460,8 @@ export default function CampaignsPage() {
             <span>Show archived</span>
           </label>
         </div>
-        <div className="table-wrap">
-          <table className="data-table">
+        <div className="table-wrap campaigns-table-wrap">
+          <table className="data-table campaigns-table">
             <thead>
               <tr>
                 <th style={{ width: '40px' }}>
@@ -484,8 +484,8 @@ export default function CampaignsPage() {
               {campaigns.length === 0 ? <tr><td colSpan={7}>No campaigns yet.</td></tr> : campaigns.map((c) => {
                 const canManageCampaign = c.isOwner !== false;
                 return (
-                <tr key={c.id} className={selectedCampaignIds.includes(c.id) ? 'is-selected-row--bulk' : ''}>
-                  <td onClick={(event) => event.stopPropagation()}>
+                <tr key={c.id} className={`campaigns-table__row ${selectedCampaignIds.includes(c.id) ? 'is-selected-row--bulk' : ''}`}>
+                  <td data-label="Select" className="campaigns-table__select" onClick={(event) => event.stopPropagation()}>
                     <input
                       type="checkbox"
                       checked={selectedCampaignIds.includes(c.id)}
@@ -494,51 +494,57 @@ export default function CampaignsPage() {
                       aria-label={`Select campaign ${c.name}`}
                     />
                   </td>
-                  <td>
-                    <div>{c.name}</div>
+                  <td data-label="Name" className="campaigns-table__name">
+                    <div className="campaigns-table__title">{c.name}</div>
                     {c.owner ? (
-                      <div style={{ marginTop: '0.35rem', fontSize: '0.8rem', color: '#64748b' }}>
+                      <div className="campaigns-table__meta">
                         Owner: {c.owner.name || c.owner.email} ({c.owner.role})
                       </div>
                     ) : null}
-                    {c.isArchived ? <div className="badge badge-warning" style={{ display: 'inline-flex', marginTop: '0.35rem' }}>Archived</div> : null}
-                    {!canManageCampaign ? <div className="badge badge-info" style={{ display: 'inline-flex', marginTop: '0.35rem' }}>Read-only</div> : null}
+                    <div className="campaigns-table__badges">
+                      {c.isArchived ? <div className="badge badge-warning">Archived</div> : null}
+                      {!canManageCampaign ? <div className="badge badge-info">Read-only</div> : null}
+                    </div>
                   </td>
-                  <td>
-                    <div>{c.list.name}</div>
-                    <div style={{ marginTop: '0.25rem' }}>
-                      <span className="badge" style={{ display: 'inline-flex' }}>
+                  <td data-label="List" className="campaigns-table__lists">
+                    <div className="campaigns-table__title">{c.list.name}</div>
+                    <div className="campaigns-table__badges">
+                      <span className="badge">
                         {c.listCount || 1} list{(c.listCount || 1) === 1 ? '' : 's'} selected
                       </span>
                     </div>
-                    <div style={{ marginTop: '0.25rem', fontSize: '0.8rem', color: '#94a3b8' }}>
+                    <div className="campaigns-table__meta campaigns-table__meta--compact">
                       {(c.lists || [c.list]).map((list) => list.name).join(', ')}
                     </div>
                   </td>
-                  <td>
-                    <div className={`badge ${c.status === 'SENT' ? 'badge-success' : c.status === 'FAILED' || c.status === 'QUEUED' || c.status === 'RETRYING' ? 'badge-warning' : ''}`} style={{ display: 'inline-flex', marginBottom: '0.35rem' }}>{c.status}</div>
-                    <div style={{ fontSize: '0.85rem', color: '#94a3b8' }}>{c.status === 'QUEUED' || c.status === 'RETRYING' ? c.status.toLowerCase() : c.provider || 'mock'}</div>
+                  <td data-label="Status" className="campaigns-table__status">
+                    <div className={`badge ${c.status === 'SENT' ? 'badge-success' : c.status === 'FAILED' || c.status === 'QUEUED' || c.status === 'RETRYING' ? 'badge-warning' : ''}`}>{c.status}</div>
+                    <div className="campaigns-table__meta campaigns-table__meta--compact">{c.status === 'QUEUED' || c.status === 'RETRYING' ? c.status.toLowerCase() : c.provider || 'mock'}</div>
                   </td>
-                  <td style={{ minWidth: '240px' }}>
+                  <td data-label="Progress" className="campaigns-table__progress">
                     <div className="progress-track" aria-hidden="true">
                       <div className="progress-bar" style={{ width: `${c.totalRecipients > 0 ? Math.min(100, (c.sentCount / c.totalRecipients) * 100) : 0}%` }} />
                     </div>
-                    <div style={{ marginTop: '0.5rem', fontSize: '0.85rem', color: '#94a3b8' }}>
+                    <div className="campaigns-table__meta campaigns-table__meta--spaced">
                       {c.sentCount}/{c.totalRecipients} sent, {c.failedCount} failed, {c.skippedCount} skipped
                     </div>
-                    <div style={{ marginTop: '0.3rem', fontSize: '0.8rem', color: '#cbd5e1' }}>
+                    <div className="campaigns-table__meta campaigns-table__meta--muted">
                       {c.openedCount} opened, {c.bouncedCount} bounced, {c.unsubscribedCount} unsubscribed
                     </div>
                   </td>
-                  <td style={{ whiteSpace: 'nowrap', fontSize: '0.85rem', color: '#cbd5e1' }}>
-                    {c.startedAt ? `Started ${new Date(c.startedAt).toLocaleString()}` : '-'}
-                    <br />
-                    {c.finishedAt ? `Finished ${new Date(c.finishedAt).toLocaleString()}` : c.status === 'QUEUED' ? 'Queued' : c.status === 'RETRYING' ? 'Retrying' : c.status === 'SENDING' ? 'In progress' : '-'}
-                    <br />
-                    Duration: {formatDuration(c.durationSeconds)}
+                  <td data-label="Timing" className="campaigns-table__timing">
+                    <div className="campaigns-table__meta campaigns-table__meta--compact">
+                      {c.startedAt ? `Started ${new Date(c.startedAt).toLocaleString()}` : '-'}
+                    </div>
+                    <div className="campaigns-table__meta campaigns-table__meta--compact">
+                      {c.finishedAt ? `Finished ${new Date(c.finishedAt).toLocaleString()}` : c.status === 'QUEUED' ? 'Queued' : c.status === 'RETRYING' ? 'Retrying' : c.status === 'SENDING' ? 'In progress' : '-'}
+                    </div>
+                    <div className="campaigns-table__meta campaigns-table__meta--compact">
+                      Duration: {formatDuration(c.durationSeconds)}
+                    </div>
                   </td>
-                  <td>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
+                  <td data-label="Actions" className="campaigns-table__actions">
+                    <div className="campaigns-table__action-row">
                       <button
                         className="mini-btn"
                         type="button"
@@ -553,12 +559,12 @@ export default function CampaignsPage() {
                       </button>
                       <Link className="mini-btn" href={`/dashboard/analytics?campaignId=${c.id}`}>Stats</Link>
                     </div>
-                    <div style={{ marginTop: '0.4rem' }}>
+                    <div className="campaigns-table__action-row campaigns-table__action-row--select">
                       <select className="status-select" value={c.status} onChange={(e) => updateStatus(c, e.target.value)} disabled={!canManageCampaign || c.status === 'QUEUED' || c.status === 'RETRYING' || c.status === 'SENDING' || Boolean(c.isArchived)}>
                         <option>DRAFT</option><option>SCHEDULED</option><option>QUEUED</option><option>RETRYING</option><option>SENDING</option><option>SENT</option><option>FAILED</option><option>SKIPPED</option>
                       </select>
                     </div>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', marginTop: '0.4rem' }}>
+                    <div className="campaigns-table__action-row">
                       <button
                         className="mini-btn"
                         type="button"
