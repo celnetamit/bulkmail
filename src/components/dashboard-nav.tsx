@@ -64,6 +64,7 @@ const GROUPS: NavGroup[] = [
       { href: '/dashboard/settings', label: 'Settings', icon: IconSettings },
       { href: '/dashboard/manager', label: 'Manager', role: ['MANAGER', 'ADMIN'], icon: IconManager },
       { href: '/dashboard/admin', label: 'Admin', adminOnly: true, icon: IconAdmin },
+      { href: '/dashboard/admin/housekeeping', label: 'Housekeeping', adminOnly: true, icon: IconSettings },
       { href: '/dashboard/admin/agents', label: 'AI Settings', adminOnly: true, icon: IconImport },
     ],
   },

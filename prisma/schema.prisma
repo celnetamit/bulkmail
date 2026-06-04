@@ -87,6 +87,26 @@ model PlatformSettings {
   updatedAt         DateTime @updatedAt
 }
 
+model HousekeepingState {
+  id                         String   @id @default("global")
+  isEnabled                  Boolean  @default(true)
+  runEveryMinutes            Int      @default(720)
+  auditLogRetentionDays      Int      @default(90)
+  systemEventRetentionDays   Int      @default(30)
+  sendJobRetentionDays       Int      @default(30)
+  autoArchiveCampaignDays    Int      @default(30)
+  archivedCampaignRetentionDays Int   @default(180)
+  lockToken                  String?
+  lockExpiresAt              DateTime?
+  lastStartedAt              DateTime?
+  lastFinishedAt             DateTime?
+  lastStatus                 String?
+  lastTriggeredBy            String?
+  lastSummaryJson            String?
+  createdAt                  DateTime @default(now())
+  updatedAt                  DateTime @updatedAt
+}
+
 model Template {
   id        String     @id @default(cuid())
   name      String
