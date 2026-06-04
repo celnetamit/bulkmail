@@ -24,9 +24,36 @@ const DEFAULT_IMAGE_UPLOAD_LIMIT_KB = Number(process.env.DEFAULT_IMAGE_UPLOAD_LI
 
 let platformSettingsInitialized = false;
 
-function isDuplicateColumnError(error: unknown) {
-  const message = error instanceof Error ? error.message : String(error || '');
-  return /duplicate column name|already exists/i.test(message);
+function hasPostgresDatabase() {
+  return Boolean(process.env.DATABASE_URL);
+}
+
+function columnExists(tableName: string, columnName: string) {
+  if (hasPostgresDatabase()) {
+    const row = queryRow<{ present: number }>(
+      `
+        SELECT 1 AS present
+        FROM information_schema.columns
+        WHERE table_schema = CURRENT_SCHEMA()
+          AND table_name = ?
+          AND column_name = ?
+        LIMIT 1
+      `,
+      [tableName, columnName],
+    );
+    return Boolean(row?.present);
+  }
+
+  const row = queryRow<{ present: number }>(
+    `
+      SELECT 1 AS present
+      FROM pragma_table_info(?)
+      WHERE name = ?
+      LIMIT 1
+    `,
+    [tableName, columnName],
+  );
+  return Boolean(row?.present);
 }
 
 export function ensurePlatformSettingsSchema() {
@@ -45,22 +72,20 @@ export function ensurePlatformSettingsSchema() {
     )
   `);
 
-  try {
+  if (!columnExists('User', 'imageUploadLimitKb')) {
     executeSql('ALTER TABLE "User" ADD COLUMN "imageUploadLimitKb" INTEGER');
-  } catch (error) {
-    if (!isDuplicateColumnError(error)) throw error;
   }
 
-  for (const statement of [
-    'ALTER TABLE "PlatformSettings" ADD COLUMN "sendingDomain" TEXT',
-    'ALTER TABLE "PlatformSettings" ADD COLUMN "spfVerified" BOOLEAN NOT NULL DEFAULT FALSE',
-    'ALTER TABLE "PlatformSettings" ADD COLUMN "dkimVerified" BOOLEAN NOT NULL DEFAULT FALSE',
-    'ALTER TABLE "PlatformSettings" ADD COLUMN "dmarcVerified" BOOLEAN NOT NULL DEFAULT FALSE',
-  ]) {
-    try {
-      executeSql(statement);
-    } catch (error) {
-      if (!isDuplicateColumnError(error)) throw error;
+  const optionalColumns = [
+    ['sendingDomain', 'TEXT'],
+    ['spfVerified', 'BOOLEAN NOT NULL DEFAULT FALSE'],
+    ['dkimVerified', 'BOOLEAN NOT NULL DEFAULT FALSE'],
+    ['dmarcVerified', 'BOOLEAN NOT NULL DEFAULT FALSE'],
+  ] as const;
+
+  for (const [columnName, definition] of optionalColumns) {
+    if (!columnExists('PlatformSettings', columnName)) {
+      executeSql(`ALTER TABLE "PlatformSettings" ADD COLUMN "${columnName}" ${definition}`);
     }
   }
 

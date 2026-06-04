@@ -72,9 +72,36 @@ export type SenderIdentityView = {
 
 let senderIdentitySchemaInitialized = false;
 
-function isDuplicateColumnError(error: unknown) {
-  const message = error instanceof Error ? error.message : String(error || '');
-  return /duplicate column name|already exists/i.test(message);
+function hasPostgresDatabase() {
+  return Boolean(process.env.DATABASE_URL);
+}
+
+function columnExists(tableName: string, columnName: string) {
+  if (hasPostgresDatabase()) {
+    const row = queryRow<{ present: number }>(
+      `
+        SELECT 1 AS present
+        FROM information_schema.columns
+        WHERE table_schema = CURRENT_SCHEMA()
+          AND table_name = ?
+          AND column_name = ?
+        LIMIT 1
+      `,
+      [tableName, columnName],
+    );
+    return Boolean(row?.present);
+  }
+
+  const row = queryRow<{ present: number }>(
+    `
+      SELECT 1 AS present
+      FROM pragma_table_info(?)
+      WHERE name = ?
+      LIMIT 1
+    `,
+    [tableName, columnName],
+  );
+  return Boolean(row?.present);
 }
 
 function normalizeOptionalEmail(value: string | null | undefined) {
@@ -92,14 +119,9 @@ function validateOptionalEmail(value: string, fieldLabel: string) {
 export function ensureSenderIdentitySchema() {
   if (senderIdentitySchemaInitialized) return;
 
-  for (const statement of [
-    'ALTER TABLE "User" ADD COLUMN "senderFromEmail" TEXT',
-    'ALTER TABLE "User" ADD COLUMN "senderReplyToEmail" TEXT',
-  ]) {
-    try {
-      executeSql(statement);
-    } catch (error) {
-      if (!isDuplicateColumnError(error)) throw error;
+  for (const columnName of ['senderFromEmail', 'senderReplyToEmail']) {
+    if (!columnExists('User', columnName)) {
+      executeSql(`ALTER TABLE "User" ADD COLUMN "${columnName}" TEXT`);
     }
   }
 
