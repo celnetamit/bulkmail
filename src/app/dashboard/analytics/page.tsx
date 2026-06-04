@@ -34,6 +34,20 @@ type SummaryResponse = {
       unit: 'percent' | 'count';
       detail: string;
     }>;
+    eventDetails: Array<{
+      id: string;
+      type: string;
+      provider: string | null;
+      email: string | null;
+      contactStatus: string | null;
+      campaignId: string | null;
+      campaignName: string | null;
+      listId: string | null;
+      listName: string | null;
+      providerEventId: string | null;
+      providerMessageId: string | null;
+      createdAt: string;
+    }>;
   };
   campaigns: Array<{ id: string; name: string; listId: string; ownerEmail?: string; ownerName?: string | null; ownerRole?: string }>;
   lists: Array<{ id: string; name: string; ownerEmail?: string; ownerName?: string | null; ownerRole?: string }>;
@@ -75,6 +89,17 @@ export default function AnalyticsPage() {
   }
 
   const metrics = summary?.metrics;
+  const eventDetails = metrics?.eventDetails || [];
+  const openedEvents = eventDetails.filter((event) => event.type === 'OPENED');
+  const bouncedEvents = eventDetails.filter((event) => event.type === 'BOUNCED');
+  const unsubscribedEvents = eventDetails.filter((event) => event.type === 'UNSUBSCRIBED');
+  const deliveredEvents = eventDetails.filter((event) => event.type === 'DELIVERED');
+
+  function formatEventTime(value: string) {
+    const parsed = Date.parse(value);
+    if (!Number.isFinite(parsed)) return value;
+    return new Date(parsed).toLocaleString();
+  }
 
   return (
     <div className="overview">
@@ -169,6 +194,117 @@ export default function AnalyticsPage() {
               <tr><td>Total</td><td>{metrics?.contactStats.total ?? 0}</td></tr>
             </tbody>
           </table>
+        </div>
+      </div>
+
+      <div className="card" style={{ padding: '1rem', marginTop: '1rem' }}>
+        <h2>Recipient Event Details</h2>
+        <p className="form-note" style={{ marginBottom: '0.75rem' }}>
+          This table shows the actual recipient email addresses behind the tracked events in the current filter window.
+        </p>
+        <div className="table-wrap">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Type</th>
+                <th>Email</th>
+                <th>Campaign</th>
+                <th>List</th>
+                <th>Contact Status</th>
+                <th>Provider</th>
+                <th>Time</th>
+              </tr>
+            </thead>
+            <tbody>
+              {eventDetails.length === 0 ? (
+                <tr><td colSpan={7}>No recipient event details found for these filters.</td></tr>
+              ) : eventDetails.map((event) => (
+                <tr key={event.id}>
+                  <td>{event.type}</td>
+                  <td>{event.email || '-'}</td>
+                  <td>{event.campaignName || '-'}</td>
+                  <td>{event.listName || '-'}</td>
+                  <td>{event.contactStatus || '-'}</td>
+                  <td>{event.provider || '-'}</td>
+                  <td>{formatEventTime(event.createdAt)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="stats-grid" style={{ marginTop: '1rem' }}>
+        <div className="card" style={{ padding: '1rem' }}>
+          <h2 style={{ marginBottom: '0.75rem' }}>Opened Emails</h2>
+          <div className="table-wrap">
+            <table className="data-table">
+              <thead><tr><th>Email</th><th>Campaign</th><th>Time</th></tr></thead>
+              <tbody>
+                {openedEvents.length === 0 ? <tr><td colSpan={3}>No opened emails yet.</td></tr> : openedEvents.slice(0, 50).map((event) => (
+                  <tr key={event.id}>
+                    <td>{event.email || '-'}</td>
+                    <td>{event.campaignName || '-'}</td>
+                    <td>{formatEventTime(event.createdAt)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div className="card" style={{ padding: '1rem' }}>
+          <h2 style={{ marginBottom: '0.75rem' }}>Bounced Emails</h2>
+          <div className="table-wrap">
+            <table className="data-table">
+              <thead><tr><th>Email</th><th>Campaign</th><th>Time</th></tr></thead>
+              <tbody>
+                {bouncedEvents.length === 0 ? <tr><td colSpan={3}>No bounced emails yet.</td></tr> : bouncedEvents.slice(0, 50).map((event) => (
+                  <tr key={event.id}>
+                    <td>{event.email || '-'}</td>
+                    <td>{event.campaignName || '-'}</td>
+                    <td>{formatEventTime(event.createdAt)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div className="card" style={{ padding: '1rem' }}>
+          <h2 style={{ marginBottom: '0.75rem' }}>Unsubscribed Emails</h2>
+          <div className="table-wrap">
+            <table className="data-table">
+              <thead><tr><th>Email</th><th>Campaign</th><th>Time</th></tr></thead>
+              <tbody>
+                {unsubscribedEvents.length === 0 ? <tr><td colSpan={3}>No unsubscribed emails yet.</td></tr> : unsubscribedEvents.slice(0, 50).map((event) => (
+                  <tr key={event.id}>
+                    <td>{event.email || '-'}</td>
+                    <td>{event.campaignName || '-'}</td>
+                    <td>{formatEventTime(event.createdAt)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div className="card" style={{ padding: '1rem' }}>
+          <h2 style={{ marginBottom: '0.75rem' }}>Delivered Emails</h2>
+          <div className="table-wrap">
+            <table className="data-table">
+              <thead><tr><th>Email</th><th>Campaign</th><th>Time</th></tr></thead>
+              <tbody>
+                {deliveredEvents.length === 0 ? <tr><td colSpan={3}>No delivered emails yet.</td></tr> : deliveredEvents.slice(0, 50).map((event) => (
+                  <tr key={event.id}>
+                    <td>{event.email || '-'}</td>
+                    <td>{event.campaignName || '-'}</td>
+                    <td>{formatEventTime(event.createdAt)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
     </div>

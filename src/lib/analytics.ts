@@ -13,6 +13,21 @@ export type AnalyticsDetection = {
   detail: string;
 };
 
+export type AnalyticsEventDetail = {
+  id: string;
+  type: string;
+  provider: string | null;
+  email: string | null;
+  contactStatus: string | null;
+  campaignId: string | null;
+  campaignName: string | null;
+  listId: string | null;
+  listName: string | null;
+  providerEventId: string | null;
+  providerMessageId: string | null;
+  createdAt: string;
+};
+
 function getMaxRateStatus(rate: number, sampleSize: number, warningAt: number, criticalAt: number, minimumSample = 10): AnalyticsDetectionStatus {
   if (sampleSize < minimumSample) return 'idle';
   if (rate >= criticalAt) return 'critical';
@@ -231,6 +246,32 @@ export async function getUserAnalyticsSummary(userId: string, options?: { campai
     providerBlockRate,
   };
 
+  const eventDetails = queryRows<AnalyticsEventDetail>(
+    `
+      SELECT
+        e.id,
+        e.type,
+        e.provider,
+        ct.email as email,
+        ct.status as "contactStatus",
+        e."campaignId" as "campaignId",
+        c.name as "campaignName",
+        l.id as "listId",
+        l.name as "listName",
+        e."providerEventId" as "providerEventId",
+        e."providerMessageId" as "providerMessageId",
+        e."createdAt" as "createdAt"
+      FROM "Event" e
+      INNER JOIN "Campaign" c ON c.id = e."campaignId"
+      LEFT JOIN "Contact" ct ON ct.id = e."contactId"
+      LEFT JOIN "List" l ON l.id = ct."listId"
+      WHERE ${filters.join(' AND ')}
+      ORDER BY e."createdAt" DESC
+      LIMIT 250
+    `,
+    params,
+  );
+
   return {
     ...metrics,
     suppressedContacts: (contactStats?.bouncedContacts || 0) + (contactStats?.unsubscribedContacts || 0),
@@ -241,5 +282,6 @@ export async function getUserAnalyticsSummary(userId: string, options?: { campai
       unsubscribed: contactStats?.unsubscribedContacts || 0,
     },
     detections: buildDetections(metrics),
+    eventDetails,
   };
 }

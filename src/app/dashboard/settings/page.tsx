@@ -291,7 +291,10 @@ export default function SettingsPage() {
               {saving ? 'Saving...' : 'Save Settings'}
             </button>
           </form>
-          <p className="form-note">Stored values are kept encrypted in the database. Leave secret fields blank to keep the existing value. The upload limit applies to users without a per-user override.</p>
+          <p className="form-note">
+            Stored values are kept encrypted in the database. Leave secret fields blank to keep the existing value. The upload limit applies to users without a per-user override.
+            For AWS SES event tracking, point your SNS subscription at <strong>/api/webhooks/aws-ses</strong>. MailFlow now verifies SNS signatures and auto-confirms the subscription handshake.
+          </p>
         </div>
       ) : (
         <div className="card" style={{ padding: '1rem', marginBottom: '1rem' }}>

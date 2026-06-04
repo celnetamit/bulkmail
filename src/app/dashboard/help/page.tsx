@@ -56,6 +56,15 @@ const tips = [
   },
 ];
 
+const awsSnsSteps = [
+  'Verify the sender email address or sending domain in Amazon SES first.',
+  'Create a Standard SNS topic, for example mailflow-ses-events.',
+  'Create an HTTPS subscription that points to your public MailFlow endpoint: /api/webhooks/aws-ses.',
+  'Wait for the subscription to become confirmed. MailFlow now verifies SNS signatures and auto-confirms the AWS handshake.',
+  'In SES, publish delivery, bounce, and complaint notifications to that SNS topic.',
+  'Optionally set AWS_SNS_TOPIC_ARN_ALLOWLIST in production so MailFlow accepts only your approved SNS topic ARNs.',
+];
+
 type ComplianceStatus = 'ready' | 'manual' | 'action';
 
 function statusLabel(status: ComplianceStatus) {
@@ -104,6 +113,10 @@ export default async function HelpPage() {
 
   const readyCount = complianceItems.filter((item) => item.status === 'ready').length;
   const totalCount = complianceItems.length;
+  const publicAppUrl = process.env.APP_URL?.trim() || '';
+  const awsWebhookEndpoint = publicAppUrl
+    ? `${publicAppUrl.replace(/\/$/, '')}/api/webhooks/aws-ses`
+    : '/api/webhooks/aws-ses';
 
   return (
     <div className="overview">
@@ -203,6 +216,48 @@ export default async function HelpPage() {
           </div>
         </section>
       </div>
+
+      <section className="card help-panel">
+        <div className="help-panel__header">
+          <div>
+            <h2>AWS SES and SNS setup</h2>
+            <p>Use this when Amazon SES is your mail provider and you want MailFlow to receive delivered, bounced, complained, and opened event notifications from AWS.</p>
+          </div>
+          <div className="help-panel__summary">
+            <span className="badge badge-success">{mailSettings.provider === 'aws-ses' ? 'AWS SES active' : 'Works with AWS SES'}</span>
+            <Link className="mini-btn" href="/dashboard/settings">Open Settings</Link>
+          </div>
+        </div>
+
+        <div className="help-tips" style={{ marginBottom: '1rem' }}>
+          <div className="help-tip">
+            <h3>Webhook endpoint</h3>
+            <p>Use this HTTPS endpoint as the SNS subscription target for SES event notifications.</p>
+            <p><strong>{awsWebhookEndpoint}</strong></p>
+          </div>
+          <div className="help-tip">
+            <h3>IAM split</h3>
+            <p>The MailFlow app runtime needs SES send access. SNS management permissions are only needed by the AWS user or role that creates topics, subscriptions, and SES event publishing rules.</p>
+          </div>
+        </div>
+
+        <ol className="help-checklist">
+          {awsSnsSteps.map((step) => (
+            <li key={step}>{step}</li>
+          ))}
+        </ol>
+
+        <div className="help-tips" style={{ marginTop: '1rem' }}>
+          <div className="help-tip">
+            <h3>If the subscription stays pending</h3>
+            <p>Make sure the app is publicly reachable over HTTPS and that AWS can POST to the webhook route without redirects or certificate errors.</p>
+          </div>
+          <div className="help-tip">
+            <h3>Security note</h3>
+            <p>You do not need the shared webhook secret for the AWS SNS path. MailFlow verifies the SNS signature directly and can restrict accepted topic ARNs with AWS_SNS_TOPIC_ARN_ALLOWLIST.</p>
+          </div>
+        </div>
+      </section>
 
       <section className="card help-panel">
         <h2>Shortcuts</h2>

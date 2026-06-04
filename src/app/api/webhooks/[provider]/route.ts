@@ -1,4 +1,6 @@
 import { fail, ok } from '@/lib/http';
+import { confirmSnsSubscription, looksLikeSnsEnvelope, verifyAndParseSnsMessage } from '@/lib/aws-sns';
+import { recordSystemEvent } from '@/lib/observability';
 import { verifyWebhookSecret } from '@/lib/webhook';
 import { executeSql, queryRow } from '@/lib/sqlite';
 
@@ -122,10 +124,6 @@ function parseProviderEvent(provider: string, raw: Record<string, unknown>): Par
 }
 
 export async function POST(request: Request, { params }: { params: { provider: string } }) {
-  if (!(await verifyWebhookSecret(request))) {
-    return fail('Invalid webhook signature.', 401);
-  }
-
   const provider = params.provider.toLowerCase();
 
   let payload: unknown;
@@ -133,6 +131,78 @@ export async function POST(request: Request, { params }: { params: { provider: s
     payload = await request.json();
   } catch {
     return fail('Invalid JSON body.', 400);
+  }
+
+  const isAwsSes = provider === 'aws-ses';
+  const isSnsEnvelope = isAwsSes && looksLikeSnsEnvelope(payload);
+
+  if (isSnsEnvelope) {
+    let snsMessage;
+    try {
+      snsMessage = await verifyAndParseSnsMessage(payload);
+    } catch (error) {
+      recordSystemEvent({
+        level: 'WARN',
+        source: 'aws-sns',
+        message: 'Rejected AWS SNS webhook payload.',
+        details: {
+          error: error instanceof Error ? error.message : String(error),
+          provider,
+        },
+      });
+      return fail(error instanceof Error ? error.message : 'Invalid SNS message.', 401);
+    }
+
+    if (snsMessage.type === 'SubscriptionConfirmation' || snsMessage.type === 'UnsubscribeConfirmation') {
+      try {
+        if (snsMessage.subscribeUrl) {
+          await confirmSnsSubscription(snsMessage.subscribeUrl);
+        }
+        recordSystemEvent({
+          level: 'INFO',
+          source: 'aws-sns',
+          message:
+            snsMessage.type === 'SubscriptionConfirmation'
+              ? 'Confirmed AWS SNS subscription for SES events.'
+              : 'Confirmed AWS SNS unsubscribe confirmation callback.',
+          details: {
+            topicArn: snsMessage.topicArn,
+            messageId: snsMessage.messageId,
+            type: snsMessage.type,
+          },
+        });
+      } catch (error) {
+        recordSystemEvent({
+          level: 'ERROR',
+          source: 'aws-sns',
+          message: 'AWS SNS subscription confirmation failed.',
+          details: {
+            topicArn: snsMessage.topicArn,
+            messageId: snsMessage.messageId,
+            type: snsMessage.type,
+            error: error instanceof Error ? error.message : String(error),
+          },
+        });
+        return fail(error instanceof Error ? error.message : 'Unable to confirm SNS subscription.', 502);
+      }
+
+      return ok({
+        success: true,
+        provider,
+        snsType: snsMessage.type,
+        confirmed: true,
+        processed: 0,
+        skipped: 0,
+      });
+    }
+
+    try {
+      payload = JSON.parse(snsMessage.message) as Record<string, unknown>;
+    } catch {
+      return fail('SNS notification payload is not valid JSON.', 400);
+    }
+  } else if (!(await verifyWebhookSecret(request))) {
+    return fail('Invalid webhook signature.', 401);
   }
 
   const rawEvents = Array.isArray(payload)
