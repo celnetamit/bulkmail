@@ -16,6 +16,8 @@ type UploadMetadata = {
   folder: string;
   tags: string[];
   title: string;
+  width: number | null;
+  height: number | null;
 };
 
 type MediaUploadRow = {
@@ -27,6 +29,8 @@ type MediaUploadRow = {
   folder: string;
   tags: string[];
   title: string;
+  width: number | null;
+  height: number | null;
 };
 
 function sanitizeBaseName(name: string) {
@@ -87,6 +91,15 @@ function parseTags(value: unknown) {
   );
 }
 
+function parseOptionalDimension(value: unknown) {
+  if (value === null || value === undefined) return null;
+  const normalized = String(value).trim();
+  if (!normalized) return null;
+  const parsed = Number(normalized);
+  if (!Number.isFinite(parsed) || parsed <= 0) return null;
+  return Math.min(4096, Math.floor(parsed));
+}
+
 async function readUploadMetadata(directory: string, fileName: string): Promise<UploadMetadata> {
   try {
     const raw = await readFile(`${directory}/${metadataFileName(fileName)}`, 'utf8');
@@ -95,9 +108,11 @@ async function readUploadMetadata(directory: string, fileName: string): Promise<
       folder: String(parsed?.folder || '').trim(),
       tags: normalizeTagList(parsed?.tags),
       title: String(parsed?.title || '').trim(),
+      width: parseOptionalDimension(parsed?.width),
+      height: parseOptionalDimension(parsed?.height),
     };
   } catch {
-    return { folder: '', tags: [], title: '' };
+    return { folder: '', tags: [], title: '', width: null, height: null };
   }
 }
 
@@ -109,6 +124,8 @@ async function writeUploadMetadata(directory: string, fileName: string, metadata
         folder: metadata.folder.trim(),
         tags: normalizeTagList(metadata.tags),
         title: metadata.title.trim(),
+        width: parseOptionalDimension(metadata.width),
+        height: parseOptionalDimension(metadata.height),
       },
       null,
       2,
@@ -141,6 +158,8 @@ export async function GET(request: Request) {
         folder: metadata.folder,
         tags: metadata.tags,
         title: metadata.title,
+        width: metadata.width,
+        height: metadata.height,
       };
     }),
   );
@@ -185,14 +204,16 @@ export async function POST(request: Request) {
   const folder = String(formData.get('folder') || '').trim();
   const title = String(formData.get('title') || '').trim();
   const tags = parseTags(formData.get('tags'));
+  const width = parseOptionalDimension(formData.get('width'));
+  const height = parseOptionalDimension(formData.get('height'));
 
   await mkdir(directory, { recursive: true });
   await writeFile(`${directory}/${fileName}`, bytes);
-  await writeUploadMetadata(directory, fileName, { folder, tags, title });
+  await writeUploadMetadata(directory, fileName, { folder, tags, title, width, height });
 
   const relativeUrl = `/uploads/email-media/${auth.user.userId}/${fileName}`;
   const publicUrl = `${getAppOrigin(request)}${relativeUrl}`;
-  return ok({ url: publicUrl, relativeUrl, fileName, size: file.size, maxUploadKb, folder, tags, title }, 201);
+  return ok({ url: publicUrl, relativeUrl, fileName, size: file.size, maxUploadKb, folder, tags, title, width, height }, 201);
 }
 
 export async function PATCH(request: Request) {
@@ -214,6 +235,8 @@ export async function PATCH(request: Request) {
   const folder = 'folder' in body ? String((body as Record<string, unknown>).folder || '').trim() : '';
   const title = 'title' in body ? String((body as Record<string, unknown>).title || '').trim() : '';
   const tags = parseTags((body as Record<string, unknown>).tags);
+  const width = parseOptionalDimension((body as Record<string, unknown>).width);
+  const height = parseOptionalDimension((body as Record<string, unknown>).height);
 
   if (!fileName) return fail('fileName is required.', 400);
   if (!isImageFile(fileName)) return fail('Invalid media file.', 400);
@@ -223,7 +246,7 @@ export async function PATCH(request: Request) {
     return fail('Media file not found.', 404);
   }
 
-  await writeUploadMetadata(directory, fileName, { folder, tags, title });
+  await writeUploadMetadata(directory, fileName, { folder, tags, title, width, height });
 
   const relativeUrl = `/uploads/email-media/${auth.user.userId}/${fileName}`;
   return ok({
@@ -233,5 +256,7 @@ export async function PATCH(request: Request) {
     folder,
     tags,
     title,
+    width,
+    height,
   });
 }

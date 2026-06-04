@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { useToast } from '@/components/toast-provider';
 
 type TeamMember = {
   memberId: string;
@@ -82,9 +83,9 @@ function formatDuration(seconds: number | null) {
 }
 
 export default function ManagerDashboardClient() {
+  const toast = useToast();
   const [overview, setOverview] = useState<ManagerOverview | null>(null);
   const [selectedTeamId, setSelectedTeamId] = useState('');
-  const [message, setMessage] = useState('');
   const [savingTeamId, setSavingTeamId] = useState<string | null>(null);
   const [savingMemberId, setSavingMemberId] = useState<string | null>(null);
   const [creatingTeam, setCreatingTeam] = useState(false);
@@ -102,7 +103,7 @@ export default function ManagerDashboardClient() {
     const res = await fetch('/api/manager/overview', { cache: 'no-store' });
     const data = (await res.json()) as { teams?: Team[]; totals?: ManagerOverview['totals']; selectedTeamId?: string | null; error?: string };
     if (!res.ok) {
-      setMessage(data.error || 'Failed to load manager dashboard.');
+      toast.error('Manager dashboard failed', data.error || 'The manager dashboard could not be loaded.');
       return;
     }
 
@@ -163,7 +164,6 @@ export default function ManagerDashboardClient() {
   async function createTeam(event: FormEvent) {
     event.preventDefault();
     setCreatingTeam(true);
-    setMessage('');
 
     const res = await fetch('/api/manager/teams', {
       method: 'POST',
@@ -178,14 +178,14 @@ export default function ManagerDashboardClient() {
     const data = (await res.json()) as { error?: string; team?: Team };
     setCreatingTeam(false);
     if (!res.ok) {
-      setMessage(data.error || 'Failed to create team.');
+      toast.error('Team creation failed', data.error || 'The team could not be created.');
       return;
     }
 
     setTeamName('');
     setTeamDescription('');
     setTeamDailyCreditLimit('100000');
-    setMessage('Team created.');
+    toast.success('Team created', 'The new team is ready.');
     await load();
     if (data.team?.id) setSelectedTeamId(data.team.id);
   }
@@ -194,7 +194,6 @@ export default function ManagerDashboardClient() {
     const draft = teamDrafts[teamId];
     if (!draft) return;
     setSavingTeamId(teamId);
-    setMessage('');
 
     const res = await fetch(`/api/manager/teams/${teamId}`, {
       method: 'PATCH',
@@ -209,11 +208,11 @@ export default function ManagerDashboardClient() {
     const data = (await res.json()) as { error?: string; team?: Team };
     setSavingTeamId(null);
     if (!res.ok) {
-      setMessage(data.error || 'Failed to save team.');
+      toast.error('Team save failed', data.error || 'The team could not be updated.');
       return;
     }
 
-    setMessage('Team updated.');
+    toast.success('Team updated', 'The team changes were saved.');
     await load();
   }
 
@@ -223,11 +222,11 @@ export default function ManagerDashboardClient() {
     const res = await fetch(`/api/manager/teams/${teamId}`, { method: 'DELETE' });
     const data = (await res.json()) as { error?: string };
     if (!res.ok) {
-      setMessage(data.error || 'Failed to delete team.');
+      toast.error('Team delete failed', data.error || 'The team could not be deleted.');
       return;
     }
 
-    setMessage('Team deleted.');
+    toast.success('Team deleted', 'The team was removed.');
     await load();
     if (selectedTeamId === teamId) setSelectedTeamId('');
   }
@@ -236,7 +235,6 @@ export default function ManagerDashboardClient() {
     event.preventDefault();
     if (!selectedTeam) return;
     setAddingMember(true);
-    setMessage('');
 
     const res = await fetch(`/api/manager/teams/${selectedTeam.id}/members`, {
       method: 'POST',
@@ -251,14 +249,14 @@ export default function ManagerDashboardClient() {
     const data = (await res.json()) as { error?: string };
     setAddingMember(false);
     if (!res.ok) {
-      setMessage(data.error || 'Failed to add member.');
+      toast.error('Member add failed', data.error || 'The team member could not be added.');
       return;
     }
 
     setMemberEmail('');
     setMemberName('');
     setMemberDailyLimit('100000');
-    setMessage('Team member added.');
+    toast.success('Team member added', 'The member was added to the team.');
     await load();
   }
 
@@ -266,7 +264,6 @@ export default function ManagerDashboardClient() {
     const draft = memberDrafts[memberId];
     if (!draft) return;
     setSavingMemberId(memberId);
-    setMessage('');
 
     const res = await fetch(`/api/manager/teams/${teamId}/members/${memberId}`, {
       method: 'PATCH',
@@ -281,11 +278,11 @@ export default function ManagerDashboardClient() {
     const data = (await res.json()) as { error?: string };
     setSavingMemberId(null);
     if (!res.ok) {
-      setMessage(data.error || 'Failed to update member.');
+      toast.error('Member update failed', data.error || 'The team member could not be updated.');
       return;
     }
 
-    setMessage('Member updated.');
+    toast.success('Member updated', 'The team member changes were saved.');
     await load();
   }
 
@@ -295,11 +292,11 @@ export default function ManagerDashboardClient() {
     const res = await fetch(`/api/manager/teams/${teamId}/members/${memberId}`, { method: 'DELETE' });
     const data = (await res.json()) as { error?: string };
     if (!res.ok) {
-      setMessage(data.error || 'Failed to remove member.');
+      toast.error('Member removal failed', data.error || 'The team member could not be removed.');
       return;
     }
 
-    setMessage('Member removed.');
+    toast.success('Member removed', 'The member was removed from the team.');
     await load();
   }
 
@@ -317,9 +314,6 @@ export default function ManagerDashboardClient() {
           </div>
         </div>
       </header>
-
-      {message ? <p className="form-note">{message}</p> : null}
-
       <div className="stats-grid dashboard-stats">
         <div className="stat-card"><h3>Teams</h3><p className="stat-value">{overview?.totals.teams ?? 0}</p></div>
         <div className="stat-card"><h3>Members</h3><p className="stat-value">{overview?.totals.members ?? 0}</p></div>

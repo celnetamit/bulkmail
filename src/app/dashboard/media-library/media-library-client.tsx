@@ -13,6 +13,8 @@ type MediaItem = {
   folder: string;
   tags: string[];
   title: string;
+  width: number | null;
+  height: number | null;
 };
 
 type UploadResponse = {
@@ -24,6 +26,8 @@ type UploadResponse = {
   folder?: string;
   tags?: string[];
   title?: string;
+  width?: number | null;
+  height?: number | null;
   error?: string;
 };
 
@@ -57,8 +61,10 @@ export default function MediaLibraryClient({ pickMode }: { pickMode: boolean }) 
   const [uploadFolder, setUploadFolder] = useState('');
   const [uploadTags, setUploadTags] = useState('');
   const [uploadTitle, setUploadTitle] = useState('');
+  const [uploadWidth, setUploadWidth] = useState('');
+  const [uploadHeight, setUploadHeight] = useState('');
   const [savingKey, setSavingKey] = useState('');
-  const [editDrafts, setEditDrafts] = useState<Record<string, { folder: string; tags: string; title: string }>>({});
+  const [editDrafts, setEditDrafts] = useState<Record<string, { folder: string; tags: string; title: string; width: string; height: string }>>({});
 
   async function load() {
     setLoading(true);
@@ -75,12 +81,14 @@ export default function MediaLibraryClient({ pickMode }: { pickMode: boolean }) 
     const nextItems = data.uploads || [];
     setItems(nextItems);
     setEditDrafts((current) => {
-      const nextDrafts: Record<string, { folder: string; tags: string; title: string }> = {};
+      const nextDrafts: Record<string, { folder: string; tags: string; title: string; width: string; height: string }> = {};
       for (const item of nextItems) {
         nextDrafts[item.relativeUrl] = current[item.relativeUrl] || {
           folder: item.folder || '',
           tags: item.tags.join(', '),
           title: item.title || '',
+          width: item.width ? String(item.width) : '',
+          height: item.height ? String(item.height) : '',
         };
       }
       return nextDrafts;
@@ -123,14 +131,23 @@ export default function MediaLibraryClient({ pickMode }: { pickMode: boolean }) 
     }
   }
 
-  function insertIntoEditor(url: string) {
+  function insertIntoEditor(item: MediaItem) {
     const target = window.opener;
     if (!target) {
       toast.warning('Insert unavailable', 'Open this page from the editor to insert directly.');
       return;
     }
 
-    target.postMessage({ type: 'mailflow.insert-media', url }, window.location.origin);
+    target.postMessage(
+      {
+        type: 'mailflow.insert-media',
+        url: item.url,
+        alt: item.title || item.fileName,
+        width: item.width,
+        height: item.height,
+      },
+      window.location.origin,
+    );
     window.close();
   }
 
@@ -145,6 +162,8 @@ export default function MediaLibraryClient({ pickMode }: { pickMode: boolean }) 
     formData.append('folder', uploadFolder);
     formData.append('tags', uploadTags);
     formData.append('title', uploadTitle);
+    formData.append('width', uploadWidth);
+    formData.append('height', uploadHeight);
 
     setUploading(true);
 
@@ -164,6 +183,8 @@ export default function MediaLibraryClient({ pickMode }: { pickMode: boolean }) 
       setUploadFolder('');
       setUploadTags('');
       setUploadTitle('');
+      setUploadWidth('');
+      setUploadHeight('');
       toast.success('Image uploaded', 'The media file is now available in the library.');
       await load();
     } catch {
@@ -173,13 +194,15 @@ export default function MediaLibraryClient({ pickMode }: { pickMode: boolean }) 
     }
   }
 
-  function updateDraft(relativeUrl: string, field: 'folder' | 'tags' | 'title', value: string) {
+  function updateDraft(relativeUrl: string, field: 'folder' | 'tags' | 'title' | 'width' | 'height', value: string) {
     setEditDrafts((current) => ({
       ...current,
       [relativeUrl]: {
         folder: current[relativeUrl]?.folder || '',
         tags: current[relativeUrl]?.tags || '',
         title: current[relativeUrl]?.title || '',
+        width: current[relativeUrl]?.width || '',
+        height: current[relativeUrl]?.height || '',
         [field]: value,
       },
     }));
@@ -200,6 +223,8 @@ export default function MediaLibraryClient({ pickMode }: { pickMode: boolean }) 
           folder: draft.folder,
           tags: draft.tags,
           title: draft.title,
+          width: draft.width,
+          height: draft.height,
         }),
       });
 
@@ -245,6 +270,8 @@ export default function MediaLibraryClient({ pickMode }: { pickMode: boolean }) 
           <input className="auth-input" value={uploadTitle} onChange={(event) => setUploadTitle(event.target.value)} placeholder="Title" />
           <input className="auth-input" value={uploadFolder} onChange={(event) => setUploadFolder(event.target.value)} placeholder="Folder" />
           <input className="auth-input" value={uploadTags} onChange={(event) => setUploadTags(event.target.value)} placeholder="Tags (comma separated)" />
+          <input className="auth-input" type="number" min={1} step={1} value={uploadWidth} onChange={(event) => setUploadWidth(event.target.value)} placeholder="Display width (px)" />
+          <input className="auth-input" type="number" min={1} step={1} value={uploadHeight} onChange={(event) => setUploadHeight(event.target.value)} placeholder="Display height (px)" />
           <button type="button" className="btn-primary" onClick={uploadSelected} disabled={uploading}>
             {uploading ? 'Uploading...' : 'Upload'}
           </button>
@@ -292,7 +319,13 @@ export default function MediaLibraryClient({ pickMode }: { pickMode: boolean }) 
             <p>Use the upload form above or the upload button in the visual email editor to add your first image.</p>
           </div>
         ) : filteredItems.map((item) => {
-          const draft = editDrafts[item.relativeUrl] || { folder: item.folder, tags: item.tags.join(', '), title: item.title };
+          const draft = editDrafts[item.relativeUrl] || {
+            folder: item.folder,
+            tags: item.tags.join(', '),
+            title: item.title,
+            width: item.width ? String(item.width) : '',
+            height: item.height ? String(item.height) : '',
+          };
           return (
             <article className="card media-card" key={item.relativeUrl}>
               <div className="media-preview">
@@ -301,6 +334,9 @@ export default function MediaLibraryClient({ pickMode }: { pickMode: boolean }) 
               <div className="media-card__body">
                 <strong title={item.title || item.fileName}>{item.title || item.fileName}</strong>
                 <p>{formatBytes(item.size)} - {new Date(item.lastModified).toLocaleString()}</p>
+                {item.width || item.height ? (
+                  <p>{item.width ? `${item.width}px` : 'auto'} x {item.height ? `${item.height}px` : 'auto'}</p>
+                ) : null}
                 <div className="media-card__meta">
                   {item.folder ? <span className="badge badge-info">Folder: {item.folder}</span> : <span className="badge badge-info">No folder</span>}
                   {item.tags.length ? item.tags.map((tag) => <span className="badge" key={`${item.relativeUrl}-${tag}`}>{tag}</span>) : <span className="badge">No tags</span>}
@@ -324,6 +360,24 @@ export default function MediaLibraryClient({ pickMode }: { pickMode: boolean }) 
                     onChange={(event) => updateDraft(item.relativeUrl, 'tags', event.target.value)}
                     placeholder="Tags"
                   />
+                  <input
+                    className="auth-input"
+                    type="number"
+                    min={1}
+                    step={1}
+                    value={draft.width}
+                    onChange={(event) => updateDraft(item.relativeUrl, 'width', event.target.value)}
+                    placeholder="Display width (px)"
+                  />
+                  <input
+                    className="auth-input"
+                    type="number"
+                    min={1}
+                    step={1}
+                    value={draft.height}
+                    onChange={(event) => updateDraft(item.relativeUrl, 'height', event.target.value)}
+                    placeholder="Display height (px)"
+                  />
                   <button type="button" className="mini-btn" onClick={() => saveMetadata(item)} disabled={savingKey === item.relativeUrl}>
                     {savingKey === item.relativeUrl ? 'Saving...' : 'Save'}
                   </button>
@@ -332,7 +386,7 @@ export default function MediaLibraryClient({ pickMode }: { pickMode: boolean }) 
                 <div className="media-card__actions">
                   <button type="button" className="mini-btn" onClick={() => copyUrl(item.url)}>Copy URL</button>
                   {pickMode ? (
-                    <button type="button" className="mini-btn" onClick={() => insertIntoEditor(item.url)}>Insert</button>
+                    <button type="button" className="mini-btn" onClick={() => insertIntoEditor(item)}>Insert</button>
                   ) : null}
                 </div>
               </div>

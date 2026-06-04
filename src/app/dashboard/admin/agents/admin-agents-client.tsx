@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { useToast } from '@/components/toast-provider';
 
 type AgentKey = 'debugger' | 'support' | 'worker';
 
@@ -32,8 +33,8 @@ function getTitle(agentKey: AgentKey) {
 }
 
 export default function AdminAgentsClient() {
+  const toast = useToast();
   const [profiles, setProfiles] = useState<AgentProfile[]>([]);
-  const [message, setMessage] = useState('');
   const [saving, setSaving] = useState(false);
   const [drafts, setDrafts] = useState<Record<AgentKey, Partial<AgentProfile> & { apiKey: string }>>({
     debugger: { apiKey: '' },
@@ -45,7 +46,7 @@ export default function AdminAgentsClient() {
     const response = await fetch('/api/admin/agents', { cache: 'no-store' });
     const data = (await response.json()) as ApiResponse & { error?: string };
     if (!response.ok) {
-      setMessage(data.error || 'Failed to load AI agent settings.');
+      toast.error('AI settings load failed', data.error || 'AI agent settings could not be loaded.');
       return;
     }
 
@@ -89,7 +90,6 @@ export default function AdminAgentsClient() {
 
   async function save() {
     setSaving(true);
-    setMessage('');
     const payload = {
       profiles: agentOrder.map((agentKey) => ({
         agentKey,
@@ -114,12 +114,12 @@ export default function AdminAgentsClient() {
     const data = (await response.json()) as ApiResponse & { error?: string };
     setSaving(false);
     if (!response.ok) {
-      setMessage(data.error || 'Failed to save AI agent settings.');
+      toast.error('AI settings save failed', data.error || 'AI agent settings could not be saved.');
       return;
     }
 
     setProfiles(data.profiles || []);
-    setMessage('AI agent settings saved.');
+    toast.success('AI settings saved', 'All AI agent profiles were updated.');
     await load();
   }
 
@@ -145,9 +145,6 @@ export default function AdminAgentsClient() {
           </button>
         </div>
       </header>
-
-      {message ? <p className="form-note">{message}</p> : null}
-
       <div className="cards-grid">
         {grouped.map(({ agentKey, profile, draft }) => (
           <section key={agentKey} className="card ai-agent-card">

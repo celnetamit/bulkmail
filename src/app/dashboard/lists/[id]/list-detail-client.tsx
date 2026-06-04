@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { FormEvent, useEffect, useState } from 'react';
+import { useToast } from '@/components/toast-provider';
 
 type ListDetail = {
   id: string;
@@ -67,7 +68,7 @@ function PaginationControls({
 
 export function ListDetailClient({ listId }: { listId: string }) {
   const router = useRouter();
-  const [message, setMessage] = useState('');
+  const toast = useToast();
   const [loading, setLoading] = useState(true);
   const [list, setList] = useState<ListDetail | null>(null);
   const [contacts, setContacts] = useState<Contact[]>([]);
@@ -101,6 +102,8 @@ export function ListDetailClient({ listId }: { listId: string }) {
     setLoading(true);
     const response = await fetch(`/api/lists/${listId}`, { cache: 'no-store' });
     if (!response.ok) {
+      const data = (await response.json().catch(() => ({}))) as { error?: string };
+      toast.error('List load failed', data.error || 'The selected list could not be loaded.');
       setList(null);
       setLoading(false);
       return;
@@ -149,7 +152,10 @@ export function ListDetailClient({ listId }: { listId: string }) {
 
   async function updateList() {
     if (!list) return;
-    if (list.isOwner === false) return setMessage('This list is read-only for your role.');
+    if (list.isOwner === false) {
+      toast.warning('Read-only list', 'This list is read-only for your role.');
+      return;
+    }
 
     const name = prompt('List name', list.name);
     if (!name) return;
@@ -163,17 +169,20 @@ export function ListDetailClient({ listId }: { listId: string }) {
 
     const data = await response.json();
     if (!response.ok) {
-      setMessage(data.error || 'Failed to update list.');
+      toast.error('List update failed', data.error || 'The list could not be updated.');
       return;
     }
 
-    setMessage('List updated.');
+    toast.success('List updated', 'The list changes were saved.');
     await refresh();
   }
 
   async function makeDefaultTestList() {
     if (!list) return;
-    if (list.isOwner === false) return setMessage('This list is read-only for your role.');
+    if (list.isOwner === false) {
+      toast.warning('Read-only list', 'This list is read-only for your role.');
+      return;
+    }
 
     const response = await fetch(`/api/lists/${list.id}`, {
       method: 'PATCH',
@@ -187,34 +196,40 @@ export function ListDetailClient({ listId }: { listId: string }) {
 
     const data = await response.json();
     if (!response.ok) {
-      setMessage(data.error || 'Failed to set default test list.');
+      toast.error('Default test list failed', data.error || 'The default test list could not be updated.');
       return;
     }
 
-    setMessage('Default test list updated.');
+    toast.success('Default test list updated', 'This list will be used for one-click test sends.');
     await refresh();
   }
 
   async function deleteList() {
     if (!list) return;
-    if (list.isOwner === false) return setMessage('This list is read-only for your role.');
+    if (list.isOwner === false) {
+      toast.warning('Read-only list', 'This list is read-only for your role.');
+      return;
+    }
     if (!confirm(`Delete list "${list.name}"?`)) return;
 
     const response = await fetch(`/api/lists/${list.id}`, { method: 'DELETE' });
     const data = await response.json();
     if (!response.ok) {
-      setMessage(data.error || 'Failed to delete list.');
+      toast.error('List delete failed', data.error || 'The list could not be deleted.');
       return;
     }
 
-    setMessage('List deleted.');
+    toast.success('List deleted', 'The list was removed.');
     router.push('/dashboard/lists');
   }
 
   async function addContact(event: FormEvent) {
     event.preventDefault();
     if (!listId) return;
-    if (list?.isOwner === false) return setMessage('This list is read-only for your role.');
+    if (list?.isOwner === false) {
+      toast.warning('Read-only list', 'This list is read-only for your role.');
+      return;
+    }
 
     const response = await fetch('/api/contacts', {
       method: 'POST',
@@ -229,21 +244,24 @@ export function ListDetailClient({ listId }: { listId: string }) {
 
     const data = await response.json();
     if (!response.ok) {
-      setMessage(data.error || 'Failed to add contact.');
+      toast.error('Contact add failed', data.error || 'The contact could not be added.');
       return;
     }
 
     setContactEmail('');
     setContactFirstName('');
     setContactLastName('');
-    setMessage('Contact added.');
+    toast.success('Contact added', 'The contact is now part of this list.');
     await refresh();
   }
 
   async function importCsv(event: FormEvent) {
     event.preventDefault();
     if (!listId) return;
-    if (list?.isOwner === false) return setMessage('This list is read-only for your role.');
+    if (list?.isOwner === false) {
+      toast.warning('Read-only list', 'This list is read-only for your role.');
+      return;
+    }
 
     const response = await fetch('/api/contacts', {
       method: 'PUT',
@@ -254,17 +272,20 @@ export function ListDetailClient({ listId }: { listId: string }) {
     const data = (await response.json()) as { created?: number; skipped?: number; error?: string };
 
     if (!response.ok) {
-      setMessage(data.error || 'Import failed.');
+      toast.error('Import failed', data.error || 'The contacts could not be imported.');
       return;
     }
 
-    setMessage(`Import complete. Created: ${data.created ?? 0}, Skipped: ${data.skipped ?? 0}.`);
+    toast.success('Import complete', `Created: ${data.created ?? 0}, Skipped: ${data.skipped ?? 0}.`);
     setCsvText('');
     await refresh();
   }
 
   async function updateContactStatus(contactId: string, status: string) {
-    if (list?.isOwner === false) return setMessage('This list is read-only for your role.');
+    if (list?.isOwner === false) {
+      toast.warning('Read-only list', 'This list is read-only for your role.');
+      return;
+    }
     const response = await fetch(`/api/contacts/${contactId}`, {
       method: 'PATCH',
       headers: { 'content-type': 'application/json' },
@@ -273,24 +294,27 @@ export function ListDetailClient({ listId }: { listId: string }) {
 
     const data = await response.json();
     if (!response.ok) {
-      setMessage(data.error || 'Failed to update contact status.');
+      toast.error('Contact update failed', data.error || 'The contact status could not be updated.');
       return;
     }
 
-    setMessage('Contact status updated.');
+    toast.success('Contact updated', 'The contact status was updated.');
     await refresh();
   }
 
   async function deleteContact(contactId: string) {
-    if (list?.isOwner === false) return setMessage('This list is read-only for your role.');
+    if (list?.isOwner === false) {
+      toast.warning('Read-only list', 'This list is read-only for your role.');
+      return;
+    }
     const response = await fetch(`/api/contacts/${contactId}`, { method: 'DELETE' });
     const data = await response.json();
     if (!response.ok) {
-      setMessage(data.error || 'Failed to delete contact.');
+      toast.error('Contact delete failed', data.error || 'The contact could not be removed.');
       return;
     }
 
-    setMessage('Contact deleted.');
+    toast.success('Contact deleted', 'The contact was removed from this list.');
     await refresh();
   }
 
@@ -314,9 +338,6 @@ export function ListDetailClient({ listId }: { listId: string }) {
           <Link className="btn-secondary" href="/dashboard/lists">Back to Lists</Link>
         </div>
       </header>
-
-      {message ? <p className="form-note">{message}</p> : null}
-
       {list ? (
         <>
           <div className="stats-grid" style={{ marginBottom: '1rem' }}>

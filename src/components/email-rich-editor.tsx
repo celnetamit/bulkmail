@@ -9,6 +9,13 @@ type Props = {
   label?: string;
 };
 
+type InsertedMedia = {
+  url: string;
+  alt?: string;
+  width?: number | null;
+  height?: number | null;
+};
+
 type Mode = 'visual' | 'html' | 'preview';
 
 type ToolbarCommand =
@@ -220,6 +227,37 @@ function buildPreviewDoc(value: string, placeholder: string) {
   return composeDocument(headHtml, applyPreviewPlaceholders(bodyHtml));
 }
 
+function buildImageHtml(media: InsertedMedia) {
+  const width =
+    typeof media.width === 'number' && Number.isFinite(media.width) && media.width > 0
+      ? Math.floor(media.width)
+      : null;
+  const height =
+    typeof media.height === 'number' && Number.isFinite(media.height) && media.height > 0
+      ? Math.floor(media.height)
+      : null;
+  const alt = String(media.alt || '').replace(/"/g, '&quot;');
+  const attributes = [
+    `src="${media.url}"`,
+    `alt="${alt}"`,
+    width ? `width="${width}"` : '',
+    height ? `height="${height}"` : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
+  const style = [
+    'display:block',
+    width ? `width:${width}px` : height ? 'width:auto' : 'max-width:100%',
+    height ? `height:${height}px` : 'height:auto',
+    width || height ? 'max-width:100%' : '',
+    'margin:16px 0',
+  ]
+    .filter(Boolean)
+    .join(';');
+
+  return `<img ${attributes} style="${style}" />`;
+}
+
 export function EmailRichEditor({
   value,
   onChange,
@@ -292,8 +330,8 @@ export function EmailRichEditor({
     document.execCommand('insertHTML', false, html);
   }
 
-  function insertMediaUrl(url: string) {
-    const image = `<img src="${url}" alt="" style="display:block;max-width:100%;height:auto;margin:16px 0;" />`;
+  function insertMediaUrl(media: InsertedMedia) {
+    const image = buildImageHtml(media);
     insertHtml(image);
   }
 
@@ -314,7 +352,7 @@ export function EmailRichEditor({
     if (command === 'insertImage') {
       const url = window.prompt('Enter image URL');
       if (!url) return;
-      insertHtml(`<img src="${url}" alt="" style="display:block;max-width:100%;height:auto;margin:16px 0;" />`);
+      insertHtml(buildImageHtml({ url }));
       syncVisualContent();
       return;
     }
@@ -387,7 +425,7 @@ export function EmailRichEditor({
       if (el) {
         el.focus();
         restoreSelection();
-        insertMediaUrl(url);
+        insertMediaUrl({ url });
         syncVisualContent();
         setUploadMessage('Image uploaded and inserted.');
       }
@@ -412,14 +450,20 @@ export function EmailRichEditor({
       if (!event.data || typeof event.data !== 'object') return;
       if ((event.data as { type?: string }).type !== 'mailflow.insert-media') return;
 
-      const url = (event.data as { url?: string }).url;
+      const payload = event.data as InsertedMedia & { type?: string };
+      const url = payload.url;
       if (!url) return;
 
       const el = visualRef.current;
       if (el) {
         el.focus();
         restoreSelection();
-        insertMediaUrl(url);
+        insertMediaUrl({
+          url,
+          alt: payload.alt,
+          width: payload.width,
+          height: payload.height,
+        });
         syncVisualContent();
       }
     }
