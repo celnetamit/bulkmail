@@ -4,9 +4,10 @@ import { fail, ok } from '@/lib/http';
 import { executeSql, queryRow, queryRows } from '@/lib/sqlite';
 import { getCampaignLists, replaceCampaignLists } from '@/lib/campaign-lists';
 import { buildOwnerScope, isOwnedByViewer } from '@/lib/data-scope';
+import { isCampaignLockedForEditing } from '@/lib/campaign-send-queue';
 
 type Params = { params: { id: string } };
-const ALLOWED_STATUSES = new Set(['DRAFT', 'SCHEDULED', 'QUEUED', 'RETRYING', 'SENDING', 'SENT', 'FAILED', 'SKIPPED']);
+const ALLOWED_STATUSES = new Set(['DRAFT', 'SCHEDULED', 'QUEUED', 'RETRYING', 'SENDING', 'PAUSED', 'CANCELLED', 'SENT', 'FAILED', 'SKIPPED']);
 
 export async function GET(_: Request, { params }: Params) {
   const auth = await requireUserFromCookies();
@@ -154,7 +155,7 @@ export async function PATCH(request: Request, { params }: Params) {
   if (existing.isArchived) {
     return fail('Archived campaigns cannot be edited.', 409);
   }
-  if (existing.status === 'QUEUED' || existing.status === 'RETRYING' || existing.status === 'SENDING') {
+  if (isCampaignLockedForEditing(existing.status)) {
     return fail('Queued or sending campaigns cannot be edited.', 409);
   }
   const previousListId = existing.listId;
@@ -267,7 +268,7 @@ export async function DELETE(_: Request, { params }: Params) {
     [params.id, auth.user.userId],
   );
   if (!existing) return fail('Campaign not found.', 404);
-  if (existing.status === 'QUEUED' || existing.status === 'RETRYING' || existing.status === 'SENDING') {
+  if (isCampaignLockedForEditing(existing.status)) {
     return fail('Queued or sending campaigns cannot be deleted.', 409);
   }
 

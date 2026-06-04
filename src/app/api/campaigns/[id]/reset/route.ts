@@ -3,6 +3,7 @@ import { recordAuditEvent } from '@/lib/audit';
 import { recordSystemEvent } from '@/lib/observability';
 import { fail, ok } from '@/lib/http';
 import { executeSql, queryRow } from '@/lib/sqlite';
+import { isCampaignLockedForEditing } from '@/lib/campaign-send-queue';
 
 type Params = { params: { id: string } };
 
@@ -15,8 +16,8 @@ export async function POST(request: Request, { params }: Params) {
     [params.id, auth.user.userId],
   );
   if (!existing) return fail('Campaign not found.', 404);
-  if (existing.status === 'QUEUED' || existing.status === 'RETRYING' || existing.status === 'SENDING') {
-    return fail('Cannot reset a queued or sending campaign.', 409);
+  if (isCampaignLockedForEditing(existing.status)) {
+    return fail('Cannot reset a queued, paused, or sending campaign.', 409);
   }
 
   let wipeEvents = false;

@@ -5,6 +5,7 @@ import { recordAuditEvent } from '@/lib/audit';
 import { fail, ok } from '@/lib/http';
 import { executeSql, queryRow, queryRows } from '@/lib/sqlite';
 import { getCampaignLists, replaceCampaignLists } from '@/lib/campaign-lists';
+import { isCampaignLockedForEditing } from '@/lib/campaign-send-queue';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -79,8 +80,8 @@ export async function POST(request: Request) {
 
   const ownedById = new Map(ownedCampaigns.map((campaign) => [campaign.id, campaign]));
 
-  if (action === 'archive' && ownedCampaigns.some((campaign) => campaign.status === 'QUEUED' || campaign.status === 'RETRYING' || campaign.status === 'SENDING')) {
-    return fail('Queued or sending campaigns cannot be archived.', 409);
+  if (action === 'archive' && ownedCampaigns.some((campaign) => isCampaignLockedForEditing(campaign.status))) {
+    return fail('Queued, paused, or sending campaigns cannot be archived.', 409);
   }
 
   if (action === 'archive' || action === 'unarchive') {
@@ -132,8 +133,8 @@ export async function POST(request: Request) {
       const current = ownedById.get(campaignId);
       if (!current) continue;
 
-      if (current.status === 'QUEUED' || current.status === 'RETRYING' || current.status === 'SENDING') {
-        return fail('Queued or sending campaigns cannot be retargeted.', 409);
+      if (isCampaignLockedForEditing(current.status)) {
+        return fail('Queued, paused, or sending campaigns cannot be retargeted.', 409);
       }
 
       executeSql(

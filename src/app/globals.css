@@ -1879,6 +1879,122 @@ p {
   overflow-y: hidden;
 }
 
+.campaigns-live-panel {
+  padding: 1rem;
+  margin-bottom: 1rem;
+}
+
+.campaigns-live-panel__header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: flex-start;
+  margin-bottom: 0.85rem;
+}
+
+.campaigns-live-panel__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.campaigns-live-panel__stats {
+  margin-top: 0.9rem;
+}
+
+.campaigns-live-panel__controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.85rem;
+}
+
+.campaigns-live-panel__timeline-grid {
+  margin-top: 0.9rem;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+
+.campaigns-live-panel__section {
+  padding: 0.95rem;
+}
+
+.campaigns-live-panel__section h3 {
+  margin-bottom: 0.75rem;
+}
+
+.campaigns-live-panel__detail-list {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.campaigns-live-panel__detail-list div {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: baseline;
+  border-bottom: 1px solid #e2e8f0;
+  padding-bottom: 0.45rem;
+}
+
+.campaigns-live-panel__detail-list div:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.campaigns-live-panel__detail-list span {
+  color: #64748b;
+  font-size: 0.86rem;
+}
+
+.campaigns-live-panel__detail-list strong {
+  color: #0f172a;
+  font-size: 0.92rem;
+  text-align: right;
+}
+
+.campaigns-live-panel__error {
+  margin-top: 0.85rem;
+  color: #b91c1c;
+  font-size: 0.9rem;
+}
+
+.campaigns-live-timeline {
+  display: grid;
+  gap: 0.75rem;
+  max-height: 320px;
+  overflow: auto;
+}
+
+.campaigns-live-timeline__item {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr);
+  gap: 0.75rem;
+  align-items: start;
+}
+
+.campaigns-live-timeline__time {
+  color: #64748b;
+  font-size: 0.8rem;
+  padding-top: 0.08rem;
+}
+
+.campaigns-live-timeline__body {
+  display: grid;
+  gap: 0.2rem;
+  border-left: 2px solid #cbd5e1;
+  padding-left: 0.8rem;
+}
+
+.campaigns-live-timeline__body strong {
+  color: #0f172a;
+  font-size: 0.9rem;
+}
+
+.campaigns-live-timeline__body span {
+  color: #475569;
+  font-size: 0.86rem;
+}
+
 .is-selected-row--bulk {
   background: rgba(59, 130, 246, 0.11);
 }

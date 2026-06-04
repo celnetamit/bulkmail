@@ -18,6 +18,7 @@ type SendInput = {
   bodyHtml: string;
   appUrl: string;
   contacts: CampaignRecipient[];
+  getControlState?: () => Promise<'RUNNING' | 'PAUSED' | 'CANCELLED'>;
 };
 
 type TestEmailInput = {
@@ -27,8 +28,11 @@ type TestEmailInput = {
 };
 
 type SendResult = Array<{ contactId: string; provider: string; messageId: string }>;
+type SendOutcome = 'SENT' | 'FAILED' | 'SKIPPED' | 'PAUSED' | 'CANCELLED';
 
 const UNSUBSCRIBE_URL_PLACEHOLDER = '{{unsubscribeUrl}}';
+const DEFAULT_SEND_CONCURRENCY = 5;
+const MIN_PROGRESS_UPDATE_INTERVAL = 25;
 
 function dedupeRecipients(recipients: CampaignRecipient[]) {
   const seen = new Set<string>();
@@ -222,6 +226,27 @@ async function sendEmailBatch(
   return sendViaMock(input);
 }
 
+function getSendConcurrency() {
+  const configured = Number(process.env.CAMPAIGN_SEND_CONCURRENCY || '');
+  if (Number.isFinite(configured) && configured >= 1) {
+    return Math.min(25, Math.floor(configured));
+  }
+
+  return DEFAULT_SEND_CONCURRENCY;
+}
+
+function getProgressCheckpointSize(concurrency: number, totalRecipients: number) {
+  return Math.max(
+    MIN_PROGRESS_UPDATE_INTERVAL,
+    Math.min(100, Math.ceil(totalRecipients / 20)),
+    concurrency * 2,
+  );
+}
+
+function buildProgressNote(provider: string, processedCount: number, totalRecipients: number, concurrency: number) {
+  return `provider:${provider};processed:${processedCount}/${totalRecipients};concurrency:${concurrency}`;
+}
+
 async function updateCampaignProgress(
   campaignId: string,
   data: {
@@ -301,6 +326,9 @@ export async function dispatchCampaignEmails(userId: string, input: SendInput) {
   const sendableContacts = dedupedContacts.slice(0, quota.remainingToday);
   const quotaSkipped = Math.max(0, dedupedContacts.length - sendableContacts.length);
   const startedAt = new Date();
+  const sendConcurrency = getSendConcurrency();
+  const progressCheckpointSize = getProgressCheckpointSize(sendConcurrency, sendableContacts.length);
+  let outcome: SendOutcome = 'SENT';
 
   await updateCampaignProgress(input.campaignId, {
     status: 'SENDING',
@@ -324,11 +352,28 @@ export async function dispatchCampaignEmails(userId: string, input: SendInput) {
     skippedCount: duplicates + invalid + quotaSkipped,
     recipientCount: dedupedContacts.length,
     durationMs: 0,
-    note: `provider:${transport.provider}`,
+    note: buildProgressNote(transport.provider, 0, dedupedContacts.length, sendConcurrency),
+  });
+  recordSystemEvent({
+    level: 'INFO',
+    source: 'campaign_send_start',
+    userId,
+    campaignId: input.campaignId,
+    message: `Campaign send started for ${sendableContacts.length} sendable recipients.`,
+    details: {
+      provider: transport.provider,
+      totalRecipients: dedupedContacts.length,
+      sendableRecipients: sendableContacts.length,
+      duplicates,
+      invalid,
+      quotaSkipped,
+      concurrency: sendConcurrency,
+    },
   });
 
   if (sendableContacts.length === 0) {
     const finishedAt = new Date();
+    const emptyOutcome: SendOutcome = quotaSkipped > 0 ? 'FAILED' : 'SENT';
     await updateCampaignProgress(input.campaignId, {
       status: quotaSkipped > 0 ? 'FAILED' : 'SENT',
       provider: transport.provider,
@@ -345,9 +390,28 @@ export async function dispatchCampaignEmails(userId: string, input: SendInput) {
       skippedCount: duplicates + invalid + quotaSkipped,
       recipientCount: dedupedContacts.length,
       durationMs: Math.max(0, finishedAt.getTime() - startedAt.getTime()),
-      note: `provider:${transport.provider};empty_send`,
+      note: buildProgressNote(transport.provider, 0, dedupedContacts.length, sendConcurrency),
+    });
+    recordSystemEvent({
+      level: quotaSkipped > 0 ? 'WARN' : 'INFO',
+      source: 'campaign_send_complete',
+      userId,
+      campaignId: input.campaignId,
+      message:
+        quotaSkipped > 0
+          ? 'Campaign send skipped because the daily quota has been exhausted.'
+          : 'Campaign send finished with no sendable recipients.',
+      details: {
+        provider: transport.provider,
+        totalRecipients: dedupedContacts.length,
+        quotaSkipped,
+        duplicates,
+        invalid,
+        concurrency: sendConcurrency,
+      },
     });
     return {
+      outcome: emptyOutcome,
       provider: transport.provider,
       sentCount: 0,
       failedCount: 0,
@@ -360,8 +424,9 @@ export async function dispatchCampaignEmails(userId: string, input: SendInput) {
 
   let sentCount = 0;
   let failedCount = 0;
+  let lastProgressCheckpoint = 0;
 
-  for (const contact of sendableContacts) {
+  async function sendContact(contact: CampaignRecipient) {
     const unsubscribeToken = await createUnsubscribeToken({
       userId,
       campaignId: input.campaignId,
@@ -384,59 +449,84 @@ export async function dispatchCampaignEmails(userId: string, input: SendInput) {
         : htmlWithInjectedUnsubscribe;
     const html = appendOpenTrackingPixel(htmlWithUnsubscribe, trackingUrl);
 
-    try {
-      const sent = await sendEmailBatch(userId, {
-        subject: input.subject,
-        bodyHtml: html,
-        campaignId: input.campaignId,
-        recipients: [contact],
-      });
+    const sent = await sendEmailBatch(userId, {
+      subject: input.subject,
+      bodyHtml: html,
+      campaignId: input.campaignId,
+      recipients: [contact],
+    });
 
-      const message = sent[0];
-      if (message) {
-        executeSql(
-          `
-            INSERT INTO "Event" (
-                  "id", "type", "provider", "providerEventId", "providerMessageId",
-                  "contactId", "campaignId", "createdAt"
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-          `,
-          [
-            crypto.randomUUID().replace(/-/g, ''),
-            'SENT',
-            message.provider,
-            `${message.provider}:sent:${message.messageId}:${message.contactId}`,
-            message.messageId,
-            contact.id,
-            input.campaignId,
-            new Date().toISOString(),
-          ],
-        );
+    const message = sent[0];
+    if (message) {
+      executeSql(
+        `
+          INSERT INTO "Event" (
+                "id", "type", "provider", "providerEventId", "providerMessageId",
+                "contactId", "campaignId", "createdAt"
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        `,
+        [
+          crypto.randomUUID().replace(/-/g, ''),
+          'SENT',
+          message.provider,
+          `${message.provider}:sent:${message.messageId}:${message.contactId}`,
+          message.messageId,
+          contact.id,
+          input.campaignId,
+          new Date().toISOString(),
+        ],
+      );
+    }
+  }
+
+  for (let index = 0; index < sendableContacts.length; index += sendConcurrency) {
+    const controlStateBeforeChunk = input.getControlState ? await input.getControlState() : 'RUNNING';
+    if (controlStateBeforeChunk === 'PAUSED') {
+      outcome = 'PAUSED';
+      break;
+    }
+    if (controlStateBeforeChunk === 'CANCELLED') {
+      outcome = 'CANCELLED';
+      break;
+    }
+
+    const chunk = sendableContacts.slice(index, index + sendConcurrency);
+    const results = await Promise.allSettled(
+      chunk.map(async (contact) => {
+        await sendContact(contact);
+        return contact;
+      }),
+    );
+
+    results.forEach((result, chunkIndex) => {
+      if (result.status === 'fulfilled') {
+        sentCount += 1;
+        return;
       }
 
-      sentCount += 1;
-    } catch (error) {
       failedCount += 1;
+      const contact = chunk[chunkIndex];
       console.error('campaign_send_item_failed', {
         campaignId: input.campaignId,
-        contactId: contact.id,
-        email: contact.email,
-        error: error instanceof Error ? error.message : String(error),
+        contactId: contact?.id,
+        email: contact?.email,
+        error: result.reason instanceof Error ? result.reason.message : String(result.reason),
       });
       recordSystemEvent({
         level: 'WARN',
         source: 'campaign_send_item',
-        message: error instanceof Error ? error.message : 'Campaign send item failed.',
+        message: result.reason instanceof Error ? result.reason.message : 'Campaign send item failed.',
         userId,
         campaignId: input.campaignId,
         details: {
-          contactId: contact.id,
-          email: contact.email,
+          contactId: contact?.id || null,
+          email: contact?.email || null,
           provider: transport.provider,
         },
       });
-    }
+    });
 
+    const processedCount = sentCount + failedCount;
     await updateCampaignProgress(input.campaignId, {
       status: 'SENDING',
       provider: transport.provider,
@@ -447,7 +537,11 @@ export async function dispatchCampaignEmails(userId: string, input: SendInput) {
       startedAt,
     });
 
-    if ((sentCount + failedCount) % 100 === 0 || sentCount + failedCount === sendableContacts.length) {
+    if (
+      processedCount === sendableContacts.length ||
+      processedCount - lastProgressCheckpoint >= progressCheckpointSize
+    ) {
+      lastProgressCheckpoint = processedCount;
       recordResourceMetric({
         scopeType: 'CAMPAIGN',
         eventType: 'SEND_PROGRESS',
@@ -458,14 +552,48 @@ export async function dispatchCampaignEmails(userId: string, input: SendInput) {
         skippedCount: duplicates + invalid + quotaSkipped,
         recipientCount: dedupedContacts.length,
         durationMs: Math.max(0, Date.now() - startedAt.getTime()),
-        note: `provider:${transport.provider}`,
+        note: buildProgressNote(transport.provider, processedCount, dedupedContacts.length, sendConcurrency),
       });
+      recordSystemEvent({
+        level: 'INFO',
+        source: 'campaign_send_progress',
+        userId,
+        campaignId: input.campaignId,
+        message: `Campaign send progress: ${processedCount}/${sendableContacts.length} processed.`,
+        details: {
+          provider: transport.provider,
+          processedCount,
+          sendableRecipients: sendableContacts.length,
+          totalRecipients: dedupedContacts.length,
+          sentCount,
+          failedCount,
+          skippedCount: duplicates + invalid + quotaSkipped,
+          concurrency: sendConcurrency,
+        },
+      });
+    }
+
+    const controlStateAfterChunk = input.getControlState ? await input.getControlState() : 'RUNNING';
+    if (controlStateAfterChunk === 'PAUSED') {
+      outcome = 'PAUSED';
+      break;
+    }
+    if (controlStateAfterChunk === 'CANCELLED') {
+      outcome = 'CANCELLED';
+      break;
     }
   }
 
   const finishedAt = new Date();
   await updateCampaignProgress(input.campaignId, {
-    status: failedCount > 0 && sentCount === 0 ? 'FAILED' : 'SENT',
+    status:
+      outcome === 'PAUSED'
+        ? 'PAUSED'
+        : outcome === 'CANCELLED'
+          ? 'CANCELLED'
+          : failedCount > 0 && sentCount === 0
+            ? 'FAILED'
+            : 'SENT',
     provider: transport.provider,
     totalRecipients: dedupedContacts.length,
     sentCount,
@@ -485,10 +613,46 @@ export async function dispatchCampaignEmails(userId: string, input: SendInput) {
     skippedCount: duplicates + invalid + quotaSkipped,
     recipientCount: dedupedContacts.length,
     durationMs: Math.max(0, finishedAt.getTime() - startedAt.getTime()),
-    note: `provider:${transport.provider}`,
+    note: buildProgressNote(transport.provider, sendableContacts.length, dedupedContacts.length, sendConcurrency),
+  });
+  recordSystemEvent({
+    level: outcome === 'CANCELLED' || failedCount > 0 ? 'WARN' : 'INFO',
+    source: 'campaign_send_complete',
+    userId,
+    campaignId: input.campaignId,
+    message:
+      outcome === 'PAUSED'
+        ? 'Campaign send paused by operator.'
+        : outcome === 'CANCELLED'
+          ? 'Campaign send cancelled by operator.'
+          : failedCount > 0
+            ? `Campaign send completed with ${failedCount} failed recipients.`
+            : 'Campaign send completed successfully.',
+    details: {
+      provider: transport.provider,
+      totalRecipients: dedupedContacts.length,
+      sendableRecipients: sendableContacts.length,
+      sentCount,
+      failedCount,
+      skippedCount: duplicates + invalid + quotaSkipped,
+      quotaSkipped,
+      duplicates,
+      invalid,
+      durationSeconds: Math.max(0, Math.round((finishedAt.getTime() - startedAt.getTime()) / 1000)),
+      concurrency: sendConcurrency,
+      outcome,
+    },
   });
 
+  const finalOutcome: SendOutcome =
+    outcome === 'PAUSED' || outcome === 'CANCELLED'
+      ? outcome
+      : failedCount > 0 && sentCount === 0
+        ? 'FAILED'
+        : 'SENT';
+
   return {
+    outcome: finalOutcome,
     provider: transport.provider,
     sentCount,
     failedCount,

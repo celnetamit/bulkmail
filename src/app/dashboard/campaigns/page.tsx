@@ -52,6 +52,54 @@ type ListOption = {
   isArchived?: number | boolean;
 };
 
+type CampaignActivity = {
+  latestJob: {
+    id: string;
+    status: string;
+    attempts: number;
+    provider: string | null;
+    totalRecipients: number;
+    sentCount: number;
+    failedCount: number;
+    skippedCount: number;
+    quotaSkippedCount: number;
+    remainingToday: number;
+    requestedAt: string;
+    startedAt: string | null;
+    nextRunAt: string | null;
+    finishedAt: string | null;
+    lastError: string | null;
+    skipReason: string | null;
+    updatedAt: string;
+  } | null;
+  live: {
+    processedCount: number;
+    remainingCount: number;
+    throughputPerSecond: number;
+    progressPercent: number;
+  };
+  progressTimeline: Array<{
+    id: string;
+    eventType: string;
+    sentCount: number;
+    failedCount: number;
+    skippedCount: number;
+    recipientCount: number;
+    durationMs: number | null;
+    note: string | null;
+    createdAt: string;
+    throughputPerSecond: number;
+  }>;
+  systemEvents: Array<{
+    id: string;
+    level: string;
+    source: string;
+    message: string;
+    details: string | null;
+    createdAt: string;
+  }>;
+};
+
 function formatDuration(seconds: number | null | undefined) {
   if (seconds == null) return '-';
   if (seconds < 60) return `${seconds}s`;
@@ -62,6 +110,13 @@ function formatDuration(seconds: number | null | undefined) {
 
 function formatPercent(value: number) {
   return `${value.toFixed(1)}%`;
+}
+
+function formatTimelineTime(value: string | null | undefined) {
+  if (!value) return '-';
+  const parsed = Date.parse(value);
+  if (!Number.isFinite(parsed)) return value;
+  return new Date(parsed).toLocaleTimeString();
 }
 
 export default function CampaignsPage() {
@@ -76,6 +131,9 @@ export default function CampaignsPage() {
   const [showArchived, setShowArchived] = useState(false);
   const [bulkLoading, setBulkLoading] = useState(false);
   const [retargetListIds, setRetargetListIds] = useState<string[]>([]);
+  const [activeCampaignActivity, setActiveCampaignActivity] = useState<CampaignActivity | null>(null);
+  const [activityLoading, setActivityLoading] = useState(false);
+  const [controllingId, setControllingId] = useState<string | null>(null);
 
   const loadAll = useCallback(async () => {
     const [campaignsRes, listsRes] = await Promise.all([
@@ -102,7 +160,7 @@ export default function CampaignsPage() {
   }, [loadAll]);
 
   const activeCampaign = useMemo(
-    () => campaigns.find((campaign) => campaign.status === 'QUEUED' || campaign.status === 'RETRYING' || campaign.status === 'SENDING') || null,
+    () => campaigns.find((campaign) => campaign.status === 'QUEUED' || campaign.status === 'RETRYING' || campaign.status === 'SENDING' || campaign.status === 'PAUSED') || null,
     [campaigns],
   );
   useEffect(() => {
@@ -114,6 +172,31 @@ export default function CampaignsPage() {
 
     return () => window.clearInterval(interval);
   }, [activeCampaign, loadAll]);
+
+  const loadCampaignActivity = useCallback(async (campaignId: string) => {
+    setActivityLoading(true);
+    const response = await fetch(`/api/campaigns/${campaignId}/activity`, { cache: 'no-store' });
+    const data = (await response.json().catch(() => ({}))) as CampaignActivity & { error?: string };
+    setActivityLoading(false);
+    if (!response.ok) {
+      toast.error('Campaign activity failed', data.error || 'The sending activity timeline could not be loaded.');
+      return;
+    }
+    setActiveCampaignActivity(data);
+  }, []);
+
+  useEffect(() => {
+    if (!activeCampaign) {
+      setActiveCampaignActivity(null);
+      return undefined;
+    }
+
+    void loadCampaignActivity(activeCampaign.id);
+    const interval = window.setInterval(() => {
+      void loadCampaignActivity(activeCampaign.id);
+    }, 2000);
+    return () => window.clearInterval(interval);
+  }, [activeCampaign?.id, loadCampaignActivity]);
 
   const sentCampaigns = useMemo(() => campaigns.filter((campaign) => campaign.status === 'SENT'), [campaigns]);
   const summary = useMemo(() => {
@@ -136,6 +219,8 @@ export default function CampaignsPage() {
         ? 6
         : activeCampaign.status === 'RETRYING'
         ? 6
+        : activeCampaign.status === 'PAUSED'
+        ? Math.min(99, activeCampaignActivity?.live.progressPercent || 8)
         : 0
     : 0;
 
@@ -342,6 +427,31 @@ export default function CampaignsPage() {
     await loadAll();
   }
 
+  async function controlCampaign(id: string, action: 'pause' | 'resume' | 'cancel') {
+    setControllingId(id);
+    const response = await fetch(`/api/campaigns/${id}/control`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ action }),
+    });
+    const data = (await response.json().catch(() => ({}))) as { error?: string; status?: string };
+    setControllingId(null);
+    if (!response.ok) {
+      toast.error('Campaign control failed', data.error || `The ${action} action could not be completed.`);
+      return;
+    }
+
+    toast.success(
+      action === 'pause' ? 'Campaign paused' : action === 'resume' ? 'Campaign resumed' : 'Campaign cancelled',
+      action === 'pause'
+        ? 'The worker will stop after the current chunk finishes.'
+        : action === 'resume'
+          ? 'The campaign was placed back into the queue.'
+          : 'The worker will stop after the current chunk finishes.',
+    );
+    await loadAll();
+  }
+
   return (
     <div className="overview">
       <header className="page-header">
@@ -384,21 +494,139 @@ export default function CampaignsPage() {
       />
 
       {activeCampaign ? (
-        <div className="card" style={{ padding: '1rem', marginBottom: '1rem' }}>
-          <h2 style={{ marginBottom: '0.5rem' }}>
-            {activeCampaign.status === 'QUEUED' ? 'Queued for Send' : activeCampaign.status === 'RETRYING' ? 'Retrying Send' : 'Sending Now'}
-          </h2>
-          <p className="form-note" style={{ marginBottom: '0.75rem' }}>
-            {activeCampaign.name} is {
-              activeCampaign.status === 'QUEUED'
-                ? 'queued to send'
-                : activeCampaign.status === 'RETRYING'
-                  ? 'waiting for a retry'
-                  : `sending ${activeCampaign.sentCount}/${activeCampaign.totalRecipients} emails`
-            }.
-          </p>
+        <div className="card campaigns-live-panel">
+          <div className="campaigns-live-panel__header">
+            <div>
+              <h2>
+                {activeCampaign.status === 'QUEUED' ? 'Queued for Send' : activeCampaign.status === 'RETRYING' ? 'Retrying Send' : activeCampaign.status === 'PAUSED' ? 'Paused Send' : 'Sending Now'}
+              </h2>
+              <p className="form-note">
+                {activeCampaign.name} is {
+                  activeCampaign.status === 'QUEUED'
+                    ? 'queued to send'
+                    : activeCampaign.status === 'RETRYING'
+                      ? 'waiting for a retry'
+                      : activeCampaign.status === 'PAUSED'
+                        ? 'paused and waiting for you to resume or cancel it'
+                      : `sending ${activeCampaign.sentCount}/${activeCampaign.totalRecipients} emails`
+                }.
+              </p>
+            </div>
+            <div className="campaigns-live-panel__chips">
+              <span className={`badge ${activeCampaign.status === 'SENDING' ? 'badge-success' : 'badge-warning'}`}>{activeCampaign.status}</span>
+              {activityLoading ? <span className="badge badge-info">Refreshing</span> : null}
+            </div>
+          </div>
+
           <div className="progress-track" aria-hidden="true">
-            <div className="progress-bar" style={{ width: `${activeCampaignProgress}%` }} />
+            <div
+              className="progress-bar"
+              style={{
+                width: `${activeCampaignActivity?.live.progressPercent ?? activeCampaignProgress}%`,
+              }}
+            />
+          </div>
+
+          <div className="stats-grid campaigns-live-panel__stats">
+            <div className="stat-card">
+              <h3>Processed</h3>
+              <p className="stat-value">{activeCampaignActivity?.live.processedCount ?? activeCampaign.sentCount + activeCampaign.failedCount}</p>
+            </div>
+            <div className="stat-card">
+              <h3>Remaining</h3>
+              <p className="stat-value">{activeCampaignActivity?.live.remainingCount ?? Math.max(0, activeCampaign.totalRecipients - activeCampaign.sentCount - activeCampaign.failedCount)}</p>
+            </div>
+            <div className="stat-card">
+              <h3>Throughput</h3>
+              <p className="stat-value">{(activeCampaignActivity?.live.throughputPerSecond ?? 0).toFixed(2)}/s</p>
+            </div>
+            <div className="stat-card">
+              <h3>Attempts</h3>
+              <p className="stat-value">{activeCampaignActivity?.latestJob?.attempts ?? 0}</p>
+            </div>
+          </div>
+
+          <div className="campaigns-live-panel__controls">
+            {activeCampaign.status === 'PAUSED' ? (
+              <button className="mini-btn" type="button" onClick={() => controlCampaign(activeCampaign.id, 'resume')} disabled={controllingId === activeCampaign.id}>
+                {controllingId === activeCampaign.id ? 'Working...' : 'Resume'}
+              </button>
+            ) : (
+              <button className="mini-btn" type="button" onClick={() => controlCampaign(activeCampaign.id, 'pause')} disabled={controllingId === activeCampaign.id}>
+                {controllingId === activeCampaign.id ? 'Working...' : 'Pause'}
+              </button>
+            )}
+            <button className="mini-btn danger" type="button" onClick={() => controlCampaign(activeCampaign.id, 'cancel')} disabled={controllingId === activeCampaign.id}>
+              {controllingId === activeCampaign.id ? 'Working...' : 'Cancel'}
+            </button>
+          </div>
+
+          <div className="cards-grid campaigns-live-panel__timeline-grid">
+            <section className="card campaigns-live-panel__section">
+              <h3>Queue Status</h3>
+              <div className="campaigns-live-panel__detail-list">
+                <div><span>Job</span><strong>{activeCampaignActivity?.latestJob?.id || '-'}</strong></div>
+                <div><span>Provider</span><strong>{activeCampaignActivity?.latestJob?.provider || activeCampaign.provider || 'mock'}</strong></div>
+                <div><span>Queued</span><strong>{formatTimelineTime(activeCampaignActivity?.latestJob?.requestedAt)}</strong></div>
+                <div><span>Started</span><strong>{formatTimelineTime(activeCampaignActivity?.latestJob?.startedAt)}</strong></div>
+                <div><span>Next retry</span><strong>{formatTimelineTime(activeCampaignActivity?.latestJob?.nextRunAt)}</strong></div>
+                <div><span>Last update</span><strong>{formatTimelineTime(activeCampaignActivity?.latestJob?.updatedAt)}</strong></div>
+              </div>
+              {activeCampaignActivity?.latestJob?.lastError ? (
+                <p className="campaigns-live-panel__error">{activeCampaignActivity.latestJob.lastError}</p>
+              ) : null}
+            </section>
+
+            <section className="card campaigns-live-panel__section">
+              <h3>Timeline</h3>
+              <div className="campaigns-live-timeline">
+                {activeCampaignActivity?.progressTimeline?.length ? (
+                  activeCampaignActivity.progressTimeline.slice(-8).reverse().map((point) => (
+                    <div key={point.id} className="campaigns-live-timeline__item">
+                      <div className="campaigns-live-timeline__time">{formatTimelineTime(point.createdAt)}</div>
+                      <div className="campaigns-live-timeline__body">
+                        <strong>{point.eventType.replace(/_/g, ' ')}</strong>
+                        <span>
+                          {point.sentCount} sent, {point.failedCount} failed, {point.skippedCount} skipped
+                          {point.throughputPerSecond > 0 ? `, ${point.throughputPerSecond.toFixed(2)}/s` : ''}
+                        </span>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="campaigns-live-timeline__item">
+                    <div className="campaigns-live-timeline__body">
+                      <strong>Waiting for progress</strong>
+                      <span>The worker will add checkpoints as the send advances.</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </section>
+
+            <section className="card campaigns-live-panel__section">
+              <h3>System Events</h3>
+              <div className="campaigns-live-timeline">
+                {activeCampaignActivity?.systemEvents?.length ? (
+                  activeCampaignActivity.systemEvents.slice(0, 8).map((event) => (
+                    <div key={event.id} className="campaigns-live-timeline__item">
+                      <div className="campaigns-live-timeline__time">{formatTimelineTime(event.createdAt)}</div>
+                      <div className="campaigns-live-timeline__body">
+                        <strong>{event.level} · {event.source}</strong>
+                        <span>{event.message}</span>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="campaigns-live-timeline__item">
+                    <div className="campaigns-live-timeline__body">
+                      <strong>No events yet</strong>
+                      <span>Queue and delivery events will appear here while the send is running.</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </section>
           </div>
         </div>
       ) : null}
@@ -518,8 +746,8 @@ export default function CampaignsPage() {
                     </div>
                   </td>
                   <td data-label="Status" className="campaigns-table__status">
-                    <div className={`badge ${c.status === 'SENT' ? 'badge-success' : c.status === 'FAILED' || c.status === 'QUEUED' || c.status === 'RETRYING' ? 'badge-warning' : ''}`}>{c.status}</div>
-                    <div className="campaigns-table__meta campaigns-table__meta--compact">{c.status === 'QUEUED' || c.status === 'RETRYING' ? c.status.toLowerCase() : c.provider || 'mock'}</div>
+                    <div className={`badge ${c.status === 'SENT' ? 'badge-success' : c.status === 'FAILED' || c.status === 'QUEUED' || c.status === 'RETRYING' || c.status === 'PAUSED' || c.status === 'CANCELLED' ? 'badge-warning' : ''}`}>{c.status}</div>
+                    <div className="campaigns-table__meta campaigns-table__meta--compact">{c.status === 'QUEUED' || c.status === 'RETRYING' || c.status === 'PAUSED' || c.status === 'CANCELLED' ? c.status.toLowerCase() : c.provider || 'mock'}</div>
                   </td>
                   <td data-label="Progress" className="campaigns-table__progress">
                     <div className="progress-track" aria-hidden="true">
@@ -537,7 +765,7 @@ export default function CampaignsPage() {
                       {c.startedAt ? `Started ${new Date(c.startedAt).toLocaleString()}` : '-'}
                     </div>
                     <div className="campaigns-table__meta campaigns-table__meta--compact">
-                      {c.finishedAt ? `Finished ${new Date(c.finishedAt).toLocaleString()}` : c.status === 'QUEUED' ? 'Queued' : c.status === 'RETRYING' ? 'Retrying' : c.status === 'SENDING' ? 'In progress' : '-'}
+                      {c.finishedAt ? `Finished ${new Date(c.finishedAt).toLocaleString()}` : c.status === 'QUEUED' ? 'Queued' : c.status === 'RETRYING' ? 'Retrying' : c.status === 'PAUSED' ? 'Paused' : c.status === 'CANCELLED' ? 'Cancelled' : c.status === 'SENDING' ? 'In progress' : '-'}
                     </div>
                     <div className="campaigns-table__meta campaigns-table__meta--compact">
                       Duration: {formatDuration(c.durationSeconds)}
@@ -549,7 +777,7 @@ export default function CampaignsPage() {
                         className="mini-btn"
                         type="button"
                         onClick={() => router.push(`/dashboard/campaigns/create?campaignId=${c.id}`)}
-                        disabled={!canManageCampaign || c.status === 'QUEUED' || c.status === 'RETRYING' || c.status === 'SENDING' || Boolean(c.isArchived)}
+                        disabled={!canManageCampaign || c.status === 'QUEUED' || c.status === 'RETRYING' || c.status === 'SENDING' || c.status === 'PAUSED' || Boolean(c.isArchived)}
                       >
                         Edit Draft
                       </button>
@@ -560,8 +788,8 @@ export default function CampaignsPage() {
                       <Link className="mini-btn" href={`/dashboard/analytics?campaignId=${c.id}`}>Stats</Link>
                     </div>
                     <div className="campaigns-table__action-row campaigns-table__action-row--select">
-                      <select className="status-select" value={c.status} onChange={(e) => updateStatus(c, e.target.value)} disabled={!canManageCampaign || c.status === 'QUEUED' || c.status === 'RETRYING' || c.status === 'SENDING' || Boolean(c.isArchived)}>
-                        <option>DRAFT</option><option>SCHEDULED</option><option>QUEUED</option><option>RETRYING</option><option>SENDING</option><option>SENT</option><option>FAILED</option><option>SKIPPED</option>
+                      <select className="status-select" value={c.status} onChange={(e) => updateStatus(c, e.target.value)} disabled={!canManageCampaign || c.status === 'QUEUED' || c.status === 'RETRYING' || c.status === 'SENDING' || c.status === 'PAUSED' || Boolean(c.isArchived)}>
+                        <option>DRAFT</option><option>SCHEDULED</option><option>QUEUED</option><option>RETRYING</option><option>SENDING</option><option>PAUSED</option><option>CANCELLED</option><option>SENT</option><option>FAILED</option><option>SKIPPED</option>
                       </select>
                     </div>
                     <div className="campaigns-table__action-row">
@@ -569,11 +797,26 @@ export default function CampaignsPage() {
                         className="mini-btn"
                         type="button"
                         onClick={() => sendCampaign(c.id)}
-                        disabled={!canManageCampaign || sendingId === c.id || c.status === 'QUEUED' || c.status === 'RETRYING' || c.status === 'SENDING' || Boolean(c.isArchived)}
+                        disabled={!canManageCampaign || sendingId === c.id || c.status === 'QUEUED' || c.status === 'RETRYING' || c.status === 'SENDING' || c.status === 'PAUSED' || Boolean(c.isArchived)}
                       >
-                        {sendingId === c.id ? 'Sending...' : c.status === 'QUEUED' || c.status === 'RETRYING' || c.status === 'SENDING' ? c.status : 'Send'}
+                        {sendingId === c.id ? 'Sending...' : c.status === 'QUEUED' || c.status === 'RETRYING' || c.status === 'SENDING' || c.status === 'PAUSED' ? c.status : 'Send'}
                       </button>
-                      <button className="mini-btn danger" type="button" onClick={() => deleteCampaign(c.id)} disabled={!canManageCampaign || c.status === 'QUEUED' || c.status === 'RETRYING' || c.status === 'SENDING'}>Delete</button>
+                      {c.status === 'PAUSED' ? (
+                        <button className="mini-btn" type="button" onClick={() => controlCampaign(c.id, 'resume')} disabled={!canManageCampaign || controllingId === c.id}>
+                          {controllingId === c.id ? 'Working...' : 'Resume'}
+                        </button>
+                      ) : c.status === 'QUEUED' || c.status === 'RETRYING' || c.status === 'SENDING' ? (
+                        <button className="mini-btn" type="button" onClick={() => controlCampaign(c.id, 'pause')} disabled={!canManageCampaign || controllingId === c.id}>
+                          {controllingId === c.id ? 'Working...' : 'Pause'}
+                        </button>
+                      ) : null}
+                      {(c.status === 'QUEUED' || c.status === 'RETRYING' || c.status === 'SENDING' || c.status === 'PAUSED') ? (
+                        <button className="mini-btn danger" type="button" onClick={() => controlCampaign(c.id, 'cancel')} disabled={!canManageCampaign || controllingId === c.id}>
+                          {controllingId === c.id ? 'Working...' : 'Cancel'}
+                        </button>
+                      ) : (
+                        <button className="mini-btn danger" type="button" onClick={() => deleteCampaign(c.id)} disabled={!canManageCampaign || c.status === 'QUEUED' || c.status === 'RETRYING' || c.status === 'SENDING' || c.status === 'PAUSED'}>Delete</button>
+                      )}
                       <button
                         className="mini-btn"
                         type="button"
@@ -588,7 +831,7 @@ export default function CampaignsPage() {
                           toast.success('Campaign reset', 'The campaign was reset to a fresh state.');
                           await loadAll();
                         }}
-                        disabled={!canManageCampaign || c.status === 'QUEUED' || c.status === 'RETRYING' || c.status === 'SENDING' || Boolean(c.isArchived)}
+                        disabled={!canManageCampaign || c.status === 'QUEUED' || c.status === 'RETRYING' || c.status === 'SENDING' || c.status === 'PAUSED' || Boolean(c.isArchived)}
                       >
                         Reset
                       </button>

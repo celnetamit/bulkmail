@@ -46,6 +46,7 @@ type CampaignSendJobRow = {
 };
 
 type CampaignSendJobResult = {
+  outcome: 'SENT' | 'FAILED' | 'SKIPPED' | 'PAUSED' | 'CANCELLED';
   provider: string;
   sentCount: number;
   failedCount: number;
@@ -56,6 +57,8 @@ type CampaignSendJobResult = {
 };
 
 const SENDABLE_STATUSES = new Set(['DRAFT', 'SCHEDULED']);
+const ACTIVE_JOB_STATUSES = new Set(['QUEUED', 'RUNNING', 'RETRYING', 'PAUSED']);
+const NON_EDITABLE_CAMPAIGN_STATUSES = new Set(['QUEUED', 'RETRYING', 'SENDING', 'PAUSED']);
 const MAX_RETRY_ATTEMPTS = 3;
 const WORKER_INTERVAL_MS = 1500;
 const DEFAULT_STALE_RUNNING_MS = 30 * 60 * 1000;
@@ -251,6 +254,8 @@ function isRetryableSendError(error: unknown) {
 }
 
 function getCampaignFinalStatus(result: CampaignSendJobResult) {
+  if (result.outcome === 'PAUSED') return 'PAUSED';
+  if (result.outcome === 'CANCELLED') return 'CANCELLED';
   if (result.sentCount === 0 && result.failedCount === 0 && result.skippedCount > 0) {
     return 'SKIPPED';
   }
@@ -260,6 +265,18 @@ function getCampaignFinalStatus(result: CampaignSendJobResult) {
   }
 
   return 'SENT';
+}
+
+function getJobStatus(jobId: string) {
+  const job = queryRow<{ status: string }>(
+    `SELECT status FROM "CampaignSendJob" WHERE id = ? LIMIT 1`,
+    [jobId],
+  );
+  return String(job?.status || 'RUNNING').toUpperCase();
+}
+
+export function isCampaignLockedForEditing(status: string | null | undefined) {
+  return NON_EDITABLE_CAMPAIGN_STATUSES.has(String(status || '').toUpperCase());
 }
 
 export function queueCampaignSendJob(userId: string, campaignId: string) {
@@ -281,7 +298,7 @@ export function queueCampaignSendJob(userId: string, campaignId: string) {
     `
       SELECT id, status
       FROM "CampaignSendJob"
-      WHERE "campaignId" = ? AND status IN ('QUEUED', 'RUNNING', 'RETRYING')
+      WHERE "campaignId" = ? AND status IN ('QUEUED', 'RUNNING', 'RETRYING', 'PAUSED')
       LIMIT 1
     `,
     [campaignId],
@@ -355,6 +372,146 @@ export function queueCampaignSendJob(userId: string, campaignId: string) {
   };
 }
 
+export function controlCampaignSendJob(
+  userId: string,
+  campaignId: string,
+  action: 'pause' | 'resume' | 'cancel',
+) {
+  ensureCampaignSendQueueSchema();
+
+  const campaign = loadCampaign(campaignId, userId);
+  if (!campaign) {
+    throw new Error('Campaign not found.');
+  }
+
+  const latestJob = queryRow<CampaignSendJobRow>(
+    `
+      SELECT
+        id, "campaignId", "userId", status, attempts, provider,
+        "totalRecipients", "sentCount", "failedCount", "skippedCount",
+        "quotaSkippedCount", "remainingToday", "requestedAt", "startedAt",
+        "nextRunAt", "finishedAt", "lastError", "skipReason", "createdAt", "updatedAt"
+      FROM "CampaignSendJob"
+      WHERE "campaignId" = ?
+      ORDER BY "createdAt" DESC
+      LIMIT 1
+    `,
+    [campaignId],
+  );
+
+  if (!latestJob) {
+    throw new Error('No queued send job was found for this campaign.');
+  }
+
+  const now = new Date().toISOString();
+
+  if (action === 'pause') {
+    if (!['QUEUED', 'RETRYING', 'RUNNING'].includes(latestJob.status)) {
+      throw new Error('Only queued, retrying, or running campaigns can be paused.');
+    }
+
+    executeSql(
+      `
+        UPDATE "CampaignSendJob"
+        SET status = 'PAUSED', "nextRunAt" = NULL, "updatedAt" = CURRENT_TIMESTAMP, "skipReason" = NULL
+        WHERE id = ? AND status IN ('QUEUED', 'RETRYING', 'RUNNING')
+      `,
+      [latestJob.id],
+    );
+    executeSql(
+      `
+        UPDATE "Campaign"
+        SET status = 'PAUSED', "updatedAt" = CURRENT_TIMESTAMP
+        WHERE id = ? AND "userId" = ?
+      `,
+      [campaignId, userId],
+    );
+    recordSystemEvent({
+      level: 'INFO',
+      source: 'campaign_send_control',
+      message: 'Campaign send paused by operator.',
+      campaignId,
+      userId,
+      details: { jobId: latestJob.id, action },
+    });
+    return { jobId: latestJob.id, status: 'PAUSED' as const };
+  }
+
+  if (action === 'resume') {
+    if (latestJob.status !== 'PAUSED') {
+      throw new Error('Only paused campaigns can be resumed.');
+    }
+
+    executeSql(
+      `
+        UPDATE "CampaignSendJob"
+        SET
+          status = 'QUEUED',
+          "nextRunAt" = ?,
+          "finishedAt" = NULL,
+          "updatedAt" = CURRENT_TIMESTAMP,
+          "lastError" = NULL,
+          "skipReason" = NULL
+        WHERE id = ? AND status = 'PAUSED'
+      `,
+      [now, latestJob.id],
+    );
+    executeSql(
+      `
+        UPDATE "Campaign"
+        SET status = 'QUEUED', "updatedAt" = CURRENT_TIMESTAMP
+        WHERE id = ? AND "userId" = ?
+      `,
+      [campaignId, userId],
+    );
+    recordSystemEvent({
+      level: 'INFO',
+      source: 'campaign_send_control',
+      message: 'Campaign send resumed by operator.',
+      campaignId,
+      userId,
+      details: { jobId: latestJob.id, action },
+    });
+    startCampaignSendQueueWorker();
+    return { jobId: latestJob.id, status: 'QUEUED' as const };
+  }
+
+  if (!['QUEUED', 'RETRYING', 'RUNNING', 'PAUSED'].includes(latestJob.status)) {
+    throw new Error('Only queued, retrying, running, or paused campaigns can be cancelled.');
+  }
+
+  executeSql(
+    `
+      UPDATE "CampaignSendJob"
+      SET
+        status = 'CANCELLED',
+        "nextRunAt" = NULL,
+        "finishedAt" = CASE WHEN status IN ('QUEUED', 'RETRYING', 'PAUSED') THEN ? ELSE "finishedAt" END,
+        "updatedAt" = CURRENT_TIMESTAMP,
+        "skipReason" = 'Campaign send cancelled by operator.'
+      WHERE id = ? AND status IN ('QUEUED', 'RETRYING', 'RUNNING', 'PAUSED')
+    `,
+    [now, latestJob.id],
+  );
+  executeSql(
+    `
+      UPDATE "Campaign"
+      SET status = 'CANCELLED', "updatedAt" = CURRENT_TIMESTAMP, "finishedAt" = COALESCE("finishedAt", ?)
+      WHERE id = ? AND "userId" = ?
+    `,
+    [now, campaignId, userId],
+  );
+  recordSystemEvent({
+    level: 'WARN',
+    source: 'campaign_send_control',
+    message: 'Campaign send cancelled by operator.',
+    campaignId,
+    userId,
+    details: { jobId: latestJob.id, action },
+  });
+  return { jobId: latestJob.id, status: 'CANCELLED' as const };
+}
+
 async function processQueuedCampaignSendJob(job: CampaignSendJobRow) {
   const campaign = loadCampaign(job.campaignId, job.userId);
   if (!campaign) {
@@ -402,6 +559,12 @@ async function processQueuedCampaignSendJob(job: CampaignSendJobRow) {
       bodyHtml: campaign.bodyHtml,
       appUrl,
       contacts,
+      getControlState: async () => {
+        const status = getJobStatus(job.id);
+        if (status === 'PAUSED') return 'PAUSED';
+        if (status === 'CANCELLED') return 'CANCELLED';
+        return 'RUNNING';
+      },
     });
 
     const finalStatus = getCampaignFinalStatus(result);
