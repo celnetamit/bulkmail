@@ -1,6 +1,6 @@
 'use client';
 
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useState } from 'react';
 
 type SummaryResponse = {
   metrics: {
@@ -34,20 +34,31 @@ type SummaryResponse = {
       unit: 'percent' | 'count';
       detail: string;
     }>;
-    eventDetails: Array<{
-      id: string;
-      type: string;
-      provider: string | null;
-      email: string | null;
-      contactStatus: string | null;
-      campaignId: string | null;
-      campaignName: string | null;
-      listId: string | null;
-      listName: string | null;
-      providerEventId: string | null;
-      providerMessageId: string | null;
-      createdAt: string;
-    }>;
+  };
+  campaigns: Array<{ id: string; name: string; listId: string; ownerEmail?: string; ownerName?: string | null; ownerRole?: string }>;
+  lists: Array<{ id: string; name: string; ownerEmail?: string; ownerName?: string | null; ownerRole?: string }>;
+};
+
+type EventDetailsResponse = {
+  eventDetails: Array<{
+    id: string;
+    type: string;
+    provider: string | null;
+    email: string | null;
+    contactStatus: string | null;
+    campaignId: string | null;
+    campaignName: string | null;
+    listId: string | null;
+    listName: string | null;
+    providerEventId: string | null;
+    providerMessageId: string | null;
+    createdAt: string;
+  }>;
+  pagination: {
+    page: number;
+    pageSize: number;
+    total: number;
+    totalPages: number;
   };
   campaigns: Array<{ id: string; name: string; listId: string; ownerEmail?: string; ownerName?: string | null; ownerRole?: string }>;
   lists: Array<{ id: string; name: string; ownerEmail?: string; ownerName?: string | null; ownerRole?: string }>;
@@ -62,12 +73,13 @@ function detectionBadgeClass(status: SummaryResponse['metrics']['detections'][nu
 
 export default function AnalyticsPage() {
   const [summary, setSummary] = useState<SummaryResponse | null>(null);
+  const [events, setEvents] = useState<EventDetailsResponse | null>(null);
   const [campaignId, setCampaignId] = useState('');
   const [listId, setListId] = useState('');
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
 
-  async function load() {
+  const loadSummary = useCallback(async () => {
     const params = new URLSearchParams();
     if (campaignId) params.set('campaignId', campaignId);
     if (listId) params.set('listId', listId);
@@ -77,28 +89,47 @@ export default function AnalyticsPage() {
     const response = await fetch(`/api/analytics/summary?${params.toString()}`, { cache: 'no-store' });
     const data = (await response.json()) as SummaryResponse;
     setSummary(data);
-  }
+  }, [campaignId, listId, from, to]);
+
+  const loadEvents = useCallback(async (nextPage = 1) => {
+    const params = new URLSearchParams();
+    if (campaignId) params.set('campaignId', campaignId);
+    if (listId) params.set('listId', listId);
+    if (from) params.set('from', from);
+    if (to) params.set('to', to);
+    params.set('page', String(nextPage));
+    params.set('pageSize', '25');
+
+    const response = await fetch(`/api/analytics/events?${params.toString()}`, { cache: 'no-store' });
+    const data = (await response.json()) as EventDetailsResponse;
+    setEvents(data);
+  }, [campaignId, listId, from, to]);
 
   useEffect(() => {
-    load();
-  }, []);
+    void loadSummary();
+    void loadEvents(1);
+  }, [loadSummary, loadEvents]);
 
   function applyFilters(event: FormEvent) {
     event.preventDefault();
-    load();
+    void loadSummary();
+    void loadEvents(1);
   }
 
   const metrics = summary?.metrics;
-  const eventDetails = metrics?.eventDetails || [];
-  const openedEvents = eventDetails.filter((event) => event.type === 'OPENED');
-  const bouncedEvents = eventDetails.filter((event) => event.type === 'BOUNCED');
-  const unsubscribedEvents = eventDetails.filter((event) => event.type === 'UNSUBSCRIBED');
-  const deliveredEvents = eventDetails.filter((event) => event.type === 'DELIVERED');
+  const eventDetails = events?.eventDetails || [];
+  const eventPagination = events?.pagination;
+  const totalEventPages = eventPagination?.totalPages || 1;
 
   function formatEventTime(value: string) {
     const parsed = Date.parse(value);
     if (!Number.isFinite(parsed)) return value;
     return new Date(parsed).toLocaleString();
+  }
+
+  function goToEventPage(nextPage: number) {
+    const bounded = Math.min(Math.max(1, nextPage), totalEventPages);
+    void loadEvents(bounded);
   }
 
   return (
@@ -121,7 +152,7 @@ export default function AnalyticsPage() {
           </select>
           <select className="status-select" value={listId} onChange={(e) => setListId(e.target.value)}>
             <option value="">All Lists</option>
-            {summary?.lists.map((list) => (
+            {(events?.lists || summary?.lists || []).map((list) => (
               <option key={list.id} value={list.id}>
                 {list.name}{list.ownerEmail ? ` - ${list.ownerName || list.ownerEmail}` : ''}
               </option>
@@ -200,8 +231,23 @@ export default function AnalyticsPage() {
       <div className="card" style={{ padding: '1rem', marginTop: '1rem' }}>
         <h2>Recipient Event Details</h2>
         <p className="form-note" style={{ marginBottom: '0.75rem' }}>
-          This table shows the actual recipient email addresses behind the tracked events in the current filter window.
+          This table shows a paginated slice of the tracked events behind the current filter window.
         </p>
+        <div className="pagination-controls" style={{ marginBottom: '0.75rem' }}>
+          <span>
+            Page {eventPagination?.page || 1} of {eventPagination?.totalPages || 1}
+            {' '}
+            {eventPagination ? `(${eventPagination.total} events total)` : ''}
+          </span>
+          <div className="pagination-actions">
+            <button className="mini-btn" type="button" onClick={() => goToEventPage((eventPagination?.page || 1) - 1)} disabled={(eventPagination?.page || 1) <= 1}>
+              Previous
+            </button>
+            <button className="mini-btn" type="button" onClick={() => goToEventPage((eventPagination?.page || 1) + 1)} disabled={(eventPagination?.page || 1) >= totalEventPages}>
+              Next
+            </button>
+          </div>
+        </div>
         <div className="table-wrap">
           <table className="data-table">
             <thead>
@@ -231,80 +277,6 @@ export default function AnalyticsPage() {
               ))}
             </tbody>
           </table>
-        </div>
-      </div>
-
-      <div className="stats-grid" style={{ marginTop: '1rem' }}>
-        <div className="card" style={{ padding: '1rem' }}>
-          <h2 style={{ marginBottom: '0.75rem' }}>Opened Emails</h2>
-          <div className="table-wrap">
-            <table className="data-table">
-              <thead><tr><th>Email</th><th>Campaign</th><th>Time</th></tr></thead>
-              <tbody>
-                {openedEvents.length === 0 ? <tr><td colSpan={3}>No opened emails yet.</td></tr> : openedEvents.slice(0, 50).map((event) => (
-                  <tr key={event.id}>
-                    <td>{event.email || '-'}</td>
-                    <td>{event.campaignName || '-'}</td>
-                    <td>{formatEventTime(event.createdAt)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        <div className="card" style={{ padding: '1rem' }}>
-          <h2 style={{ marginBottom: '0.75rem' }}>Bounced Emails</h2>
-          <div className="table-wrap">
-            <table className="data-table">
-              <thead><tr><th>Email</th><th>Campaign</th><th>Time</th></tr></thead>
-              <tbody>
-                {bouncedEvents.length === 0 ? <tr><td colSpan={3}>No bounced emails yet.</td></tr> : bouncedEvents.slice(0, 50).map((event) => (
-                  <tr key={event.id}>
-                    <td>{event.email || '-'}</td>
-                    <td>{event.campaignName || '-'}</td>
-                    <td>{formatEventTime(event.createdAt)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        <div className="card" style={{ padding: '1rem' }}>
-          <h2 style={{ marginBottom: '0.75rem' }}>Unsubscribed Emails</h2>
-          <div className="table-wrap">
-            <table className="data-table">
-              <thead><tr><th>Email</th><th>Campaign</th><th>Time</th></tr></thead>
-              <tbody>
-                {unsubscribedEvents.length === 0 ? <tr><td colSpan={3}>No unsubscribed emails yet.</td></tr> : unsubscribedEvents.slice(0, 50).map((event) => (
-                  <tr key={event.id}>
-                    <td>{event.email || '-'}</td>
-                    <td>{event.campaignName || '-'}</td>
-                    <td>{formatEventTime(event.createdAt)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        <div className="card" style={{ padding: '1rem' }}>
-          <h2 style={{ marginBottom: '0.75rem' }}>Delivered Emails</h2>
-          <div className="table-wrap">
-            <table className="data-table">
-              <thead><tr><th>Email</th><th>Campaign</th><th>Time</th></tr></thead>
-              <tbody>
-                {deliveredEvents.length === 0 ? <tr><td colSpan={3}>No delivered emails yet.</td></tr> : deliveredEvents.slice(0, 50).map((event) => (
-                  <tr key={event.id}>
-                    <td>{event.email || '-'}</td>
-                    <td>{event.campaignName || '-'}</td>
-                    <td>{formatEventTime(event.createdAt)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
         </div>
       </div>
     </div>

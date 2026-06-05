@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS "User" (
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS "User_email_key" ON "User" ("email");
+CREATE INDEX IF NOT EXISTS "List_userId_createdAt_idx" ON "List" ("userId", "createdAt");
 
 CREATE TABLE IF NOT EXISTS "Team" (
   "id" TEXT NOT NULL PRIMARY KEY,
@@ -150,6 +151,8 @@ CREATE TABLE IF NOT EXISTS "Contact" (
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS "Contact_email_listId_key" ON "Contact" ("email", "listId");
+CREATE INDEX IF NOT EXISTS "Contact_listId_status_idx" ON "Contact" ("listId", "status");
+CREATE INDEX IF NOT EXISTS "Contact_listId_createdAt_idx" ON "Contact" ("listId", "createdAt");
 
 CREATE TABLE IF NOT EXISTS "Campaign" (
   "id" TEXT NOT NULL PRIMARY KEY,
@@ -175,6 +178,8 @@ CREATE TABLE IF NOT EXISTS "Campaign" (
   CONSTRAINT "Campaign_listId_fkey" FOREIGN KEY ("listId") REFERENCES "List" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
   CONSTRAINT "Campaign_templateId_fkey" FOREIGN KEY ("templateId") REFERENCES "Template" ("id") ON DELETE SET NULL ON UPDATE CASCADE
 );
+
+CREATE INDEX IF NOT EXISTS "Campaign_userId_createdAt_idx" ON "Campaign" ("userId", "createdAt");
 
 CREATE TABLE IF NOT EXISTS "CampaignSendJob" (
   "id" TEXT NOT NULL PRIMARY KEY,
@@ -203,6 +208,7 @@ CREATE TABLE IF NOT EXISTS "CampaignSendJob" (
 
 CREATE INDEX IF NOT EXISTS "CampaignSendJob_status_requestedAt_idx" ON "CampaignSendJob" ("status", "requestedAt");
 CREATE INDEX IF NOT EXISTS "CampaignSendJob_campaignId_idx" ON "CampaignSendJob" ("campaignId");
+CREATE INDEX IF NOT EXISTS "CampaignSendJob_campaignId_createdAt_idx" ON "CampaignSendJob" ("campaignId", "createdAt");
 
 CREATE TABLE IF NOT EXISTS "CampaignList" (
   "id" TEXT NOT NULL PRIMARY KEY,
@@ -230,6 +236,10 @@ CREATE TABLE IF NOT EXISTS "Event" (
   CONSTRAINT "Event_contactId_fkey" FOREIGN KEY ("contactId") REFERENCES "Contact" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
   CONSTRAINT "Event_campaignId_fkey" FOREIGN KEY ("campaignId") REFERENCES "Campaign" ("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS "Event_providerEventId_key" ON "Event" ("providerEventId");
+CREATE INDEX IF NOT EXISTS "Event_campaignId_createdAt_idx" ON "Event" ("campaignId", "createdAt");
+CREATE INDEX IF NOT EXISTS "Event_campaignId_type_idx" ON "Event" ("campaignId", "type");
 
 CREATE TABLE IF NOT EXISTS "ResourceMetric" (
   "id" TEXT NOT NULL PRIMARY KEY,
@@ -280,6 +290,7 @@ CREATE TABLE IF NOT EXISTS "SystemEvent" (
 CREATE INDEX IF NOT EXISTS "SystemEvent_createdAt_idx" ON "SystemEvent" ("createdAt");
 CREATE INDEX IF NOT EXISTS "SystemEvent_level_createdAt_idx" ON "SystemEvent" ("level", "createdAt");
 CREATE INDEX IF NOT EXISTS "SystemEvent_source_createdAt_idx" ON "SystemEvent" ("source", "createdAt");
+CREATE INDEX IF NOT EXISTS "SystemEvent_campaignId_createdAt_idx" ON "SystemEvent" ("campaignId", "createdAt");
 
 CREATE TABLE IF NOT EXISTS "AiAgentProfile" (
   "id" TEXT NOT NULL PRIMARY KEY,

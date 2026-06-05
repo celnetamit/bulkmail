@@ -28,6 +28,16 @@ export type AnalyticsEventDetail = {
   createdAt: string;
 };
 
+export type AnalyticsEventDetailsPage = {
+  eventDetails: AnalyticsEventDetail[];
+  pagination: {
+    page: number;
+    pageSize: number;
+    total: number;
+    totalPages: number;
+  };
+};
+
 function getMaxRateStatus(rate: number, sampleSize: number, warningAt: number, criticalAt: number, minimumSample = 10): AnalyticsDetectionStatus {
   if (sampleSize < minimumSample) return 'idle';
   if (rate >= criticalAt) return 'critical';
@@ -105,7 +115,7 @@ function buildDetections(metrics: {
   ];
 }
 
-export async function getUserAnalyticsSummary(userId: string, options?: { campaignId?: string; listId?: string; from?: Date | null; to?: Date | null; role?: string; }) {
+function buildAnalyticsFilters(userId: string, options?: { campaignId?: string; listId?: string; from?: Date | null; to?: Date | null; role?: string; }) {
   const role = options?.role || 'USER';
   const campaignOwnerScope = buildOwnerScopeForRole(userId, role, 'c."userId"');
   const filters: string[] = [campaignOwnerScope.clause];
@@ -130,6 +140,39 @@ export async function getUserAnalyticsSummary(userId: string, options?: { campai
     filters.push('e."createdAt" <= ?');
     params.push(options.to.toISOString());
   }
+
+  return { filters, params, campaignOwnerScope, role };
+}
+
+function buildContactFilters(userId: string, options?: { campaignId?: string; listId?: string; role?: string; }) {
+  const role = options?.role || 'USER';
+  const contactOwnerScope = buildOwnerScopeForRole(userId, role, 'l."userId"');
+  const filters: string[] = [contactOwnerScope.clause];
+  const params: unknown[] = [...contactOwnerScope.params];
+
+  if (options?.listId) {
+    filters.push('l.id = ?');
+    params.push(options.listId);
+  } else if (options?.campaignId) {
+    filters.push(`
+      l.id IN (
+        SELECT "listId" FROM "CampaignList" WHERE "campaignId" = ?
+        UNION
+        SELECT l.id
+        FROM "List" l
+        INNER JOIN "Campaign" c ON c."listId" = l.id
+        WHERE c.id = ? AND ${contactOwnerScope.clause}
+      )
+    `);
+    params.push(options.campaignId, options.campaignId, ...contactOwnerScope.params);
+  }
+
+  return { filters, params };
+}
+
+export async function getUserAnalyticsSummary(userId: string, options?: { campaignId?: string; listId?: string; from?: Date | null; to?: Date | null; role?: string; }) {
+  const { filters, params } = buildAnalyticsFilters(userId, options);
+  const { filters: contactFilters, params: contactParams } = buildContactFilters(userId, options);
 
   const eventRows = queryRows<{ type: string; count: number }>(
     `
@@ -174,27 +217,6 @@ export async function getUserAnalyticsSummary(userId: string, options?: { campai
     `,
     params,
   );
-
-  const contactOwnerScope = buildOwnerScopeForRole(userId, role, 'l."userId"');
-  const contactFilters: string[] = [contactOwnerScope.clause];
-  const contactParams: unknown[] = [...contactOwnerScope.params];
-
-  if (options?.listId) {
-    contactFilters.push('l.id = ?');
-    contactParams.push(options.listId);
-  } else if (options?.campaignId) {
-    contactFilters.push(`
-      l.id IN (
-        SELECT "listId" FROM "CampaignList" WHERE "campaignId" = ?
-        UNION
-        SELECT l.id
-        FROM "List" l
-        INNER JOIN "Campaign" c ON c."listId" = l.id
-        WHERE c.id = ? AND ${campaignOwnerScope.clause}
-      )
-    `);
-    contactParams.push(options.campaignId, options.campaignId, ...campaignOwnerScope.params);
-  }
 
   const contactStats = queryRow<{
     totalContacts: number;
@@ -246,6 +268,46 @@ export async function getUserAnalyticsSummary(userId: string, options?: { campai
     providerBlockRate,
   };
 
+  return {
+    ...metrics,
+    suppressedContacts: (contactStats?.bouncedContacts || 0) + (contactStats?.unsubscribedContacts || 0),
+    contactStats: {
+      total: contactStats?.totalContacts || 0,
+      subscribed: contactStats?.subscribedContacts || 0,
+      bounced: contactStats?.bouncedContacts || 0,
+      unsubscribed: contactStats?.unsubscribedContacts || 0,
+    },
+    detections: buildDetections(metrics),
+  };
+}
+
+export async function getUserAnalyticsEventDetails(
+  userId: string,
+  options?: {
+    campaignId?: string;
+    listId?: string;
+    from?: Date | null;
+    to?: Date | null;
+    role?: string;
+    page?: number;
+    pageSize?: number;
+  },
+): Promise<AnalyticsEventDetailsPage> {
+  const { filters, params } = buildAnalyticsFilters(userId, options);
+  const pageSize = Math.min(100, Math.max(1, Math.floor(options?.pageSize || 25)));
+  const page = Math.max(1, Math.floor(options?.page || 1));
+  const offset = (page - 1) * pageSize;
+
+  const totalRow = queryRow<{ total: number }>(
+    `
+      SELECT COUNT(*) as total
+      FROM "Event" e
+      INNER JOIN "Campaign" c ON c.id = e."campaignId"
+      WHERE ${filters.join(' AND ')}
+    `,
+    params,
+  );
+
   const eventDetails = queryRows<AnalyticsEventDetail>(
     `
       SELECT
@@ -267,21 +329,18 @@ export async function getUserAnalyticsSummary(userId: string, options?: { campai
       LEFT JOIN "List" l ON l.id = ct."listId"
       WHERE ${filters.join(' AND ')}
       ORDER BY e."createdAt" DESC
-      LIMIT 250
+      LIMIT ? OFFSET ?
     `,
-    params,
+    [...params, pageSize, offset],
   );
 
   return {
-    ...metrics,
-    suppressedContacts: (contactStats?.bouncedContacts || 0) + (contactStats?.unsubscribedContacts || 0),
-    contactStats: {
-      total: contactStats?.totalContacts || 0,
-      subscribed: contactStats?.subscribedContacts || 0,
-      bounced: contactStats?.bouncedContacts || 0,
-      unsubscribed: contactStats?.unsubscribedContacts || 0,
-    },
-    detections: buildDetections(metrics),
     eventDetails,
+    pagination: {
+      page,
+      pageSize,
+      total: totalRow?.total || 0,
+      totalPages: Math.max(1, Math.ceil((totalRow?.total || 0) / pageSize)),
+    },
   };
 }

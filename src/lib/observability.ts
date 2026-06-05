@@ -87,6 +87,7 @@ export function ensureObservabilitySchema() {
   executeSql('CREATE INDEX IF NOT EXISTS "SystemEvent_createdAt_idx" ON "SystemEvent" ("createdAt")');
   executeSql('CREATE INDEX IF NOT EXISTS "SystemEvent_level_createdAt_idx" ON "SystemEvent" ("level", "createdAt")');
   executeSql('CREATE INDEX IF NOT EXISTS "SystemEvent_source_createdAt_idx" ON "SystemEvent" ("source", "createdAt")');
+  executeSql('CREATE INDEX IF NOT EXISTS "SystemEvent_campaignId_createdAt_idx" ON "SystemEvent" ("campaignId", "createdAt")');
 
   observabilitySchemaInitialized = true;
 }

@@ -1,10 +1,10 @@
 'use client';
 
+import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
-import { EmailRichEditor, starterTemplate } from '@/components/email-rich-editor';
-import { EmailMagicComposer } from '@/components/email-magic-composer';
+import { starterTemplate } from '@/components/email-rich-editor';
 import SearchableMultiSelect from '@/components/searchable-multiselect';
 import { useToast } from '@/components/toast-provider';
 
@@ -55,6 +55,30 @@ type CampaignCreateClientProps = {
   campaignId?: string;
   templateIdFromQuery?: string;
 };
+
+const EmailRichEditor = dynamic(
+  () => import('@/components/email-rich-editor').then((mod) => mod.EmailRichEditor),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="card" style={{ padding: '1rem' }}>
+        <p className="form-note">Loading email editor...</p>
+      </div>
+    ),
+  },
+);
+
+const EmailMagicComposer = dynamic(
+  () => import('@/components/email-magic-composer').then((mod) => mod.EmailMagicComposer),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="card" style={{ padding: '1rem' }}>
+        <p className="form-note">Loading AI assistant...</p>
+      </div>
+    ),
+  },
+);
 
 async function readJsonResponse<T>(response: Response): Promise<T | null> {
   const text = await response.text();

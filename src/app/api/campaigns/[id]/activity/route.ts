@@ -1,3 +1,5 @@
+import { performance } from 'node:perf_hooks';
+import { NextResponse } from 'next/server';
 import { requireUserFromCookies } from '@/lib/auth';
 import { fail, ok } from '@/lib/http';
 import { buildOwnerScope } from '@/lib/data-scope';
@@ -34,7 +36,34 @@ function parseProgressNote(note: string | null) {
   );
 }
 
+function jsonWithCampaignActivityTimingHeaders(
+  payload: {
+    campaign: unknown;
+    latestJob: unknown;
+    live: unknown;
+    progressTimeline: unknown[];
+    systemEvents: unknown[];
+  },
+  input: {
+    durationMs: number;
+    hasLatestJob: boolean;
+    progressPointCount: number;
+    systemEventCount: number;
+  },
+) {
+  return NextResponse.json(payload, {
+    status: 200,
+    headers: {
+      'x-campaign-activity-duration-ms': input.durationMs.toFixed(2),
+      'x-campaign-activity-has-job': input.hasLatestJob ? '1' : '0',
+      'x-campaign-activity-progress-count': String(input.progressPointCount),
+      'x-campaign-activity-system-events-count': String(input.systemEventCount),
+    },
+  });
+}
+
 export async function GET(_: Request, { params }: Params) {
+  const startedAt = performance.now();
   const auth = await requireUserFromCookies();
   if ('error' in auth) return auth.error;
 
@@ -143,7 +172,7 @@ export async function GET(_: Request, { params }: Params) {
 
   const latestPoint = progressTimeline.length > 0 ? progressTimeline[progressTimeline.length - 1] : null;
 
-  return ok({
+  const payload = {
     campaign,
     latestJob,
     live: {
@@ -166,5 +195,12 @@ export async function GET(_: Request, { params }: Params) {
     },
     progressTimeline,
     systemEvents,
+  };
+
+  return jsonWithCampaignActivityTimingHeaders(payload, {
+    durationMs: performance.now() - startedAt,
+    hasLatestJob: Boolean(latestJob),
+    progressPointCount: progressTimeline.length,
+    systemEventCount: systemEvents.length,
   });
 }

@@ -10,8 +10,8 @@ import { useToast } from '@/components/toast-provider';
 type Campaign = {
   id: string;
   name: string;
-  subject: string;
-  bodyHtml: string;
+  subject?: string | null;
+  bodyHtml?: string | null;
   status: string;
   provider: string | null;
   isArchived?: number | boolean;
@@ -35,6 +35,15 @@ type Campaign = {
   owner?: { id: string; email: string; name: string | null; role: string };
   isOwner?: boolean;
 };
+
+type CampaignDetailMap = Record<string, {
+  lists: { id: string; name: string; isDefaultTestList: number | boolean }[];
+  listCount: number;
+  openedCount: number;
+  deliveredCount: number;
+  bouncedCount: number;
+  unsubscribedCount: number;
+}>;
 
 type BulkCampaignResponse = {
   error?: string;
@@ -131,6 +140,8 @@ export default function CampaignsPage() {
   const campaignImportRef = useRef<HTMLInputElement | null>(null);
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [lists, setLists] = useState<ListOption[]>([]);
+  const [listsLoading, setListsLoading] = useState(false);
+  const [listsLoaded, setListsLoaded] = useState(false);
   const [sendingId, setSendingId] = useState<string | null>(null);
   const [testingId, setTestingId] = useState<string | null>(null);
   const [selectedCampaignIds, setSelectedCampaignIds] = useState<string[]>([]);
@@ -141,45 +152,87 @@ export default function CampaignsPage() {
   const [activeCampaignActivity, setActiveCampaignActivity] = useState<CampaignActivity | null>(null);
   const [activityLoading, setActivityLoading] = useState(false);
   const [controllingId, setControllingId] = useState<string | null>(null);
+  const [campaignDetailsLoading, setCampaignDetailsLoading] = useState(false);
+  const selectedCampaignCount = selectedCampaignIds.length;
 
-  const loadAll = useCallback(async () => {
-    const [campaignsRes, listsRes] = await Promise.all([
-      fetch(`/api/campaigns${showArchived ? '?includeArchived=true' : ''}`, { cache: 'no-store' }),
-      fetch('/api/lists?all=true&owner=self', { cache: 'no-store' }),
-    ]);
+  const loadCampaigns = useCallback(async () => {
+    const campaignsRes = await fetch(`/api/campaigns?summary=true&compact=true${showArchived ? '&includeArchived=true' : ''}`, { cache: 'no-store' });
     const campaignsData = (await campaignsRes.json()) as { campaigns: Campaign[]; error?: string };
-    const listsData = (await listsRes.json()) as { lists: ListOption[]; error?: string };
     if (!campaignsRes.ok) {
       toast.error('Campaign load failed', campaignsData.error || 'The campaign list could not be loaded.');
       return;
     }
+    setCampaigns(campaignsData.campaigns || []);
+    setSelectedCampaignIds([]);
+  }, [showArchived, toast]);
+
+  const loadLists = useCallback(async () => {
+    if (listsLoading || listsLoaded) return;
+    setListsLoading(true);
+    const listsRes = await fetch('/api/lists?all=true&owner=self', { cache: 'no-store' });
+    const listsData = (await listsRes.json()) as { lists: ListOption[]; error?: string };
+    setListsLoading(false);
     if (!listsRes.ok) {
       toast.error('List load failed', listsData.error || 'Audience lists could not be loaded for this page.');
       return;
     }
-    setCampaigns(campaignsData.campaigns || []);
     setLists(listsData.lists || []);
-    setSelectedCampaignIds([]);
-  }, [showArchived]);
+    setListsLoaded(true);
+  }, [listsLoaded, listsLoading, toast]);
 
   useEffect(() => {
-    loadAll();
-  }, [loadAll]);
+    loadCampaigns();
+  }, [loadCampaigns]);
+
+  const campaignIdSignature = useMemo(() => campaigns.map((campaign) => campaign.id).join(','), [campaigns]);
+
+  useEffect(() => {
+    if (!campaignIdSignature) return;
+    const controller = new AbortController();
+    const ids = campaignIdSignature.split(',').filter(Boolean);
+
+    const load = async () => {
+      setCampaignDetailsLoading(true);
+      const response = await fetch(`/api/campaigns/details?ids=${encodeURIComponent(ids.join(','))}`, {
+        cache: 'no-store',
+        signal: controller.signal,
+      });
+      const data = (await response.json().catch(() => ({}))) as { details?: CampaignDetailMap; error?: string };
+      if (controller.signal.aborted) return;
+      setCampaignDetailsLoading(false);
+      if (!response.ok) {
+        toast.error('Campaign details failed', data.error || 'Campaign details could not be loaded.');
+        return;
+      }
+      const details = data.details || {};
+      setCampaigns((current) => current.map((campaign) => {
+        const detail = details[campaign.id];
+        if (!detail) return campaign;
+        return {
+          ...campaign,
+          lists: detail.lists,
+          listCount: detail.listCount,
+          openedCount: detail.openedCount,
+          deliveredCount: detail.deliveredCount,
+          bouncedCount: detail.bouncedCount,
+          unsubscribedCount: detail.unsubscribedCount,
+        };
+      }));
+    };
+
+    void load();
+    return () => controller.abort();
+  }, [campaignIdSignature, toast]);
+
+  useEffect(() => {
+    if (selectedCampaignCount === 0 || listsLoaded || listsLoading) return;
+    void loadLists();
+  }, [loadLists, listsLoaded, listsLoading, selectedCampaignCount]);
 
   const activeCampaign = useMemo(
     () => campaigns.find((campaign) => campaign.status === 'QUEUED' || campaign.status === 'RETRYING' || campaign.status === 'SENDING' || campaign.status === 'PAUSED') || null,
     [campaigns],
   );
-  useEffect(() => {
-    if (!activeCampaign) return undefined;
-
-    const interval = window.setInterval(() => {
-      loadAll();
-    }, 2000);
-
-    return () => window.clearInterval(interval);
-  }, [activeCampaign, loadAll]);
-
   const loadCampaignActivity = useCallback(async (campaignId: string) => {
     setActivityLoading(true);
     const response = await fetch(`/api/campaigns/${campaignId}/activity`, { cache: 'no-store' });
@@ -187,10 +240,11 @@ export default function CampaignsPage() {
     setActivityLoading(false);
     if (!response.ok) {
       toast.error('Campaign activity failed', data.error || 'The sending activity timeline could not be loaded.');
-      return;
+      return null;
     }
     setActiveCampaignActivity(data);
-  }, []);
+    return data;
+  }, [toast]);
 
   useEffect(() => {
     if (!activeCampaign) {
@@ -198,12 +252,36 @@ export default function CampaignsPage() {
       return undefined;
     }
 
-    void loadCampaignActivity(activeCampaign.id);
+    let cancelled = false;
+
+    const pollActivity = async () => {
+      if (document.visibilityState !== 'visible' || cancelled) return;
+      const data = await loadCampaignActivity(activeCampaign.id);
+      const latestStatus = data?.latestJob?.status || activeCampaign.status;
+      if (latestStatus && ['SENT', 'FAILED', 'SKIPPED', 'CANCELLED'].includes(latestStatus)) {
+        await loadCampaigns();
+      }
+    };
+
     const interval = window.setInterval(() => {
-      void loadCampaignActivity(activeCampaign.id);
-    }, 2000);
-    return () => window.clearInterval(interval);
-  }, [activeCampaign?.id, loadCampaignActivity]);
+      void pollActivity();
+    }, 5000);
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        void pollActivity();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    void pollActivity();
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [activeCampaign?.id, activeCampaign?.status, loadCampaignActivity, loadCampaigns]);
 
   const sentCampaigns = useMemo(() => campaigns.filter((campaign) => campaign.status === 'SENT'), [campaigns]);
   const summary = useMemo(() => {
@@ -231,7 +309,6 @@ export default function CampaignsPage() {
         : 0
     : 0;
 
-  const selectedCampaignCount = selectedCampaignIds.length;
   const selectableCampaigns = campaigns.filter((campaign) => campaign.isOwner !== false);
   const allVisibleSelected = selectableCampaigns.length > 0 && selectableCampaigns.every((campaign) => selectedCampaignIds.includes(campaign.id));
 
@@ -293,7 +370,7 @@ export default function CampaignsPage() {
           ? `${affectedCount} campaign${affectedCount === 1 ? '' : 's'} retargeted.`
           : `${affectedCount} campaign${affectedCount === 1 ? '' : 's'} ${action === 'archive' ? 'archived' : 'restored'}.`,
     );
-    await loadAll();
+    await loadCampaigns();
   }
 
   async function exportCampaigns(campaignIds: string[]) {
@@ -345,7 +422,7 @@ export default function CampaignsPage() {
       }
 
       toast.success('Campaigns imported', `Imported ${data.createdCampaignIds?.length || 0} campaign${(data.createdCampaignIds?.length || 0) === 1 ? '' : 's'}.`);
-      await loadAll();
+      await loadCampaigns();
     } catch {
       toast.error('Import failed', 'The campaign import could not be completed.');
     } finally {
@@ -355,18 +432,11 @@ export default function CampaignsPage() {
   }
 
   async function updateStatus(campaign: Campaign, status: string) {
-    const selectedListIds = (campaign.lists && campaign.lists.length > 0 ? campaign.lists : [campaign.list]).map((list) => list.id);
     const res = await fetch(`/api/campaigns/${campaign.id}`, {
       method: 'PATCH',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
-        name: campaign.name,
-        subject: campaign.subject,
-        bodyHtml: campaign.bodyHtml,
         status,
-        listIds: selectedListIds,
-        listId: selectedListIds[0] || null,
-        templateId: campaign.template?.id || null,
       }),
     });
     const data = (await res.json().catch(() => ({}))) as { error?: string };
@@ -375,7 +445,7 @@ export default function CampaignsPage() {
       return;
     }
     toast.success('Campaign updated', 'The campaign changes were saved.');
-    await loadAll();
+    await loadCampaigns();
   }
 
   async function deleteCampaign(id: string) {
@@ -386,7 +456,7 @@ export default function CampaignsPage() {
       return;
     }
     toast.success('Campaign deleted', 'The campaign was removed.');
-    await loadAll();
+    await loadCampaigns();
   }
 
   async function duplicateCampaign(id: string) {
@@ -397,7 +467,7 @@ export default function CampaignsPage() {
       return;
     }
     toast.success('Campaign duplicated', 'A new draft was created from this campaign.');
-    await loadAll();
+    await loadCampaigns();
   }
 
   async function testCampaign(id: string) {
@@ -440,7 +510,7 @@ export default function CampaignsPage() {
       const quotaNote = data.quotaSkippedCount ? ` ${data.quotaSkippedCount} skipped because of the daily limit.` : '';
       toast.success('Campaign sent', `Sent via ${data.provider}. Sent count: ${data.sentCount ?? 0}.${quotaNote}`);
     }
-    await loadAll();
+    await loadCampaigns();
   }
 
   async function controlCampaign(id: string, action: 'pause' | 'resume' | 'cancel') {
@@ -465,7 +535,7 @@ export default function CampaignsPage() {
           ? 'The campaign was placed back into the queue.'
           : 'The worker will stop after the current chunk finishes.',
     );
-    await loadAll();
+    await loadCampaigns();
   }
 
   return (
@@ -492,7 +562,7 @@ export default function CampaignsPage() {
               </Link>
             </div>
             <p className="form-note header-actions__status" aria-live="polite">
-              {importStatus || '\u00a0'}
+              {importStatus || (campaignDetailsLoading ? 'Refreshing campaign insights...' : '\u00a0')}
             </p>
           </div>
         </div>
@@ -685,10 +755,17 @@ export default function CampaignsPage() {
               multiple
               size={Math.min(5, Math.max(2, lists.length || 2))}
               className="status-select bulk-retarget-select"
+              disabled={listsLoading}
               value={retargetListIds}
               onChange={(event) => setRetargetListIds(Array.from(event.target.selectedOptions).map((option) => option.value))}
+              onFocus={() => {
+                if (!listsLoaded && !listsLoading) {
+                  void loadLists();
+                }
+              }}
             >
-              {lists.length === 0 ? <option value="" disabled>No lists available</option> : null}
+              {listsLoading ? <option value="" disabled>Loading lists...</option> : null}
+              {!listsLoading && lists.length === 0 ? <option value="" disabled>No lists available</option> : null}
               {lists.map((list) => (
                 <option key={list.id} value={list.id}>
                   {list.name}
@@ -850,7 +927,7 @@ export default function CampaignsPage() {
                             return;
                           }
                           toast.success('Campaign reset', 'The campaign was reset to a fresh state.');
-                          await loadAll();
+                          await loadCampaigns();
                         }}
                         disabled={!canManageCampaign || c.status === 'QUEUED' || c.status === 'RETRYING' || c.status === 'SENDING' || c.status === 'PAUSED' || Boolean(c.isArchived)}
                       >

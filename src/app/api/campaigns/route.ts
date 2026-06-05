@@ -1,3 +1,5 @@
+import { performance } from 'node:perf_hooks';
+import { NextResponse } from 'next/server';
 import { requireUserFromCookies } from '@/lib/auth';
 import { recordAuditEvent } from '@/lib/audit';
 import { fail, ok } from '@/lib/http';
@@ -8,18 +10,47 @@ import { buildOwnerScope, isOwnedByViewer } from '@/lib/data-scope';
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
+function buildInClause(values: string[]) {
+  return values.map(() => '?').join(', ');
+}
+
+function jsonWithCampaignTimingHeaders(
+  payload: { campaigns: unknown[]; scope: string },
+  input: {
+    durationMs: number;
+    summaryOnly: boolean;
+    includeArchived: boolean;
+    campaignCount: number;
+    compact: boolean;
+  },
+) {
+  return NextResponse.json(payload, {
+    status: 200,
+    headers: {
+      'x-campaigns-api-duration-ms': input.durationMs.toFixed(2),
+      'x-campaigns-api-summary': input.summaryOnly ? '1' : '0',
+      'x-campaigns-api-include-archived': input.includeArchived ? '1' : '0',
+      'x-campaigns-api-campaign-count': String(input.campaignCount),
+      'x-campaigns-api-compact': input.compact ? '1' : '0',
+    },
+  });
+}
+
 export async function GET(request: Request) {
+  const startedAt = performance.now();
   const auth = await requireUserFromCookies();
   if ('error' in auth) return auth.error;
   const url = new URL(request.url);
   const includeArchived = url.searchParams.get('includeArchived') === 'true' || url.searchParams.get('includeArchived') === '1';
+  const summaryOnly = url.searchParams.get('summary') === 'true' || url.searchParams.get('summary') === '1';
+  const compact = url.searchParams.get('compact') === 'true' || url.searchParams.get('compact') === '1';
   const ownerScope = buildOwnerScope(auth.user, 'c."userId"');
 
   const campaigns = queryRows<{
     id: string;
     name: string;
-    subject: string;
-    bodyHtml: string;
+    subject?: string | null;
+    bodyHtml?: string | null;
     status: string;
     provider: string | null;
     isArchived: number | boolean;
@@ -36,7 +67,6 @@ export async function GET(request: Request) {
     createdAt: string;
     updatedAt: string;
     listName: string;
-    templateName: string | null;
     ownerEmail: string;
     ownerName: string | null;
     ownerRole: string;
@@ -45,8 +75,8 @@ export async function GET(request: Request) {
       SELECT
         c.id,
         c.name,
-        c.subject,
-        c."bodyHtml",
+        ${summaryOnly ? 'NULL as subject,' : 'c.subject,'}
+        ${summaryOnly ? 'NULL as "bodyHtml",' : 'c."bodyHtml",'}
         c.status,
         c.provider,
         CASE WHEN COALESCE(c."isArchived", FALSE) THEN 1 ELSE 0 END as "isArchived",
@@ -63,13 +93,11 @@ export async function GET(request: Request) {
         c."createdAt",
         c."updatedAt",
         l.name as listName,
-        t.name as templateName,
         u.email as ownerEmail,
         u.name as ownerName,
         u.role as ownerRole
       FROM "Campaign" c
       INNER JOIN "List" l ON l.id = c."listId"
-      LEFT JOIN "Template" t ON t.id = c."templateId"
       INNER JOIN "User" u ON u.id = c."userId"
       WHERE ${ownerScope.clause}
       ${includeArchived ? '' : 'AND COALESCE(c.isArchived, FALSE) = FALSE'}
@@ -78,21 +106,77 @@ export async function GET(request: Request) {
     ownerScope.params,
   );
 
+  if (campaigns.length === 0) {
+    return jsonWithCampaignTimingHeaders(
+      { campaigns: [], scope: ownerScope.scope },
+      {
+        durationMs: performance.now() - startedAt,
+        summaryOnly,
+        includeArchived,
+        campaignCount: 0,
+        compact,
+      },
+    );
+  }
+
+  if (compact) {
+    const compactCampaigns = campaigns.map((campaign: any) => ({
+      ...campaign,
+      list: { id: campaign.listId, name: campaign.listName },
+      lists: [{ id: campaign.listId, name: campaign.listName, isDefaultTestList: false }],
+      listCount: 1,
+      template: null,
+      owner: {
+        id: campaign.userId,
+        email: campaign.ownerEmail,
+        name: campaign.ownerName,
+        role: campaign.ownerRole,
+      },
+      isOwner: isOwnedByViewer(campaign.userId, auth.user),
+      openedCount: 0,
+      deliveredCount: 0,
+      bouncedCount: 0,
+      unsubscribedCount: 0,
+    }));
+
+    return jsonWithCampaignTimingHeaders(
+      { campaigns: compactCampaigns, scope: ownerScope.scope },
+      {
+        durationMs: performance.now() - startedAt,
+        summaryOnly,
+        includeArchived,
+        campaignCount: compactCampaigns.length,
+        compact: true,
+      },
+    );
+  }
+
+  const campaignIds = campaigns.map((campaign) => campaign.id);
+  const eventParams = [...campaignIds];
+  const eventInClause = buildInClause(campaignIds);
   const rows = queryRows<{
     campaignId: string;
-    type: string;
-    count: number;
+    openedCount: number;
+    deliveredCount: number;
+    bouncedCount: number;
+    unsubscribedCount: number;
   }>(
     `
-      SELECT e."campaignId" as "campaignId", e.type as type, COUNT(*) as count
+      SELECT
+        e."campaignId" as "campaignId",
+        SUM(CASE WHEN e.type = 'OPENED' THEN 1 ELSE 0 END) as "openedCount",
+        SUM(CASE WHEN e.type = 'DELIVERED' THEN 1 ELSE 0 END) as "deliveredCount",
+        SUM(CASE WHEN e.type = 'BOUNCED' THEN 1 ELSE 0 END) as "bouncedCount",
+        SUM(CASE WHEN e.type = 'UNSUBSCRIBED' THEN 1 ELSE 0 END) as "unsubscribedCount"
       FROM "Event" e
-      INNER JOIN "Campaign" c ON c.id = e."campaignId"
-      WHERE ${ownerScope.clause}
-      GROUP BY e."campaignId", e.type
+      WHERE e."campaignId" IN (${eventInClause})
+      GROUP BY e."campaignId"
     `,
-    ownerScope.params,
+    eventParams,
   );
 
+  const listParams = [...campaignIds];
+  const listInClause = buildInClause(campaignIds);
   const campaignListRows = queryRows<{
     campaignId: string;
     listId: string;
@@ -106,20 +190,28 @@ export async function GET(request: Request) {
         l.name as listName,
         CASE WHEN COALESCE(l."isDefaultTestList", FALSE) THEN 1 ELSE 0 END as "isDefaultTestList"
       FROM "CampaignList" cl
-      INNER JOIN "Campaign" c ON c.id = cl."campaignId"
       INNER JOIN "List" l ON l.id = cl."listId"
-      WHERE ${ownerScope.clause}
+      WHERE cl."campaignId" IN (${listInClause})
       ORDER BY cl."createdAt" ASC
     `,
-    ownerScope.params,
+    listParams,
   );
 
-  const byCampaign = new Map<string, Record<string, number>>();
+  const byCampaign = new Map<string, {
+    openedCount: number;
+    deliveredCount: number;
+    bouncedCount: number;
+    unsubscribedCount: number;
+  }>();
   const listsByCampaign = new Map<string, { id: string; name: string; isDefaultTestList: number | boolean }[]>();
 
   for (const row of rows) {
-    if (!byCampaign.has(row.campaignId)) byCampaign.set(row.campaignId, {});
-    byCampaign.get(row.campaignId)![row.type] = row.count;
+    byCampaign.set(row.campaignId, {
+      openedCount: Number(row.openedCount || 0),
+      deliveredCount: Number(row.deliveredCount || 0),
+      bouncedCount: Number(row.bouncedCount || 0),
+      unsubscribedCount: Number(row.unsubscribedCount || 0),
+    });
   }
 
   for (const row of campaignListRows) {
@@ -132,14 +224,14 @@ export async function GET(request: Request) {
   }
 
   const campaignsWithStats = campaigns.map((campaign: any) => {
-      const counts = byCampaign.get(campaign.id) || {};
+      const counts = byCampaign.get(campaign.id);
       const selectedLists = listsByCampaign.get(campaign.id) || [];
       return {
         ...campaign,
         list: { id: campaign.listId, name: campaign.listName },
         lists: selectedLists.length > 0 ? selectedLists : [{ id: campaign.listId, name: campaign.listName, isDefaultTestList: false }],
         listCount: selectedLists.length > 0 ? selectedLists.length : 1,
-        template: campaign.templateId ? { id: campaign.templateId, name: campaign.templateName || '' } : null,
+        template: campaign.templateId ? { id: campaign.templateId, name: '' } : null,
         owner: {
           id: campaign.userId,
           email: campaign.ownerEmail,
@@ -147,14 +239,23 @@ export async function GET(request: Request) {
           role: campaign.ownerRole,
         },
         isOwner: isOwnedByViewer(campaign.userId, auth.user),
-        openedCount: counts.OPENED || 0,
-        deliveredCount: counts.DELIVERED || 0,
-        bouncedCount: counts.BOUNCED || 0,
-        unsubscribedCount: counts.UNSUBSCRIBED || 0,
+        openedCount: counts?.openedCount || 0,
+        deliveredCount: counts?.deliveredCount || 0,
+        bouncedCount: counts?.bouncedCount || 0,
+        unsubscribedCount: counts?.unsubscribedCount || 0,
       };
     });
 
-  return ok({ campaigns: campaignsWithStats, scope: ownerScope.scope });
+  return jsonWithCampaignTimingHeaders(
+    { campaigns: campaignsWithStats, scope: ownerScope.scope },
+    {
+      durationMs: performance.now() - startedAt,
+      summaryOnly,
+      includeArchived,
+      campaignCount: campaignsWithStats.length,
+      compact: false,
+    },
+  );
 }
 
 export async function POST(request: Request) {

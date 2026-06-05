@@ -142,10 +142,12 @@ export async function PATCH(request: Request, { params }: Params) {
     ...listIdsRaw.map((value: unknown) => String(value).trim()).filter(Boolean),
     ...(listIdFallback ? [listIdFallback] : []),
   ]));
+  const statusOnlyUpdate = Boolean(status) && !name && !subject && !bodyHtml && listIds.length === 0 && !templateIdRaw;
 
-  if (!name || !subject || !bodyHtml || !status) return fail('name, subject, bodyHtml and status are required.', 400);
+  if (!statusOnlyUpdate && (!name || !subject || !bodyHtml || !status)) {
+    return fail('name, subject, bodyHtml and status are required.', 400);
+  }
   if (!ALLOWED_STATUSES.has(status)) return fail('Invalid status.', 400);
-  if (listIds.length === 0) return fail('At least one list is required.', 400);
 
   const existing = queryRow<{ id: string; listId: string; status: string; isArchived: number | boolean }>(
     'SELECT id, "listId", status, CASE WHEN COALESCE("isArchived", FALSE) THEN 1 ELSE 0 END as "isArchived" FROM "Campaign" WHERE id = ? AND "userId" = ? LIMIT 1',
@@ -159,6 +161,72 @@ export async function PATCH(request: Request, { params }: Params) {
     return fail('Queued or sending campaigns cannot be edited.', 409);
   }
   const previousListId = existing.listId;
+
+  if (statusOnlyUpdate) {
+    executeSql(
+      'UPDATE "Campaign" SET "status" = ?, "updatedAt" = CURRENT_TIMESTAMP WHERE id = ? AND "userId" = ?',
+      [status, params.id, auth.user.userId],
+    );
+
+    await recordAuditEvent({
+      actorUserId: auth.user.userId,
+      actorEmail: auth.user.email,
+      actorRole: auth.user.role,
+      action: 'campaign_update',
+      entityType: 'Campaign',
+      entityId: params.id,
+      scopeType: 'SELF',
+      metadata: {
+        changedFields: ['status'],
+        status,
+      },
+    });
+
+    const campaign = queryRow(
+      `
+        SELECT
+          c.id,
+          c.name,
+          c.subject,
+          c."bodyHtml",
+          c.status,
+          c.provider,
+          CASE WHEN COALESCE(c."isArchived", FALSE) THEN 1 ELSE 0 END as "isArchived",
+          c."totalRecipients",
+          c."sentCount",
+          c."failedCount",
+          c."skippedCount",
+          c."startedAt",
+          c."finishedAt",
+          c."durationSeconds",
+          c."userId",
+          c."listId",
+          c."templateId",
+          c."createdAt",
+          c."updatedAt",
+          l.name as listName,
+          t.name as templateName
+        FROM "Campaign" c
+        INNER JOIN "List" l ON l.id = c."listId"
+        LEFT JOIN "Template" t ON t.id = c."templateId"
+        WHERE c.id = ? AND c."userId" = ?
+        LIMIT 1
+      `,
+      [params.id, auth.user.userId],
+    );
+    const updatedLists = getCampaignLists(params.id, auth.user.userId);
+
+    return ok({
+      campaign: {
+        ...campaign,
+        list: updatedLists[0] ? { id: updatedLists[0].id, name: updatedLists[0].name } : { id: existing.listId, name: '' },
+        lists: updatedLists,
+        template: campaign?.templateId ? { id: campaign.templateId, name: campaign.templateName || '' } : null,
+      },
+    });
+  }
+
+  if (listIds.length === 0) return fail('At least one list is required.', 400);
 
   const ownedLists = queryRow<{ total: number }>(
     `

@@ -191,6 +191,7 @@ export function ensureCampaignSendQueueSchema() {
   ensureCampaignSendQueueColumns();
   executeSql('CREATE INDEX IF NOT EXISTS "CampaignSendJob_status_requestedAt_idx" ON "CampaignSendJob" ("status", "requestedAt")');
   executeSql('CREATE INDEX IF NOT EXISTS "CampaignSendJob_campaignId_idx" ON "CampaignSendJob" ("campaignId")');
+  executeSql('CREATE INDEX IF NOT EXISTS "CampaignSendJob_campaignId_createdAt_idx" ON "CampaignSendJob" ("campaignId", "createdAt")');
 
   campaignSendQueueSchemaInitialized = true;
 }

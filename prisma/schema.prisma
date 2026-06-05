@@ -132,6 +132,8 @@ model List {
   campaignLists CampaignList[]
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
+
+  @@index([userId, createdAt])
 }
 
 model Contact {
@@ -147,6 +149,8 @@ model Contact {
   updatedAt    DateTime @updatedAt
 
   @@unique([email, listId])
+  @@index([listId, status])
+  @@index([listId, createdAt])
 }
 
 model Campaign {
@@ -177,6 +181,8 @@ model Campaign {
   systemEvents SystemEvent[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([userId, createdAt])
 }
 
 model Event {
@@ -190,6 +196,9 @@ model Event {
   campaignId String
   campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   createdAt  DateTime @default(now())
+
+  @@index([campaignId, createdAt])
+  @@index([campaignId, type])
 }
 
 model CampaignList {
@@ -254,6 +263,7 @@ model SystemEvent {
   @@index([createdAt])
   @@index([level, createdAt])
   @@index([source, createdAt])
+  @@index([campaignId, createdAt])
 }
 
 model CampaignSendJob {
@@ -282,6 +292,7 @@ model CampaignSendJob {
 
   @@index([status, requestedAt])
   @@index([campaignId])
+  @@index([campaignId, createdAt])
 }
 
 model AiAgentProfile {
