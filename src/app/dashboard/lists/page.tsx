@@ -92,6 +92,12 @@ function PaginationControls({
   );
 }
 
+function yieldToBrowser() {
+  return new Promise<void>((resolve) => {
+    window.requestAnimationFrame(() => resolve());
+  });
+}
+
 export default function ListsPage() {
   const router = useRouter();
   const toast = useToast();
@@ -120,6 +126,7 @@ export default function ListsPage() {
   const [selectedListIds, setSelectedListIds] = useState<string[]>([]);
   const [showArchived, setShowArchived] = useState(false);
   const [bulkLoading, setBulkLoading] = useState(false);
+  const [importStatus, setImportStatus] = useState('');
 
   async function loadLists() {
     const params = new URLSearchParams({
@@ -304,30 +311,40 @@ export default function ListsPage() {
     event.target.value = '';
     if (!file) return;
 
-    let payload: unknown;
-    try {
-      payload = JSON.parse(await file.text());
-    } catch {
-      toast.error('Import failed', 'Import file must be valid JSON.');
-      return;
-    }
-
     setBulkLoading(true);
-    const response = await fetch('/api/lists/import', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    const data = (await readJsonResponse<BulkListResponse>(response)) || {};
-    setBulkLoading(false);
+    setImportStatus('Reading file...');
+    await yieldToBrowser();
 
-    if (!response.ok) {
-      toast.error('List import failed', data?.error || 'The lists could not be imported.');
-      return;
+    try {
+      const fileContents = await file.text();
+      setImportStatus('Uploading file...');
+      await yieldToBrowser();
+
+      const responsePromise = fetch('/api/lists/import', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: fileContents,
+      });
+
+      setImportStatus('Processing import...');
+      await yieldToBrowser();
+
+      const response = await responsePromise;
+      const data = (await readJsonResponse<BulkListResponse>(response)) || {};
+
+      if (!response.ok) {
+        toast.error('List import failed', data?.error || 'The lists could not be imported.');
+        return;
+      }
+
+      toast.success('Lists imported', `Imported ${data.createdListIds?.length || 0} list${(data.createdListIds?.length || 0) === 1 ? '' : 's'}.`);
+      await loadLists();
+    } catch {
+      toast.error('Import failed', 'The list import could not be completed.');
+    } finally {
+      setBulkLoading(false);
+      setImportStatus('');
     }
-
-    toast.success('Lists imported', `Imported ${data.createdListIds?.length || 0} list${(data.createdListIds?.length || 0) === 1 ? '' : 's'}.`);
-    await loadLists();
   }
 
   function toggleSelectedList(id: string) {
@@ -359,19 +376,24 @@ export default function ListsPage() {
             <h1>Lists</h1>
             <p>Keep list browsing light, then jump into a dedicated page when you need to work contacts and imports.</p>
           </div>
-          <div className="header-actions">
-            <button className="btn-secondary btn-secondary--with-icon" type="button" onClick={() => router.push('/dashboard/lists#create-list')}>
-              <IconPlus className="btn-icon" aria-hidden="true" />
-              New list
-            </button>
-            <button className="btn-secondary btn-secondary--with-icon" type="button" onClick={() => listImportRef.current?.click()}>
-              <IconImport className="btn-icon" aria-hidden="true" />
-              Import
-            </button>
-            <button className="btn-secondary btn-secondary--with-icon" type="button" onClick={() => router.push('/dashboard/help')}>
-              <IconHelp className="btn-icon" aria-hidden="true" />
-              Help
-            </button>
+          <div className="header-actions header-actions--stacked">
+            <div className="header-actions__buttons">
+              <button className="btn-secondary btn-secondary--with-icon" type="button" onClick={() => router.push('/dashboard/lists#create-list')}>
+                <IconPlus className="btn-icon" aria-hidden="true" />
+                New list
+              </button>
+              <button className="btn-secondary btn-secondary--with-icon" type="button" onClick={() => listImportRef.current?.click()} disabled={bulkLoading || Boolean(importStatus)}>
+                <IconImport className="btn-icon" aria-hidden="true" />
+                Import
+              </button>
+              <button className="btn-secondary btn-secondary--with-icon" type="button" onClick={() => router.push('/dashboard/help')}>
+                <IconHelp className="btn-icon" aria-hidden="true" />
+                Help
+              </button>
+            </div>
+            <p className="form-note header-actions__status" aria-live="polite">
+              {importStatus || '\u00a0'}
+            </p>
           </div>
         </div>
       </header>

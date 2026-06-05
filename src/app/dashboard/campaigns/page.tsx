@@ -119,6 +119,12 @@ function formatTimelineTime(value: string | null | undefined) {
   return new Date(parsed).toLocaleTimeString();
 }
 
+function yieldToBrowser() {
+  return new Promise<void>((resolve) => {
+    window.requestAnimationFrame(() => resolve());
+  });
+}
+
 export default function CampaignsPage() {
   const router = useRouter();
   const toast = useToast();
@@ -130,6 +136,7 @@ export default function CampaignsPage() {
   const [selectedCampaignIds, setSelectedCampaignIds] = useState<string[]>([]);
   const [showArchived, setShowArchived] = useState(false);
   const [bulkLoading, setBulkLoading] = useState(false);
+  const [importStatus, setImportStatus] = useState('');
   const [retargetListIds, setRetargetListIds] = useState<string[]>([]);
   const [activeCampaignActivity, setActiveCampaignActivity] = useState<CampaignActivity | null>(null);
   const [activityLoading, setActivityLoading] = useState(false);
@@ -313,29 +320,38 @@ export default function CampaignsPage() {
     event.target.value = '';
     if (!file) return;
 
-    let payload: unknown;
-    try {
-      payload = JSON.parse(await file.text());
-    } catch {
-      toast.error('Import failed', 'Import file must be valid JSON.');
-      return;
-    }
-
     setBulkLoading(true);
-    const response = await fetch('/api/campaigns/import', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    const data = (await response.json()) as BulkCampaignResponse;
-    setBulkLoading(false);
-    if (!response.ok) {
-      toast.error('Campaign import failed', data.error || 'The campaigns could not be imported.');
-      return;
-    }
+    setImportStatus('Reading file...');
+    await yieldToBrowser();
 
-    toast.success('Campaigns imported', `Imported ${data.createdCampaignIds?.length || 0} campaign${(data.createdCampaignIds?.length || 0) === 1 ? '' : 's'}.`);
-    await loadAll();
+    try {
+      const fileContents = await file.text();
+      setImportStatus('Uploading file...');
+      await yieldToBrowser();
+
+      const responsePromise = fetch('/api/campaigns/import', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: fileContents,
+      });
+      setImportStatus('Processing import...');
+      await yieldToBrowser();
+
+      const response = await responsePromise;
+      const data = (await response.json()) as BulkCampaignResponse;
+      if (!response.ok) {
+        toast.error('Campaign import failed', data.error || 'The campaigns could not be imported.');
+        return;
+      }
+
+      toast.success('Campaigns imported', `Imported ${data.createdCampaignIds?.length || 0} campaign${(data.createdCampaignIds?.length || 0) === 1 ? '' : 's'}.`);
+      await loadAll();
+    } catch {
+      toast.error('Import failed', 'The campaign import could not be completed.');
+    } finally {
+      setBulkLoading(false);
+      setImportStatus('');
+    }
   }
 
   async function updateStatus(campaign: Campaign, status: string) {
@@ -460,19 +476,24 @@ export default function CampaignsPage() {
             <h1>Campaigns</h1>
             <p>Keep the campaign list readable, then jump into the dedicated builder when you are ready to create or edit.</p>
           </div>
-          <div className="header-actions">
-            <button className="btn-secondary btn-secondary--with-icon" type="button" onClick={() => router.push('/dashboard/campaigns/create')}>
-              <IconPlus className="btn-icon" aria-hidden="true" />
-              New Campaign
-            </button>
-            <button className="btn-secondary btn-secondary--with-icon" type="button" onClick={() => campaignImportRef.current?.click()}>
-              <IconImport className="btn-icon" aria-hidden="true" />
-              Import
-            </button>
-            <Link className="btn-secondary btn-secondary--with-icon" href="/dashboard/help">
-              <IconHelp className="btn-icon" aria-hidden="true" />
-              Help
-            </Link>
+          <div className="header-actions header-actions--stacked">
+            <div className="header-actions__buttons">
+              <button className="btn-secondary btn-secondary--with-icon" type="button" onClick={() => router.push('/dashboard/campaigns/create')}>
+                <IconPlus className="btn-icon" aria-hidden="true" />
+                New Campaign
+              </button>
+              <button className="btn-secondary btn-secondary--with-icon" type="button" onClick={() => campaignImportRef.current?.click()} disabled={bulkLoading || Boolean(importStatus)}>
+                <IconImport className="btn-icon" aria-hidden="true" />
+                Import
+              </button>
+              <Link className="btn-secondary btn-secondary--with-icon" href="/dashboard/help">
+                <IconHelp className="btn-icon" aria-hidden="true" />
+                Help
+              </Link>
+            </div>
+            <p className="form-note header-actions__status" aria-live="polite">
+              {importStatus || '\u00a0'}
+            </p>
           </div>
         </div>
       </header>
