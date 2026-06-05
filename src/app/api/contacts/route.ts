@@ -3,6 +3,7 @@ import { fail, ok } from '@/lib/http';
 import { executeSql, queryRow, queryRows } from '@/lib/sqlite';
 import { isValidEmailAddress, normalizeEmailAddress } from '@/lib/email-address';
 import { buildOwnerScope } from '@/lib/data-scope';
+import { importContactsIntoList } from '@/lib/contact-import';
 
 const ALLOWED_STATUSES = new Set(['SUBSCRIBED', 'UNSUBSCRIBED', 'BOUNCED']);
 const DEFAULT_PAGE_SIZE = 10;
@@ -229,51 +230,20 @@ export async function PUT(request: Request) {
   const startsWithHeader = /^email\s*(,|$)/i.test(lines[0]);
   const dataLines = startsWithHeader ? lines.slice(1) : lines;
 
-  let created = 0;
-  let skipped = 0;
-  let invalid = 0;
-  let duplicates = 0;
-
-  for (const line of dataLines) {
-    const [emailRaw, firstRaw, lastRaw] = line.split(',').map((part) => (part || '').trim());
-    const email = normalizeEmailAddress(emailRaw || '');
-
-    if (!email) {
-      skipped += 1;
-      continue;
-    }
-
-    if (!isValidEmailAddress(email)) {
-      invalid += 1;
-      skipped += 1;
-      continue;
-    }
-
-    const existingContact = queryRow<{ id: string }>(
-      `
-        SELECT c.id
-        FROM "Contact" c
-        INNER JOIN "List" l ON l.id = c."listId"
-        WHERE c.email = ? AND l."userId" = ?
-        LIMIT 1
-      `,
-      [email, auth.user.userId],
-    );
-
-    if (existingContact) {
-      duplicates += 1;
-      skipped += 1;
-      continue;
-    }
-
-    const id = crypto.randomUUID().replace(/-/g, '');
-    const createdAt = new Date().toISOString();
-    executeSql(
-      'INSERT INTO "Contact" (id, "listId", email, "firstName", "lastName", status, "createdAt", "updatedAt") VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-      [id, listId, email, firstRaw || null, lastRaw || null, 'SUBSCRIBED', createdAt, createdAt],
-    );
-    created += 1;
-  }
+  const { created, skipped, duplicates, invalid } = importContactsIntoList({
+    userId: auth.user.userId,
+    listId,
+    dedupeAcrossUserLists: true,
+    contacts: dataLines.map((line) => {
+      const [emailRaw, firstRaw, lastRaw] = line.split(',').map((part) => (part || '').trim());
+      return {
+        email: emailRaw || '',
+        firstName: firstRaw || null,
+        lastName: lastRaw || null,
+        status: 'SUBSCRIBED',
+      };
+    }),
+  });
 
   return ok({ created, skipped, duplicates, invalid });
 }

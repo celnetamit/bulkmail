@@ -91,6 +91,8 @@ export function ListDetailClient({ listId }: { listId: string }) {
   const [contactFirstName, setContactFirstName] = useState('');
   const [contactLastName, setContactLastName] = useState('');
   const [csvText, setCsvText] = useState('');
+  const [csvImporting, setCsvImporting] = useState(false);
+  const [csvImportStatus, setCsvImportStatus] = useState('');
 
   async function loadList() {
     if (!listId) {
@@ -263,22 +265,53 @@ export function ListDetailClient({ listId }: { listId: string }) {
       return;
     }
 
-    const response = await fetch('/api/contacts', {
-      method: 'PUT',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ listId, csv: csvText }),
-    });
+    const rowCount = csvText
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean).length;
 
-    const data = (await response.json()) as { created?: number; skipped?: number; error?: string };
+    setCsvImporting(true);
+    setCsvImportStatus(
+      rowCount > 1000
+        ? `Importing ${rowCount.toLocaleString()} rows. Large imports can take a little while.`
+        : 'Importing contacts...',
+    );
 
-    if (!response.ok) {
-      toast.error('Import failed', data.error || 'The contacts could not be imported.');
-      return;
+    try {
+      const response = await fetch('/api/contacts', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ listId, csv: csvText }),
+      });
+
+      const data = (await response.json().catch(() => ({}))) as {
+        created?: number;
+        skipped?: number;
+        duplicates?: number;
+        invalid?: number;
+        error?: string;
+      };
+
+      if (!response.ok) {
+        toast.error('Import failed', data.error || 'The contacts could not be imported.');
+        return;
+      }
+
+      toast.success(
+        'Import complete',
+        `Created: ${data.created ?? 0}, Skipped: ${data.skipped ?? 0}, Duplicates: ${data.duplicates ?? 0}, Invalid: ${data.invalid ?? 0}.`,
+      );
+      setCsvText('');
+      await refresh();
+    } catch {
+      toast.error(
+        'Import response timed out',
+        'The request ended before the app got a reply. Large batches may still finish in the background, so refresh this list before retrying.',
+      );
+    } finally {
+      setCsvImporting(false);
+      setCsvImportStatus('');
     }
-
-    toast.success('Import complete', `Created: ${data.created ?? 0}, Skipped: ${data.skipped ?? 0}.`);
-    setCsvText('');
-    await refresh();
   }
 
   async function updateContactStatus(contactId: string, status: string) {
@@ -389,9 +422,13 @@ export function ListDetailClient({ listId }: { listId: string }) {
                 placeholder={'email,firstName,lastName\nuser1@example.com,Jane,Doe'}
                 rows={6}
                 className="auth-textarea"
+                disabled={!canManageList || csvImporting}
               />
-              <button className="btn-primary" type="submit" disabled={!canManageList}>Import Contacts</button>
+              <button className="btn-primary" type="submit" disabled={!canManageList || csvImporting}>
+                {csvImporting ? 'Importing...' : 'Import Contacts'}
+              </button>
             </form>
+            <p className="form-note" aria-live="polite">{csvImportStatus || '\u00a0'}</p>
           </div>
 
           <div className="detail-panel">

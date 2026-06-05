@@ -3,9 +3,9 @@ import { randomUUID } from 'node:crypto';
 import { requireUserFromCookies } from '@/lib/auth';
 import { recordAuditEvent } from '@/lib/audit';
 import { fail, ok } from '@/lib/http';
-import { isValidEmailAddress, normalizeEmailAddress } from '@/lib/email-address';
 import { executeSql, queryRow } from '@/lib/sqlite';
 import { setDefaultTestList } from '@/lib/campaign-lists';
+import { importContactsIntoList } from '@/lib/contact-import';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -67,30 +67,12 @@ export async function POST(request: Request) {
     );
 
     const contacts = Array.isArray(input?.contacts) ? input.contacts : [];
-    const seen = new Set<string>();
-    for (const contact of contacts) {
-      const normalized = normalizeEmailAddress(String(contact?.email || ''));
-      if (!normalized || !isValidEmailAddress(normalized) || seen.has(normalized)) continue;
-      seen.add(normalized);
-
-      executeSql(
-        `
-          INSERT INTO "Contact" (
-            id, email, "firstName", "lastName", status, "listId", "createdAt", "updatedAt"
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        `,
-        [
-          randomUUID().replace(/-/g, ''),
-          normalized,
-          String(contact?.firstName || '').trim() || null,
-          String(contact?.lastName || '').trim() || null,
-          contact?.status || 'SUBSCRIBED',
-          id,
-          createdAt,
-          createdAt,
-        ],
-      );
-    }
+    importContactsIntoList({
+      userId: auth.user.userId,
+      listId: id,
+      contacts,
+      dedupeAcrossUserLists: false,
+    });
 
     if (input?.isDefaultTestList && !isArchived) {
       setDefaultTestList(id, auth.user.userId);
