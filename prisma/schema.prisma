@@ -79,6 +79,7 @@ model MailSettings {
 model PlatformSettings {
   id                String   @id @default("global")
   imageUploadLimitKb Int      @default(50)
+  campaignSendConcurrency Int @default(5)
   sendingDomain     String?
   spfVerified       Boolean  @default(false)
   dkimVerified      Boolean  @default(false)

@@ -1,6 +1,8 @@
 import { getCurrentUserFromCookies } from '@/lib/auth';
 import { getUserAnalyticsSummary } from '@/lib/analytics';
 import { getUserQuotaStatus } from '@/lib/quota';
+import { getPlatformSettings } from '@/lib/platform-settings';
+import { getSystemHealthSnapshot } from '@/lib/observability';
 import { recordResourceMetric } from '@/lib/resource-analytics';
 import { DashboardOverviewTabs } from '@/components/dashboard-overview-tabs';
 import { IconCampaign, IconList, IconPlus, IconTemplate } from '@/components/dashboard-icons';
@@ -22,13 +24,19 @@ export default async function DashboardOverview() {
 
   const metrics = await getUserAnalyticsSummary(user.userId, { role: user.role });
   const quota = await getUserQuotaStatus(user.userId, user.dailyEmailLimit);
+  const platformSettings = await getPlatformSettings();
+  const systemHealth = getSystemHealthSnapshot();
+  const liveSendingCount = systemHealth.queue.queued + systemHealth.queue.running + systemHealth.queue.retrying;
 
   return (
     <div className="overview">
       <header className="page-header">
         <div className="page-header__row">
           <div>
-            <h1>Dashboard Overview</h1>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', flexWrap: 'wrap' }}>
+              <h1 style={{ marginBottom: 0 }}>Dashboard Overview</h1>
+              {liveSendingCount > 0 ? <span className="badge badge-success">Live sending {liveSendingCount}</span> : null}
+            </div>
             <p>Track activity, quotas, and the next best action without digging through every module.</p>
           </div>
           <div className="header-actions">
@@ -57,6 +65,7 @@ export default async function DashboardOverview() {
         <div className="stat-card"><h3>Provider Blocks</h3><p className="stat-value text-red">{metrics.providerBlocks}</p></div>
         <div className="stat-card"><h3>Daily Limit</h3><p className="stat-value">{quota.sentToday}/{quota.dailyLimit}</p></div>
         <div className="stat-card"><h3>Remaining</h3><p className="stat-value">{quota.remainingToday}</p></div>
+        <div className="stat-card"><h3>Send Concurrency</h3><p className="stat-value">{platformSettings.campaignSendConcurrency}</p></div>
       </div>
 
       <DashboardOverviewTabs metrics={metrics} quota={quota} />

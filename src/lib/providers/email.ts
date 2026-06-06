@@ -4,6 +4,7 @@ import { createUnsubscribeToken } from '@/lib/unsubscribe';
 import { createOpenTrackingToken } from '@/lib/tracking';
 import { isValidEmailAddress, normalizeEmailAddress } from '@/lib/email-address';
 import { recordSystemEvent } from '@/lib/observability';
+import { getPlatformSettings } from '@/lib/platform-settings';
 import { getUserQuotaStatus } from '@/lib/quota';
 import { recordResourceMetric } from '@/lib/resource-analytics';
 import { executeSql, queryRow } from '@/lib/sqlite';
@@ -226,7 +227,12 @@ async function sendEmailBatch(
   return sendViaMock(input);
 }
 
-function getSendConcurrency() {
+async function getSendConcurrency() {
+  const platformSettings = await getPlatformSettings();
+  if (Number.isFinite(platformSettings.campaignSendConcurrency) && platformSettings.campaignSendConcurrency >= 1) {
+    return Math.min(25, Math.floor(platformSettings.campaignSendConcurrency));
+  }
+
   const configured = Number(process.env.CAMPAIGN_SEND_CONCURRENCY || '');
   if (Number.isFinite(configured) && configured >= 1) {
     return Math.min(25, Math.floor(configured));
@@ -326,7 +332,7 @@ export async function dispatchCampaignEmails(userId: string, input: SendInput) {
   const sendableContacts = dedupedContacts.slice(0, quota.remainingToday);
   const quotaSkipped = Math.max(0, dedupedContacts.length - sendableContacts.length);
   const startedAt = new Date();
-  const sendConcurrency = getSendConcurrency();
+  const sendConcurrency = await getSendConcurrency();
   const progressCheckpointSize = getProgressCheckpointSize(sendConcurrency, sendableContacts.length);
   let outcome: SendOutcome = 'SENT';
 

@@ -26,6 +26,7 @@ export async function GET() {
     settings: {
       ...settings,
       imageUploadLimitKb: platformSettings.imageUploadLimitKb,
+      campaignSendConcurrency: platformSettings.campaignSendConcurrency,
       imageUploadSource: platformSettings.source,
       sendingDomain: platformSettings.sendingDomain,
       spfVerified: platformSettings.spfVerified,
@@ -90,6 +91,11 @@ export async function PUT(request: Request) {
   });
 
   const imageUploadLimitKbRaw = 'imageUploadLimitKb' in payload ? Number(payload.imageUploadLimitKb) : undefined;
+  const campaignSendConcurrencyRaw = 'campaignSendConcurrency' in payload ? Number(payload.campaignSendConcurrency) : undefined;
+  const normalizedCampaignSendConcurrency =
+    campaignSendConcurrencyRaw !== undefined && Number.isFinite(campaignSendConcurrencyRaw) && campaignSendConcurrencyRaw > 0
+      ? Math.min(25, Math.floor(campaignSendConcurrencyRaw))
+      : undefined;
   const sendingDomain = 'sendingDomain' in payload ? String(payload.sendingDomain || '').trim() : undefined;
   const spfVerified = 'spfVerified' in payload ? Boolean(payload.spfVerified) : undefined;
   const dkimVerified = 'dkimVerified' in payload ? Boolean(payload.dkimVerified) : undefined;
@@ -98,15 +104,23 @@ export async function PUT(request: Request) {
     const imageUploadLimitKb = Number.isFinite(imageUploadLimitKbRaw) && imageUploadLimitKbRaw > 0 ? Math.floor(imageUploadLimitKbRaw) : 50;
     await savePlatformSettings({
       imageUploadLimitKb,
+      ...(normalizedCampaignSendConcurrency !== undefined ? { campaignSendConcurrency: normalizedCampaignSendConcurrency } : {}),
       sendingDomain,
       spfVerified,
       dkimVerified,
       dmarcVerified,
     });
-  } else if (sendingDomain !== undefined || spfVerified !== undefined || dkimVerified !== undefined || dmarcVerified !== undefined) {
+  } else if (
+    sendingDomain !== undefined ||
+    spfVerified !== undefined ||
+    dkimVerified !== undefined ||
+    dmarcVerified !== undefined ||
+    campaignSendConcurrencyRaw !== undefined
+  ) {
     const platformSettings = await getPlatformSettings();
     await savePlatformSettings({
       imageUploadLimitKb: platformSettings.imageUploadLimitKb,
+      campaignSendConcurrency: normalizedCampaignSendConcurrency ?? platformSettings.campaignSendConcurrency,
       sendingDomain,
       spfVerified,
       dkimVerified,
@@ -127,6 +141,7 @@ export async function PUT(request: Request) {
       senderFromEmail: senderIdentity.senderFromEmail || null,
       senderReplyToEmail: senderIdentity.senderReplyToEmail || null,
       imageUploadLimitKb: imageUploadLimitKbRaw,
+      campaignSendConcurrency: campaignSendConcurrencyRaw,
       sendingDomain,
       spfVerified,
       dkimVerified,
@@ -141,6 +156,7 @@ export async function PUT(request: Request) {
     settings: {
       ...settings,
       imageUploadLimitKb: platformSettings.imageUploadLimitKb,
+      campaignSendConcurrency: platformSettings.campaignSendConcurrency,
       imageUploadSource: platformSettings.source,
       sendingDomain: platformSettings.sendingDomain,
       spfVerified: platformSettings.spfVerified,

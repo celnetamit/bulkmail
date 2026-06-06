@@ -15,6 +15,7 @@ type Settings = {
   resendFromEmail: string;
   hasWebhookSharedSecret: boolean;
   imageUploadLimitKb: number;
+  campaignSendConcurrency: number;
   sendingDomain: string;
   spfVerified: boolean;
   dkimVerified: boolean;
@@ -31,6 +32,56 @@ type SenderIdentity = {
   senderReplyToEmail: string;
 };
 
+type CampaignTimelinePoint = {
+  id: string;
+  eventType: string;
+  sentCount: number;
+  failedCount: number;
+  skippedCount: number;
+  durationMs: number | null;
+  throughputPerSecond: number;
+  createdAt: string;
+};
+
+type CampaignTimelineSummary = {
+  campaign: {
+    id: string;
+    name: string;
+    status: string;
+    totalRecipients: number;
+    sentCount: number;
+    failedCount: number;
+    skippedCount: number;
+  };
+  latestJob: {
+    id: string;
+    status: string;
+    provider: string | null;
+    requestedAt: string;
+    startedAt: string | null;
+    nextRunAt: string | null;
+    finishedAt: string | null;
+    attempts: number;
+    lastError: string | null;
+    skipReason: string | null;
+    updatedAt: string;
+  } | null;
+  live: {
+    processedCount: number;
+    remainingCount: number;
+    throughputPerSecond: number;
+    progressPercent: number;
+  };
+  progressTimeline: CampaignTimelinePoint[];
+  systemEvents: Array<{
+    id: string;
+    level: string;
+    source: string;
+    message: string;
+    createdAt: string;
+  }>;
+};
+
 type CurrentUser = {
   role: 'ADMIN' | 'MANAGER' | 'USER';
   userId: string;
@@ -41,6 +92,8 @@ type CurrentUser = {
   capabilities: string[];
 };
 
+const ACTIVE_CAMPAIGN_STATUSES = new Set(['QUEUED', 'RUNNING', 'RETRYING', 'SENDING']);
+
 export default function SettingsPage() {
   const toast = useToast();
   const [settings, setSettings] = useState<Settings | null>(null);
@@ -49,6 +102,8 @@ export default function SettingsPage() {
   const [saving, setSaving] = useState(false);
   const [savingSenderIdentity, setSavingSenderIdentity] = useState(false);
   const [sendingTest, setSendingTest] = useState(false);
+  const [campaignTimeline, setCampaignTimeline] = useState<CampaignTimelineSummary | null>(null);
+  const [campaignTimelineLoading, setCampaignTimelineLoading] = useState(false);
 
   const [provider, setProvider] = useState<'mock' | 'resend' | 'aws-ses'>('mock');
   const [awsRegion, setAwsRegion] = useState('');
@@ -60,6 +115,7 @@ export default function SettingsPage() {
   const [resendFromEmail, setResendFromEmail] = useState('');
   const [webhookSharedSecret, setWebhookSharedSecret] = useState('');
   const [imageUploadLimitKb, setImageUploadLimitKb] = useState('50');
+  const [campaignSendConcurrency, setCampaignSendConcurrency] = useState('5');
   const [sendingDomain, setSendingDomain] = useState('');
   const [spfVerified, setSpfVerified] = useState(false);
   const [dkimVerified, setDkimVerified] = useState(false);
@@ -71,12 +127,62 @@ export default function SettingsPage() {
   const [testSubject, setTestSubject] = useState('MailFlow test email');
   const [testBodyHtml, setTestBodyHtml] = useState('<p>Hello, this is a test email from MailFlow.</p>');
 
+  async function loadCampaignTimeline(options?: { silent?: boolean }) {
+    if (!currentUser?.capabilities?.includes('manage_settings')) {
+      setCampaignTimeline(null);
+      return false;
+    }
+
+    if (!options?.silent) {
+      setCampaignTimelineLoading(true);
+    }
+
+    try {
+      const campaignsResponse = await fetch('/api/campaigns?summary=1&compact=1', { cache: 'no-store' });
+      const campaignsData = (await campaignsResponse.json()) as { campaigns?: Array<{ id: string; status: string; createdAt: string }>; error?: string };
+      if (!campaignsResponse.ok || !campaignsData.campaigns?.length) {
+        setCampaignTimeline(null);
+        return false;
+      }
+
+      const activeOrLatestCampaign =
+        campaignsData.campaigns.find((campaign) => ACTIVE_CAMPAIGN_STATUSES.has(campaign.status)) ||
+        campaignsData.campaigns[0];
+
+      const activityResponse = await fetch(`/api/campaigns/${activeOrLatestCampaign.id}/activity`, { cache: 'no-store' });
+      const activityData = (await activityResponse.json()) as { campaign?: CampaignTimelineSummary['campaign']; latestJob?: CampaignTimelineSummary['latestJob']; live?: CampaignTimelineSummary['live']; progressTimeline?: CampaignTimelinePoint[]; systemEvents?: CampaignTimelineSummary['systemEvents']; error?: string };
+
+      if (!activityResponse.ok || !activityData.campaign) {
+        setCampaignTimeline(null);
+        return false;
+      }
+
+      setCampaignTimeline({
+        campaign: activityData.campaign,
+        latestJob: activityData.latestJob || null,
+        live: activityData.live || { processedCount: 0, remainingCount: 0, throughputPerSecond: 0, progressPercent: 0 },
+        progressTimeline: activityData.progressTimeline || [],
+        systemEvents: activityData.systemEvents || [],
+      });
+      return Boolean(activityData.latestJob && ACTIVE_CAMPAIGN_STATUSES.has(activityData.latestJob.status));
+    } catch {
+      setCampaignTimeline(null);
+      return false;
+    } finally {
+      if (!options?.silent) {
+        setCampaignTimelineLoading(false);
+      }
+    }
+  }
+
   async function loadSessionAndSettings() {
+    setCampaignTimelineLoading(true);
     const meResponse = await fetch('/api/auth/me', { cache: 'no-store' });
     const meData = (await meResponse.json()) as { user?: CurrentUser; error?: string };
 
     if (!meResponse.ok || !meData.user) {
       toast.error('Account load failed', meData.error || 'Account details could not be loaded.');
+      setCampaignTimelineLoading(false);
       return;
     }
 
@@ -86,6 +192,7 @@ export default function SettingsPage() {
     const data = (await res.json()) as { settings?: Settings; senderIdentity?: SenderIdentity; error?: string };
     if (!res.ok) {
       toast.error('Settings load failed', data.error || 'Settings could not be loaded.');
+      setCampaignTimelineLoading(false);
       return;
     }
 
@@ -104,15 +211,30 @@ export default function SettingsPage() {
     setAwsFromEmail(data.settings.awsFromEmail);
     setResendFromEmail(data.settings.resendFromEmail);
     setImageUploadLimitKb(String(data.settings.imageUploadLimitKb || 50));
+    setCampaignSendConcurrency(String(data.settings.campaignSendConcurrency || 5));
     setSendingDomain(data.settings.sendingDomain || '');
     setSpfVerified(Boolean(data.settings.spfVerified));
     setDkimVerified(Boolean(data.settings.dkimVerified));
     setDmarcVerified(Boolean(data.settings.dmarcVerified));
+    await loadCampaignTimeline();
   }
 
   useEffect(() => {
     loadSessionAndSettings();
   }, []);
+
+  useEffect(() => {
+    const latestStatus = campaignTimeline?.latestJob?.status || campaignTimeline?.campaign.status;
+    if (!latestStatus || !ACTIVE_CAMPAIGN_STATUSES.has(latestStatus)) {
+      return undefined;
+    }
+
+    const timer = window.setInterval(() => {
+      void loadCampaignTimeline({ silent: true });
+    }, 5000);
+
+    return () => window.clearInterval(timer);
+  }, [campaignTimeline?.campaign.status, campaignTimeline?.latestJob?.status, currentUser?.capabilities]);
 
   async function saveSenderSettings(event: FormEvent) {
     event.preventDefault();
@@ -163,6 +285,7 @@ export default function SettingsPage() {
         resendFromEmail,
         webhookSharedSecret,
         imageUploadLimitKb: Number(imageUploadLimitKb),
+        campaignSendConcurrency: Number(campaignSendConcurrency),
         sendingDomain,
         spfVerified,
         dkimVerified,
@@ -286,6 +409,15 @@ export default function SettingsPage() {
               step={1}
               placeholder="Default image upload limit KB"
             />
+            <input
+              value={campaignSendConcurrency}
+              onChange={(e) => setCampaignSendConcurrency(e.target.value)}
+              type="number"
+              min={1}
+              max={25}
+              step={1}
+              placeholder="Campaign send concurrency"
+            />
 
             <button className="btn-primary" type="submit" disabled={saving}>
               {saving ? 'Saving...' : 'Save Settings'}
@@ -293,6 +425,7 @@ export default function SettingsPage() {
           </form>
           <p className="form-note">
             Stored values are kept encrypted in the database. Leave secret fields blank to keep the existing value. The upload limit applies to users without a per-user override.
+            Campaign send concurrency controls how many recipients are processed in parallel, and the app caps it at 25 even if you enter a higher number.
             For AWS SES event tracking, point your SNS subscription at <strong>/api/webhooks/aws-ses</strong>. MailFlow now verifies SNS signatures and auto-confirms the subscription handshake.
           </p>
         </div>
@@ -334,6 +467,57 @@ export default function SettingsPage() {
           </form>
         </div>
       ) : null}
+
+      <div className="card dashboard-panel" style={{ marginBottom: '1rem' }}>
+        <div className="page-header__row" style={{ marginBottom: '0.85rem' }}>
+          <div>
+            <h2>Campaign Send Timeline</h2>
+            <p className="form-note">A compact snapshot of the most recent campaign send so you can see where the worker is in the flow.</p>
+          </div>
+          <Link className="btn-secondary" href="/dashboard/campaigns">Open Campaigns</Link>
+        </div>
+
+        {campaignTimelineLoading ? (
+          <p className="form-note">Loading recent campaign activity...</p>
+        ) : campaignTimeline ? (
+          <>
+            <div className="campaigns-live-panel__detail-list" style={{ marginBottom: '0.9rem' }}>
+              <div><span>Campaign</span><strong>{campaignTimeline.campaign.name}</strong></div>
+              <div><span>Status</span><strong>{campaignTimeline.campaign.status}</strong></div>
+              <div><span>Processed</span><strong>{campaignTimeline.live.processedCount}/{campaignTimeline.campaign.totalRecipients}</strong></div>
+              <div><span>Throughput</span><strong>{campaignTimeline.live.throughputPerSecond.toFixed(2)}/s</strong></div>
+              <div><span>Started</span><strong>{campaignTimeline.latestJob?.startedAt ? new Date(campaignTimeline.latestJob.startedAt).toLocaleString() : 'Queued'}</strong></div>
+              <div><span>Finished</span><strong>{campaignTimeline.latestJob?.finishedAt ? new Date(campaignTimeline.latestJob.finishedAt).toLocaleString() : 'In progress'}</strong></div>
+            </div>
+
+            <div className="campaigns-live-timeline">
+              {campaignTimeline.progressTimeline.length ? (
+                campaignTimeline.progressTimeline.slice(-4).reverse().map((point) => (
+                  <div key={point.id} className="campaigns-live-timeline__item">
+                    <div className="campaigns-live-timeline__time">{new Date(point.createdAt).toLocaleString()}</div>
+                    <div className="campaigns-live-timeline__body">
+                      <strong>{point.eventType.replace(/_/g, ' ')}</strong>
+                      <span>
+                        {point.sentCount} sent, {point.failedCount} failed, {point.skippedCount} skipped
+                        {point.throughputPerSecond > 0 ? `, ${point.throughputPerSecond.toFixed(2)}/s` : ''}
+                      </span>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="campaigns-live-timeline__item">
+                  <div className="campaigns-live-timeline__body">
+                    <strong>No progress markers yet</strong>
+                    <span>The worker will add checkpoints once a campaign starts sending.</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          </>
+        ) : (
+          <p className="form-note">No recent campaign activity found yet. Start a campaign and this panel will show the live send timeline.</p>
+        )}
+      </div>
 
       <div className="card dashboard-panel">
         <h2>Send Test Email</h2>

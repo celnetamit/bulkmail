@@ -46,6 +46,7 @@ CREATE INDEX IF NOT EXISTS "TeamMember_teamId_idx" ON "TeamMember" ("teamId");
 CREATE TABLE IF NOT EXISTS "PlatformSettings" (
   "id" TEXT NOT NULL PRIMARY KEY,
   "imageUploadLimitKb" INTEGER NOT NULL DEFAULT 50,
+  "campaignSendConcurrency" INTEGER NOT NULL DEFAULT 5,
   "sendingDomain" TEXT,
   "spfVerified" BOOLEAN NOT NULL DEFAULT FALSE,
   "dkimVerified" BOOLEAN NOT NULL DEFAULT FALSE,
@@ -54,13 +55,14 @@ CREATE TABLE IF NOT EXISTS "PlatformSettings" (
   "updatedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+ALTER TABLE "PlatformSettings" ADD COLUMN IF NOT EXISTS "campaignSendConcurrency" INTEGER NOT NULL DEFAULT 5;
 ALTER TABLE "PlatformSettings" ADD COLUMN IF NOT EXISTS "sendingDomain" TEXT;
 ALTER TABLE "PlatformSettings" ADD COLUMN IF NOT EXISTS "spfVerified" BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE "PlatformSettings" ADD COLUMN IF NOT EXISTS "dkimVerified" BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE "PlatformSettings" ADD COLUMN IF NOT EXISTS "dmarcVerified" BOOLEAN NOT NULL DEFAULT FALSE;
 
-INSERT INTO "PlatformSettings" ("id", "imageUploadLimitKb", "sendingDomain", "spfVerified", "dkimVerified", "dmarcVerified")
-VALUES ('global', 50, NULL, FALSE, FALSE, FALSE)
+INSERT INTO "PlatformSettings" ("id", "imageUploadLimitKb", "campaignSendConcurrency", "sendingDomain", "spfVerified", "dkimVerified", "dmarcVerified")
+VALUES ('global', 50, 5, NULL, FALSE, FALSE, FALSE)
 ON CONFLICT ("id") DO NOTHING;
 
 CREATE TABLE IF NOT EXISTS "HousekeepingState" (
