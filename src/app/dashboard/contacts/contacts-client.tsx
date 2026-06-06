@@ -49,6 +49,13 @@ type ListResponse = {
   error?: string;
 };
 
+type BulkDeleteResponse = {
+  success?: boolean;
+  action?: string;
+  contactIds?: string[];
+  error?: string;
+};
+
 type ContactDraft = {
   email: string;
   firstName: string;
@@ -105,6 +112,39 @@ const EMPTY_DRAFT: ContactDraft = {
   status: 'SUBSCRIBED',
 };
 
+function csvEscape(value: string) {
+  return `"${value.replace(/"/g, '""')}"`;
+}
+
+function toCsv(rows: Contact[]) {
+  const header = ['email', 'firstName', 'lastName', 'status', 'listName', 'updatedAt'];
+  const lines = [
+    header.join(','),
+    ...rows.map((row) =>
+      [
+        csvEscape(row.email),
+        csvEscape(row.firstName || ''),
+        csvEscape(row.lastName || ''),
+        csvEscape(row.status),
+        csvEscape(row.listName),
+        csvEscape(row.updatedAt || ''),
+      ].join(','),
+    ),
+  ];
+
+  return lines.join('\n');
+}
+
+function downloadCsv(filename: string, content: string) {
+  const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  link.click();
+  window.URL.revokeObjectURL(url);
+}
+
 export function ContactsClient() {
   const toast = useToast();
   const [contacts, setContacts] = useState<Contact[]>([]);
@@ -129,8 +169,10 @@ export function ContactsClient() {
   const [order, setOrder] = useState<'asc' | 'desc'>('desc');
   const [loading, setLoading] = useState(true);
   const [selectedContactId, setSelectedContactId] = useState('');
+  const [selectedContactIds, setSelectedContactIds] = useState<string[]>([]);
   const [draft, setDraft] = useState<ContactDraft>(EMPTY_DRAFT);
   const [saving, setSaving] = useState(false);
+  const [bulkLoading, setBulkLoading] = useState(false);
 
   async function loadLists() {
     const params = new URLSearchParams({
@@ -152,47 +194,54 @@ export function ContactsClient() {
   async function loadContacts() {
     setLoading(true);
 
-    const params = new URLSearchParams({
-      page: String(page),
-      pageSize: String(pageSize),
-      search,
-      sort,
-      order,
-    });
-
-    if (listFilter) params.set('listId', listFilter);
-    if (statusFilter) params.set('status', statusFilter);
-
-    const response = await fetch(`/api/contacts?${params.toString()}`, { cache: 'no-store' });
-    const data = (await readJsonResponse<ContactResponse>(response)) as ContactResponse | null;
-
-    if (!response.ok) {
-      toast.error('Email load failed', data?.error || 'The email index could not be loaded.');
-      setContacts([]);
-      setPagination((current) => ({ ...current, total: 0, totalPages: 1 }));
-      setLoading(false);
-      return;
-    }
-
-    const nextContacts = data?.contacts || [];
-    setContacts(nextContacts);
-    setPagination(data?.pagination || pagination);
-
-    const nextSelected = nextContacts.find((contact: Contact) => contact.id === selectedContactId) || nextContacts[0] || null;
-    if (nextSelected) {
-      setSelectedContactId(nextSelected.id);
-      setDraft({
-        email: nextSelected.email,
-        firstName: nextSelected.firstName || '',
-        lastName: nextSelected.lastName || '',
-        status: nextSelected.status,
+    try {
+      const params = new URLSearchParams({
+        page: String(page),
+        pageSize: String(pageSize),
+        search,
+        sort,
+        order,
       });
-    } else {
-      setSelectedContactId('');
-      setDraft(EMPTY_DRAFT);
-    }
 
-    setLoading(false);
+      if (listFilter) params.set('listId', listFilter);
+      if (statusFilter) params.set('status', statusFilter);
+
+      const response = await fetch(`/api/contacts?${params.toString()}`, { cache: 'no-store' });
+      const data = (await readJsonResponse<ContactResponse>(response)) as ContactResponse | null;
+
+      if (!response.ok) {
+        toast.error('Email load failed', data?.error || 'The email index could not be loaded.');
+        setContacts([]);
+        setPagination((current) => ({ ...current, total: 0, totalPages: 1 }));
+        setSelectedContactIds([]);
+        setSelectedContactId('');
+        setDraft(EMPTY_DRAFT);
+        return;
+      }
+
+      const nextContacts = data?.contacts || [];
+      const nextContactIds = new Set(nextContacts.map((contact) => contact.id));
+      setContacts(nextContacts);
+      setPagination(data?.pagination || pagination);
+      setSelectedContactIds((current) => current.filter((id) => nextContactIds.has(id)));
+
+      const nextSelected = selectedContactId ? nextContacts.find((contact) => contact.id === selectedContactId) || null : null;
+      if (nextSelected) {
+        setDraft({
+          email: nextSelected.email,
+          firstName: nextSelected.firstName || '',
+          lastName: nextSelected.lastName || '',
+          status: nextSelected.status,
+        });
+      } else if (selectedContactId) {
+        setSelectedContactId('');
+        setDraft(EMPTY_DRAFT);
+      }
+    } catch {
+      toast.error('Email load failed', 'The email index could not be loaded.');
+    } finally {
+      setLoading(false);
+    }
   }
 
   useEffect(() => {
@@ -215,30 +264,104 @@ export function ContactsClient() {
     });
   }
 
+  function closeDrawer() {
+    setSelectedContactId('');
+    setDraft(EMPTY_DRAFT);
+  }
+
+  function toggleVisibleSelection(checked: boolean) {
+    if (!checked) {
+      setSelectedContactIds([]);
+      return;
+    }
+
+    setSelectedContactIds(contacts.map((contact) => contact.id));
+  }
+
+  function toggleContactSelection(contactId: string, checked: boolean) {
+    setSelectedContactIds((current) =>
+      checked ? Array.from(new Set([...current, contactId])) : current.filter((id) => id !== contactId),
+    );
+  }
+
+  function exportSelected() {
+    const selectedRows = contacts.filter((contact) => selectedContactIds.includes(contact.id));
+    if (selectedRows.length === 0) {
+      toast.warning('Nothing selected', 'Select one or more emails on this page first.');
+      return;
+    }
+
+    downloadCsv(
+      `emails-page-${pagination.page}.csv`,
+      toCsv(selectedRows),
+    );
+    toast.success('CSV exported', `${selectedRows.length} contact${selectedRows.length === 1 ? '' : 's'} downloaded.`);
+  }
+
+  async function deleteSelected() {
+    const selectedRows = contacts.filter((contact) => selectedContactIds.includes(contact.id));
+    if (selectedRows.length === 0) {
+      toast.warning('Nothing selected', 'Select one or more emails on this page first.');
+      return;
+    }
+
+    if (!confirm(`Delete ${selectedRows.length} selected email${selectedRows.length === 1 ? '' : 's'}?`)) return;
+
+    setBulkLoading(true);
+    try {
+      const response = await fetch('/api/contacts/bulk', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ action: 'delete', contactIds: selectedRows.map((contact) => contact.id) }),
+      });
+      const data = (await readJsonResponse<BulkDeleteResponse>(response)) || {};
+
+      if (!response.ok) {
+        toast.error('Bulk delete failed', data.error || 'The selected contacts could not be deleted.');
+        return;
+      }
+
+      toast.success('Contacts deleted', `${selectedRows.length} contact${selectedRows.length === 1 ? '' : 's'} removed.`);
+      setSelectedContactIds([]);
+      if (selectedContactId && selectedRows.some((contact) => contact.id === selectedContactId)) {
+        closeDrawer();
+      }
+      await loadContacts();
+    } catch {
+      toast.error('Bulk delete failed', 'The selected contacts could not be deleted.');
+    } finally {
+      setBulkLoading(false);
+    }
+  }
+
   async function saveContact(event: FormEvent) {
     event.preventDefault();
     if (!selectedContactId) return;
 
     setSaving(true);
-    const response = await fetch(`/api/contacts/${selectedContactId}`, {
-      method: 'PATCH',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(draft),
-    });
+    try {
+      const response = await fetch(`/api/contacts/${selectedContactId}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(draft),
+      });
 
-    const data = (await readJsonResponse<{ error?: string }>(response)) || {};
-    setSaving(false);
+      const data = (await readJsonResponse<{ error?: string }>(response)) || {};
+      if (!response.ok) {
+        toast.error('Email update failed', data.error || 'The email record could not be updated.');
+        return;
+      }
 
-    if (!response.ok) {
-      toast.error('Email update failed', data.error || 'The email record could not be updated.');
-      return;
+      toast.success('Email updated', 'The contact record was saved.');
+      await loadContacts();
+    } finally {
+      setSaving(false);
     }
-
-    toast.success('Email updated', 'The contact record was saved.');
-    await loadContacts();
   }
 
   const selectedContact = contacts.find((contact) => contact.id === selectedContactId) || null;
+  const allVisibleSelected = contacts.length > 0 && contacts.every((contact) => selectedContactIds.includes(contact.id));
+  const selectedVisibleContacts = contacts.filter((contact) => selectedContactIds.includes(contact.id));
 
   return (
     <div className="overview">
@@ -246,7 +369,7 @@ export function ContactsClient() {
         <div className="page-header__row">
           <div>
             <h1>All Emails</h1>
-            <p>Browse every contact you can access, filter the list, and edit the record without leaving the index.</p>
+            <p>Browse every contact you can access, bulk-manage the current page, and edit a record in a drawer.</p>
           </div>
           <div className="header-actions">
             <Link className="btn-secondary" href="/dashboard/lists">Lists</Link>
@@ -272,7 +395,9 @@ export function ContactsClient() {
         </div>
         <div className="stat-card">
           <h3>Selected</h3>
-          <p className="stat-value" style={{ fontSize: '1rem' }}>{selectedContact ? selectedContact.email : 'None'}</p>
+          <p className="stat-value" style={{ fontSize: '1rem' }}>
+            {selectedContactIds.length > 0 ? `${selectedContactIds.length} on page` : 'None'}
+          </p>
         </div>
       </div>
 
@@ -388,71 +513,26 @@ export function ContactsClient() {
         </div>
       </div>
 
-      <div className="detail-panel" style={{ marginBottom: '1rem' }}>
-        <div className="section-header section-header--compact">
-          <h3>Edit Email</h3>
-          <span className="form-note">{selectedContact ? `Editing ${selectedContact.email}` : 'Select a row to start editing.'}</span>
+      <div className="bulk-action-bar" style={{ marginBottom: '1rem' }}>
+        <div className="bulk-action-bar__summary">
+          {selectedContactIds.length > 0
+            ? `${selectedContactIds.length} selected on this page`
+            : `${contacts.length} emails loaded on this page`}
         </div>
-
-        {selectedContact ? (
-          <form className="auth-form" onSubmit={saveContact}>
-            <div className="form-note">
-              List: <strong>{selectedContact.listName}</strong>
-            </div>
-            <input
-              type="email"
-              value={draft.email}
-              onChange={(event) => setDraft((current) => ({ ...current, email: event.target.value }))}
-              placeholder="email@example.com"
-              required
-            />
-            <input
-              value={draft.firstName}
-              onChange={(event) => setDraft((current) => ({ ...current, firstName: event.target.value }))}
-              placeholder="First name"
-            />
-            <input
-              value={draft.lastName}
-              onChange={(event) => setDraft((current) => ({ ...current, lastName: event.target.value }))}
-              placeholder="Last name"
-            />
-            <select
-              className="status-select"
-              value={draft.status}
-              onChange={(event) => setDraft((current) => ({ ...current, status: event.target.value }))}
-            >
-              <option value="SUBSCRIBED">SUBSCRIBED</option>
-              <option value="UNSUBSCRIBED">UNSUBSCRIBED</option>
-              <option value="BOUNCED">BOUNCED</option>
-            </select>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
-              <button className="btn-primary" type="submit" disabled={saving}>
-                {saving ? 'Saving...' : 'Save Changes'}
-              </button>
-              <button
-                className="btn-secondary"
-                type="button"
-                onClick={() => {
-                  if (selectedContact) selectContact(selectedContact);
-                }}
-              >
-                Reset
-              </button>
-              <button
-                className="btn-secondary"
-                type="button"
-                onClick={() => {
-                  setSelectedContactId('');
-                  setDraft(EMPTY_DRAFT);
-                }}
-              >
-                Close
-              </button>
-            </div>
-          </form>
-        ) : (
-          <p className="form-note">Pick any email from the table below to edit it here.</p>
-        )}
+        <div className="bulk-action-bar__actions">
+          <button className="mini-btn" type="button" onClick={() => toggleVisibleSelection(true)} disabled={contacts.length === 0}>
+            Select page
+          </button>
+          <button className="mini-btn" type="button" onClick={() => setSelectedContactIds([])} disabled={selectedContactIds.length === 0}>
+            Clear selection
+          </button>
+          <button className="mini-btn" type="button" onClick={exportSelected} disabled={selectedVisibleContacts.length === 0}>
+            Export CSV
+          </button>
+          <button className="mini-btn danger" type="button" onClick={deleteSelected} disabled={selectedVisibleContacts.length === 0 || bulkLoading}>
+            {bulkLoading ? 'Deleting...' : 'Delete selected'}
+          </button>
+        </div>
       </div>
 
       <div className="card">
@@ -460,6 +540,14 @@ export function ContactsClient() {
           <table className="data-table">
             <thead>
               <tr>
+                <th className="contacts-table__select-cell">
+                  <input
+                    type="checkbox"
+                    checked={allVisibleSelected}
+                    onChange={(event) => toggleVisibleSelection(event.target.checked)}
+                    aria-label="Select all contacts on this page"
+                  />
+                </th>
                 <th>Email</th>
                 <th>Name</th>
                 <th>List</th>
@@ -471,34 +559,141 @@ export function ContactsClient() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={6}>Loading emails...</td>
+                  <td colSpan={7}>Loading emails...</td>
                 </tr>
               ) : contacts.length === 0 ? (
                 <tr>
-                  <td colSpan={6}>No emails matched your filters.</td>
+                  <td colSpan={7}>No emails matched your filters.</td>
                 </tr>
               ) : (
-                contacts.map((contact) => (
-                  <tr key={contact.id} style={contact.id === selectedContactId ? { background: 'rgba(59, 130, 246, 0.08)' } : undefined}>
-                    <td>{contact.email}</td>
-                    <td>{[contact.firstName, contact.lastName].filter(Boolean).join(' ') || '-'}</td>
-                    <td>
-                      <Link href={`/dashboard/lists/${contact.listId}`}>{contact.listName}</Link>
-                    </td>
-                    <td>{contact.status}</td>
-                    <td>{contact.updatedAt ? new Date(contact.updatedAt).toLocaleString() : '-'}</td>
-                    <td>
-                      <button className="mini-btn" type="button" onClick={() => selectContact(contact)}>
-                        Edit
-                      </button>
-                    </td>
-                  </tr>
-                ))
+                contacts.map((contact) => {
+                  const isSelected = selectedContactIds.includes(contact.id);
+                  return (
+                    <tr key={contact.id} className={isSelected ? 'is-selected-row' : ''}>
+                      <td className="contacts-table__select-cell">
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={(event) => toggleContactSelection(contact.id, event.target.checked)}
+                          aria-label={`Select ${contact.email}`}
+                        />
+                      </td>
+                      <td>{contact.email}</td>
+                      <td>{[contact.firstName, contact.lastName].filter(Boolean).join(' ') || '-'}</td>
+                      <td>
+                        <Link href={`/dashboard/lists/${contact.listId}`}>{contact.listName}</Link>
+                      </td>
+                      <td>{contact.status}</td>
+                      <td>{contact.updatedAt ? new Date(contact.updatedAt).toLocaleString() : '-'}</td>
+                      <td>
+                        <button className="mini-btn" type="button" onClick={() => selectContact(contact)}>
+                          Edit
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
         </div>
       </div>
+
+      {selectedContact ? (
+        <div className="contact-drawer__backdrop" role="presentation" onClick={closeDrawer}>
+          <aside
+            className="contact-drawer"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="contact-drawer-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="contact-drawer__header">
+              <div>
+                <h2 id="contact-drawer-title">Edit Email</h2>
+                <p>{selectedContact.email}</p>
+              </div>
+              <button className="mini-btn" type="button" onClick={closeDrawer}>
+                Close
+              </button>
+            </div>
+
+            <div className="contact-drawer__meta">
+              <div>
+                <span>List</span>
+                <strong>{selectedContact.listName}</strong>
+              </div>
+              <div>
+                <span>Status</span>
+                <strong>{selectedContact.status}</strong>
+              </div>
+              <div>
+                <span>Updated</span>
+                <strong>{selectedContact.updatedAt ? new Date(selectedContact.updatedAt).toLocaleString() : '-'}</strong>
+              </div>
+            </div>
+
+            <form className="contact-drawer__form" onSubmit={saveContact}>
+              <label>
+                Email
+                <input
+                  type="email"
+                  value={draft.email}
+                  onChange={(event) => setDraft((current) => ({ ...current, email: event.target.value }))}
+                  placeholder="email@example.com"
+                  required
+                />
+              </label>
+              <label>
+                First name
+                <input
+                  value={draft.firstName}
+                  onChange={(event) => setDraft((current) => ({ ...current, firstName: event.target.value }))}
+                  placeholder="First name"
+                />
+              </label>
+              <label>
+                Last name
+                <input
+                  value={draft.lastName}
+                  onChange={(event) => setDraft((current) => ({ ...current, lastName: event.target.value }))}
+                  placeholder="Last name"
+                />
+              </label>
+              <label>
+                Status
+                <select
+                  className="status-select"
+                  value={draft.status}
+                  onChange={(event) => setDraft((current) => ({ ...current, status: event.target.value }))}
+                >
+                  <option value="SUBSCRIBED">SUBSCRIBED</option>
+                  <option value="UNSUBSCRIBED">UNSUBSCRIBED</option>
+                  <option value="BOUNCED">BOUNCED</option>
+                </select>
+              </label>
+
+              <div className="contact-drawer__actions">
+                <button className="btn-primary" type="submit" disabled={saving}>
+                  {saving ? 'Saving...' : 'Save Changes'}
+                </button>
+                <button
+                  className="btn-secondary"
+                  type="button"
+                  onClick={() => {
+                    if (selectedContact) selectContact(selectedContact);
+                  }}
+                >
+                  Reset
+                </button>
+                <button className="btn-secondary" type="button" onClick={closeDrawer}>
+                  Close
+                </button>
+              </div>
+            </form>
+          </aside>
+        </div>
+      ) : null}
     </div>
   );
 }
