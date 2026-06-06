@@ -5,7 +5,7 @@ import { getPlatformSettings } from '@/lib/platform-settings';
 import { getSystemHealthSnapshot } from '@/lib/observability';
 import { recordResourceMetric } from '@/lib/resource-analytics';
 import { DashboardOverviewTabs } from '@/components/dashboard-overview-tabs';
-import { IconCampaign, IconList, IconPlus, IconTemplate } from '@/components/dashboard-icons';
+import { IconCampaign, IconList, IconMail, IconPlus, IconTemplate } from '@/components/dashboard-icons';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 
@@ -43,6 +43,10 @@ export default async function DashboardOverview() {
             <Link href="/dashboard/lists" className="btn-secondary btn-secondary--with-icon">
               <IconList className="btn-icon" aria-hidden="true" />
               Lists
+            </Link>
+            <Link href="/dashboard/contacts" className="btn-secondary btn-secondary--with-icon">
+              <IconMail className="btn-icon" aria-hidden="true" />
+              Emails
             </Link>
             <Link href="/dashboard/campaigns/create" className="btn-secondary btn-secondary--with-icon">
               <IconPlus className="btn-icon" aria-hidden="true" />

@@ -12,6 +12,7 @@ import {
   IconHome,
   IconImport,
   IconList,
+  IconMail,
   IconManager,
   IconMedia,
   IconResources,
@@ -39,6 +40,7 @@ const GROUPS: NavGroup[] = [
     items: [
       { href: '/dashboard', label: 'Overview', exact: true, icon: IconHome },
       { href: '/dashboard/lists', label: 'Lists', icon: IconList },
+      { href: '/dashboard/contacts', label: 'Emails', icon: IconMail },
       { href: '/dashboard/templates', label: 'Templates', icon: IconTemplate },
       { href: '/dashboard/campaigns', label: 'Campaigns', icon: IconCampaign },
       { href: '/dashboard/media-library', label: 'Media Library', icon: IconMedia },

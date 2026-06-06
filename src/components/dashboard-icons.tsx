@@ -44,6 +44,15 @@ export function IconList(props: IconProps) {
   );
 }
 
+export function IconMail(props: IconProps) {
+  return (
+    <BaseIcon {...props}>
+      <rect x="4" y="6" width="16" height="12" rx="2" />
+      <path d="m5.5 8 6.5 5 6.5-5" />
+    </BaseIcon>
+  );
+}
+
 export function IconTemplate(props: IconProps) {
   return (
     <BaseIcon {...props}>

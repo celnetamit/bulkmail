@@ -16,10 +16,11 @@ function parsePagination(url: URL) {
   );
   const search = (url.searchParams.get('search') || '').trim();
   const sort = (url.searchParams.get('sort') || 'createdAt').trim();
+  const status = (url.searchParams.get('status') || '').trim().toUpperCase();
   const order = ((url.searchParams.get('order') || 'desc').trim().toLowerCase() === 'asc' ? 'asc' : 'desc') as
     | 'asc'
     | 'desc';
-  return { page, pageSize, search, sort, order };
+  return { page, pageSize, search, sort, status, order };
 }
 
 function getSortClause(sort: string, order: 'asc' | 'desc') {
@@ -29,6 +30,8 @@ function getSortClause(sort: string, order: 'asc' | 'desc') {
     status: `c.status ${order.toUpperCase()}, c."createdAt" DESC`,
     firstName: `LOWER(COALESCE(c."firstName", '')) ${order.toUpperCase()}, c."createdAt" DESC`,
     lastName: `LOWER(COALESCE(c."lastName", '')) ${order.toUpperCase()}, c."createdAt" DESC`,
+    listName: `LOWER(l.name) ${order.toUpperCase()}, c."createdAt" DESC`,
+    updatedAt: `c."updatedAt" ${order.toUpperCase()}, c."createdAt" DESC`,
   };
 
   return allowedSorts[sort] || allowedSorts.createdAt;
@@ -47,17 +50,23 @@ export async function GET(request: Request) {
 
   const { searchParams } = new URL(request.url);
   const listId = searchParams.get('listId')?.trim() || '';
-  const { page, pageSize, search, sort, order } = parsePagination(new URL(request.url));
+  const { page, pageSize, search, sort, status, order } = parsePagination(new URL(request.url));
   const offset = (page - 1) * pageSize;
   const searchTerm = search ? `%${search.toLowerCase()}%` : '';
   const searchClause = search
     ? "AND (LOWER(c.email) LIKE ? OR LOWER(COALESCE(c.\"firstName\", '')) LIKE ? OR LOWER(COALESCE(c.\"lastName\", '')) LIKE ? OR LOWER(c.status) LIKE ?)"
     : '';
+  const statusClause = status && ALLOWED_STATUSES.has(status) ? 'AND c.status = ?' : '';
   const ownerScope = buildOwnerScope(auth.user, 'l."userId"');
 
   const countParams = listId
-    ? [...ownerScope.params, listId, ...(search ? [searchTerm, searchTerm, searchTerm, searchTerm] : [])]
-    : [...ownerScope.params, ...(search ? [searchTerm, searchTerm, searchTerm, searchTerm] : [])];
+    ? [
+        ...ownerScope.params,
+        listId,
+        ...(search ? [searchTerm, searchTerm, searchTerm, searchTerm] : []),
+        ...(statusClause ? [status] : []),
+      ]
+    : [...ownerScope.params, ...(search ? [searchTerm, searchTerm, searchTerm, searchTerm] : []), ...(statusClause ? [status] : [])];
 
   const totalRow = queryRow<{ total: number }>(
     `
@@ -67,6 +76,7 @@ export async function GET(request: Request) {
       WHERE ${ownerScope.clause}
       ${listId ? 'AND c."listId" = ?' : ''}
       ${searchClause}
+      ${statusClause}
     `,
     countParams,
   );
@@ -93,6 +103,7 @@ export async function GET(request: Request) {
       WHERE ${ownerScope.clause}
       ${listId ? 'AND c."listId" = ?' : ''}
       ${searchClause}
+      ${statusClause}
       ORDER BY ${getSortClause(sort, order)}
       LIMIT ? OFFSET ?
     `,
@@ -101,10 +112,17 @@ export async function GET(request: Request) {
           ...ownerScope.params,
           listId,
           ...(search ? [searchTerm, searchTerm, searchTerm, searchTerm] : []),
+          ...(statusClause ? [status] : []),
           pageSize,
           offset,
         ]
-      : [...ownerScope.params, ...(search ? [searchTerm, searchTerm, searchTerm, searchTerm] : []), pageSize, offset],
+      : [
+          ...ownerScope.params,
+          ...(search ? [searchTerm, searchTerm, searchTerm, searchTerm] : []),
+          ...(statusClause ? [status] : []),
+          pageSize,
+          offset,
+        ],
   );
 
   return ok({
@@ -117,6 +135,7 @@ export async function GET(request: Request) {
       totalPages: Math.max(1, Math.ceil((totalRow?.total ?? 0) / pageSize)),
       search,
       sort,
+      status: statusClause ? status : '',
       order,
     },
   });

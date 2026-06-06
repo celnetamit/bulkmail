@@ -1,6 +1,7 @@
 import { requireUserFromCookies } from '@/lib/auth';
 import { fail, ok } from '@/lib/http';
 import { executeSql, queryRow } from '@/lib/sqlite';
+import { isValidEmailAddress, normalizeEmailAddress } from '@/lib/email-address';
 
 type Params = { params: { id: string } };
 const ALLOWED_STATUSES = new Set(['SUBSCRIBED', 'UNSUBSCRIBED', 'BOUNCED']);
@@ -26,6 +27,11 @@ export async function PATCH(request: Request, { params }: Params) {
       ? String((body as Record<string, unknown>).lastName || '').trim()
       : undefined;
 
+  const email =
+    typeof body === 'object' && body !== null && 'email' in body
+      ? normalizeEmailAddress(String((body as Record<string, unknown>).email || ''))
+      : undefined;
+
   const status =
     typeof body === 'object' && body !== null && 'status' in body
       ? String((body as Record<string, unknown>).status || '').trim().toUpperCase()
@@ -34,10 +40,12 @@ export async function PATCH(request: Request, { params }: Params) {
   if (status && !ALLOWED_STATUSES.has(status)) {
     return fail('Invalid status.', 400);
   }
+  if (email !== undefined && !email) return fail('Email is required.', 400);
+  if (email !== undefined && !isValidEmailAddress(email)) return fail('Invalid email address.', 400);
 
-  const contact = queryRow<{ id: string }>(
+  const contact = queryRow<{ id: string; listId: string; email: string }>(
     `
-      SELECT c.id
+      SELECT c.id, c."listId", c.email
       FROM "Contact" c
       INNER JOIN "List" l ON l.id = c."listId"
       WHERE c.id = ? AND l."userId" = ?
@@ -47,6 +55,23 @@ export async function PATCH(request: Request, { params }: Params) {
   );
 
   if (!contact) return fail('Contact not found.', 404);
+
+  if (email && email !== contact.email) {
+    const existing = queryRow<{ id: string }>(
+      `
+        SELECT c.id
+        FROM "Contact" c
+        INNER JOIN "List" l ON l.id = c."listId"
+        WHERE c.email = ? AND l."userId" = ? AND c.id != ?
+        LIMIT 1
+      `,
+      [email, auth.user.userId, params.id],
+    );
+
+    if (existing) {
+      return fail('Email already exists in another list.', 409);
+    }
+  }
 
   const assignments: string[] = [];
   const paramsList: unknown[] = [];
@@ -58,6 +83,10 @@ export async function PATCH(request: Request, { params }: Params) {
   if (lastName !== undefined) {
     assignments.push('"lastName" = ?');
     paramsList.push(lastName || null);
+  }
+  if (email !== undefined) {
+    assignments.push('email = ?');
+    paramsList.push(email);
   }
   if (status) {
     assignments.push('"status" = ?');
