@@ -649,6 +649,19 @@ export default function CampaignsPage() {
     target.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }, [sendConfirmCampaign, sendConfirmRisk?.status, sendConfirmRiskError, sendConfirmRiskLoading]);
 
+  useEffect(() => {
+    if (!sendConfirmCampaign) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      setSendConfirmCampaign(null);
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [sendConfirmCampaign]);
+
   async function controlCampaign(id: string, action: 'pause' | 'resume' | 'cancel') {
     setControllingId(id);
     const response = await fetch(`/api/campaigns/${id}/control`, {
