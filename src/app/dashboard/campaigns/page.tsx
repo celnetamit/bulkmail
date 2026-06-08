@@ -1263,6 +1263,9 @@ export default function CampaignsPage() {
                 {sendingId === sendConfirmCampaign.id ? 'Sending...' : 'Confirm send'}
               </button>
             </div>
+            <p className="form-note" style={{ marginTop: '0.25rem', marginBottom: 0, textAlign: 'right' }}>
+              Esc closes, Enter or Space confirms.
+            </p>
           </section>
         </div>
       ) : null}
