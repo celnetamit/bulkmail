@@ -200,6 +200,7 @@ export default function CampaignsPage() {
   const [sendConfirmRiskLoading, setSendConfirmRiskLoading] = useState(false);
   const [sendConfirmRiskError, setSendConfirmRiskError] = useState('');
   const firstBlockingRiskItemRef = useRef<HTMLElement | null>(null);
+  const confirmSendButtonRef = useRef<HTMLButtonElement | null>(null);
   const selectedCampaignCount = selectedCampaignIds.length;
 
   const loadCampaigns = useCallback(async () => {
@@ -637,6 +638,16 @@ export default function CampaignsPage() {
     target.focus({ preventScroll: true });
     target.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }, [sendConfirmRisk?.status, firstBlockingRiskItemKey]);
+
+  useEffect(() => {
+    if (!sendConfirmCampaign || sendConfirmRiskLoading || sendConfirmRiskError || sendConfirmRisk?.status === 'blocked') return;
+
+    const target = confirmSendButtonRef.current;
+    if (!target) return;
+
+    target.focus({ preventScroll: true });
+    target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [sendConfirmCampaign, sendConfirmRisk?.status, sendConfirmRiskError, sendConfirmRiskLoading]);
 
   async function controlCampaign(id: string, action: 'pause' | 'resume' | 'cancel') {
     setControllingId(id);
@@ -1216,6 +1227,7 @@ export default function CampaignsPage() {
               </button>
               <button
                 className="btn-primary"
+                ref={confirmSendButtonRef}
                 type="button"
                 onClick={async () => {
                   const targetId = sendConfirmCampaign.id;
