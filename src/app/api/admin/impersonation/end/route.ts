@@ -10,7 +10,8 @@ import {
   setSessionCookie,
 } from '@/lib/auth';
 import { recordAuditEvent } from '@/lib/audit';
-import { sanitizeNextPath } from '@/lib/google-oauth';
+import { getAppOrigin, sanitizeNextPath } from '@/lib/google-oauth';
+import { APP_ROUTES } from '@/lib/routes';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -20,21 +21,21 @@ export async function POST(request: Request) {
   const currentUser = await getCurrentUserFromCookies();
   const hasOriginalCookie = Boolean(cookies().get(IMPERSONATION_ORIGINAL_COOKIE)?.value);
 
-  const returnTo = context?.returnTo || '/dashboard/admin';
+  const returnTo = context?.returnTo || APP_ROUTES.ADMIN_DASHBOARD;
 
   if (!context) {
     if (hasOriginalCookie) {
-      const response = NextResponse.redirect(new URL('/login', request.url));
+      const response = NextResponse.redirect(new URL(APP_ROUTES.LOGIN, getAppOrigin(request)));
       clearImpersonationCookies(response);
       clearSessionCookie(response);
       return response;
     }
 
-    return NextResponse.redirect(new URL('/dashboard', request.url));
+    return NextResponse.redirect(new URL(APP_ROUTES.DASHBOARD, getAppOrigin(request)));
   }
 
   if (!currentUser) {
-    const response = NextResponse.redirect(new URL('/login', request.url));
+    const response = NextResponse.redirect(new URL(APP_ROUTES.LOGIN, getAppOrigin(request)));
     clearImpersonationCookies(response);
     clearSessionCookie(response);
     return response;
@@ -59,7 +60,7 @@ export async function POST(request: Request) {
     email: context.originalUser.email,
   });
 
-  const response = NextResponse.redirect(new URL(sanitizeNextPath(returnTo), request.url));
+  const response = NextResponse.redirect(new URL(sanitizeNextPath(returnTo), getAppOrigin(request)));
   clearImpersonationCookies(response);
   setSessionCookie(response, restoredToken);
   return response;

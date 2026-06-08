@@ -5,6 +5,7 @@ import { getCurrentUserFromCookies } from '@/lib/auth';
 import { getDefaultTestList } from '@/lib/campaign-lists';
 import { getMailSettings } from '@/lib/mail-settings';
 import { getPlatformSettings } from '@/lib/platform-settings';
+import { APP_ROUTES } from '@/lib/routes';
 import { queryRow } from '@/lib/sqlite';
 
 export const dynamic = 'force-dynamic';
@@ -84,7 +85,7 @@ function statusClass(status: ComplianceStatus) {
 
 export default async function HelpPage() {
   const user = await getCurrentUserFromCookies();
-  if (!user) redirect('/login');
+  if (!user) redirect(APP_ROUTES.LOGIN);
 
   const [mailSettings, defaultTestList] = await Promise.all([
     getMailSettings(user.userId),
@@ -131,7 +132,7 @@ export default async function HelpPage() {
             <p>A guided walkthrough for getting comfortable with MailFlow, one step at a time.</p>
           </div>
           <div className="header-actions">
-            <Link className="btn-secondary" href="/dashboard">Back to Overview</Link>
+            <Link className="btn-secondary" href={APP_ROUTES.DASHBOARD}>Back to Overview</Link>
             <Link className="btn-secondary" href="/dashboard/campaigns/create">Create Campaign</Link>
           </div>
         </div>

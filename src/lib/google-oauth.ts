@@ -1,3 +1,5 @@
+import { APP_ROUTES } from '@/lib/routes';
+
 export function getGoogleClientId() {
   return process.env.GOOGLE_CLIENT_ID?.trim() || '';
 }
@@ -35,9 +37,9 @@ export function getAppOrigin(request: Request) {
 }
 
 export function sanitizeNextPath(nextPath: string | null) {
-  if (!nextPath) return '/dashboard';
-  if (!nextPath.startsWith('/')) return '/dashboard';
-  if (nextPath.startsWith('//')) return '/dashboard';
+  if (!nextPath) return APP_ROUTES.DASHBOARD;
+  if (!nextPath.startsWith('/')) return APP_ROUTES.DASHBOARD;
+  if (nextPath.startsWith('//')) return APP_ROUTES.DASHBOARD;
   return nextPath;
 }
 

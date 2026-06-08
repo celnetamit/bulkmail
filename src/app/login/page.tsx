@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { APP_ROUTES, API_ROUTES } from '@/lib/routes';
 
 function getErrorMessage(error: string | undefined) {
   switch (error) {
@@ -20,9 +21,9 @@ export default function LoginPage({
 }: {
   searchParams?: { next?: string; error?: string };
 }) {
-  const nextPath = searchParams?.next || '/dashboard';
+  const nextPath = searchParams?.next || APP_ROUTES.DASHBOARD;
   const error = getErrorMessage(searchParams?.error);
-  const googleSignInUrl = `/api/auth/google/start?next=${encodeURIComponent(nextPath)}`;
+  const googleSignInUrl = `${API_ROUTES.AUTH_GOOGLE_START}?next=${encodeURIComponent(nextPath)}`;
 
   return (
     <main className="auth-shell">

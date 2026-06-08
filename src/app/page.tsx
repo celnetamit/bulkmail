@@ -1,3 +1,6 @@
+import Link from 'next/link';
+import { APP_ROUTES } from '@/lib/routes';
+
 export default function Home() {
   return (
     <main className="container">
@@ -8,7 +11,7 @@ export default function Home() {
           craft templates, and launch campaigns.
         </p>
         <div className="actions">
-          <a href="/login" className="btn-primary">Sign In with Google</a>
+          <Link href={APP_ROUTES.LOGIN} className="btn-primary">Sign In with Google</Link>
         </div>
       </header>
     </main>

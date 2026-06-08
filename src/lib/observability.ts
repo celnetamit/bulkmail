@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 
 import { captureResourceSnapshot, type ResourceSnapshot } from '@/lib/resource-analytics';
 import { executeSql, queryRow, queryRows } from '@/lib/sqlite';
+import { APP_ROUTES } from '@/lib/routes';
 
 export type SystemEventLevel = 'INFO' | 'WARN' | 'ERROR';
 
@@ -242,7 +243,7 @@ export function buildSystemHealthAlerts(snapshot: SystemHealthSnapshot & { live?
       level: 'critical',
       title: `${snapshot.recentErrors24h} errors in the last 24h`,
       detail: 'Error volume crossed the critical threshold. Check recent system events and the latest queue failures first.',
-      action: { label: 'Open Admin', href: '/dashboard/admin' },
+      action: { label: 'Open Admin', href: APP_ROUTES.ADMIN_DASHBOARD },
     });
   } else if (snapshot.recentErrors24h > 0) {
     alerts.push({
@@ -250,7 +251,7 @@ export function buildSystemHealthAlerts(snapshot: SystemHealthSnapshot & { live?
       level: 'warning',
       title: `${snapshot.recentErrors24h} error${snapshot.recentErrors24h === 1 ? '' : 's'} in the last 24h`,
       detail: 'There have been recent errors, even if the platform is still serving requests. Review the latest system events to catch patterns early.',
-      action: { label: 'Open Admin', href: '/dashboard/admin' },
+      action: { label: 'Open Admin', href: APP_ROUTES.ADMIN_DASHBOARD },
     });
   }
 
@@ -270,7 +271,7 @@ export function buildSystemHealthAlerts(snapshot: SystemHealthSnapshot & { live?
       level: snapshot.recentErrors24h >= 5 ? 'critical' : 'warning',
       title: 'Latest error is still active in history',
       detail: `${snapshot.lastError.source}: ${snapshot.lastError.message}`,
-      action: { label: 'Open Admin', href: '/dashboard/admin' },
+      action: { label: 'Open Admin', href: APP_ROUTES.ADMIN_DASHBOARD },
     });
   }
 

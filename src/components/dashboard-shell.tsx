@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 import { DashboardNav } from '@/components/dashboard-nav';
 import { IconClose, IconMenu } from '@/components/dashboard-icons';
 import { ToastProvider } from '@/components/toast-provider';
+import { APP_ROUTES, API_ROUTES } from '@/lib/routes';
 
 type DashboardShellProps = {
   children: ReactNode;
@@ -87,7 +88,7 @@ export function DashboardShell({ children, email, role, impersonation }: Dashboa
                     You are using {impersonation.originalUser.email} ({impersonation.originalUser.role}) behind the scenes.
                   </p>
                 </div>
-                <form action="/api/admin/impersonation/end" method="post">
+                <form action={API_ROUTES.ADMIN_IMPERSONATION_END} method="post">
                   <button type="submit" className="btn-secondary">
                     Return to {impersonation.originalUser.email}
                   </button>
@@ -114,7 +115,7 @@ export function DashboardShell({ children, email, role, impersonation }: Dashboa
                 <span className="user-profile__email">{email}</span>
                 <span className="user-profile__role">{role}</span>
               </div>
-              <form action="/api/auth/logout?next=/login" method="post">
+              <form action={`${API_ROUTES.AUTH_LOGOUT}?next=${APP_ROUTES.LOGIN}`} method="post">
                 <button type="submit" className="logout-btn">Logout</button>
               </form>
             </div>

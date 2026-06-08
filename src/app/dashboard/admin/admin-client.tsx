@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { buildComplianceItems } from '@/lib/compliance';
+import { APP_ROUTES, API_ROUTES } from '@/lib/routes';
 import { useToast } from '@/components/toast-provider';
 
 type UserRow = {
@@ -369,7 +370,7 @@ export default function AdminDashboardClient() {
             suppressedContacts: summary?.totals.suppressedContacts ?? 0,
           }).map((item) => ({
             ...item,
-            action: item.action ?? { label: 'Settings', href: '/dashboard/settings' },
+            action: item.action ?? { label: 'Settings', href: `${APP_ROUTES.DASHBOARD}/settings` },
           }))
         : []),
     ],
@@ -386,8 +387,8 @@ export default function AdminDashboardClient() {
             <p>Manage access, daily sending limits, compliance signals, and live platform health from a single control surface.</p>
           </div>
           <div className="admin-hero__actions">
-            <Link className="btn-secondary" href="/dashboard/admin/agents">AI Settings</Link>
-            <Link className="btn-secondary" href="/dashboard/help">Help</Link>
+            <Link className="btn-secondary" href={`${APP_ROUTES.ADMIN_DASHBOARD}/agents`}>AI Settings</Link>
+            <Link className="btn-secondary" href={`${APP_ROUTES.DASHBOARD}/help`}>Help</Link>
             <button className="btn-primary" type="button" onClick={load}>
               Refresh
             </button>
@@ -416,7 +417,7 @@ export default function AdminDashboardClient() {
               <h2>Compliance snapshot</h2>
               <p className="form-note">A short operator view of the send-safety basics. Help has the full walkthrough.</p>
             </div>
-            <Link className="mini-btn" href="/dashboard/help">Open Help</Link>
+            <Link className="mini-btn" href={`${APP_ROUTES.DASHBOARD}/help`}>Open Help</Link>
           </div>
           <div className="admin-compliance-grid">
             {compliance.map((item) => (
@@ -440,7 +441,7 @@ export default function AdminDashboardClient() {
               <h2>Recent audit trail</h2>
               <p className="form-note">Recent access, settings, campaign, list, team, and agent actions from across the platform.</p>
             </div>
-            <Link className="mini-btn" href="/dashboard/help">Help</Link>
+            <Link className="mini-btn" href={`${APP_ROUTES.DASHBOARD}/help`}>Help</Link>
           </div>
           <div className="audit-trail-list">
             {(summary?.recentAudits || []).length === 0 ? (
@@ -735,10 +736,10 @@ export default function AdminDashboardClient() {
                     {summary?.viewer.userId === user.id ? (
                       <span className="badge badge-info">Current</span>
                     ) : (
-                      <form className="admin-session-form" action="/api/admin/impersonation/start" method="post">
+                      <form className="admin-session-form" action={API_ROUTES.ADMIN_IMPERSONATION_START} method="post">
                         <input type="hidden" name="targetUserId" value={user.id} />
-                        <input type="hidden" name="next" value="/dashboard" />
-                        <input type="hidden" name="returnTo" value="/dashboard/admin" />
+                        <input type="hidden" name="next" value={APP_ROUTES.DASHBOARD} />
+                        <input type="hidden" name="returnTo" value={APP_ROUTES.ADMIN_DASHBOARD} />
                         <button className="mini-btn" type="submit">
                           Switch
                         </button>

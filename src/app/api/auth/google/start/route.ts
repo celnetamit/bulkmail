@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { NextResponse } from 'next/server';
 import { getAppOrigin, getGoogleClientId, getGoogleClientSecret, getGoogleRedirectUri, sanitizeNextPath } from '@/lib/google-oauth';
+import { APP_ROUTES } from '@/lib/routes';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -8,16 +9,16 @@ export const runtime = 'nodejs';
 export async function GET(request: Request) {
   const clientId = getGoogleClientId();
   const clientSecret = getGoogleClientSecret();
+  const origin = getAppOrigin(request);
 
   if (!clientId || !clientSecret) {
-    return NextResponse.redirect(new URL('/login?error=google_missing', request.url));
+    return NextResponse.redirect(new URL(`${APP_ROUTES.LOGIN}?error=google_missing`, origin));
   }
 
   const url = new URL(request.url);
   const nextPath = sanitizeNextPath(url.searchParams.get('next'));
   const state = randomUUID();
   const authUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth');
-  const origin = getAppOrigin(request);
 
   authUrl.searchParams.set('client_id', clientId);
   authUrl.searchParams.set('redirect_uri', getGoogleRedirectUri(origin));

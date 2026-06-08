@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { APP_ROUTES } from '@/lib/routes';
 
 export default function RegisterPage() {
   return (
@@ -9,7 +10,7 @@ export default function RegisterPage() {
           MailFlow does not allow public self-registration. An admin must create your access first,
           then you can sign in with Google.
         </p>
-        <Link href="/login" className="btn-primary">
+        <Link href={APP_ROUTES.LOGIN} className="btn-primary">
           Go to Sign In
         </Link>
       </section>

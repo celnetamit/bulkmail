@@ -3,7 +3,8 @@ import { NextResponse } from 'next/server';
 import { createSessionToken, requireAdminFromCookies, setImpersonationCookies, setSessionCookie, SESSION_COOKIE } from '@/lib/auth';
 import { recordAuditEvent } from '@/lib/audit';
 import { fail } from '@/lib/http';
-import { sanitizeNextPath } from '@/lib/google-oauth';
+import { getAppOrigin, sanitizeNextPath } from '@/lib/google-oauth';
+import { APP_ROUTES } from '@/lib/routes';
 import { queryRow } from '@/lib/sqlite';
 
 export const dynamic = 'force-dynamic';
@@ -13,15 +14,15 @@ async function readImpersonationTarget(request: Request) {
   const url = new URL(request.url);
   const contentType = request.headers.get('content-type') || '';
   let targetUserId = url.searchParams.get('targetUserId') || url.searchParams.get('userId') || '';
-  let nextPath = url.searchParams.get('next') || '/dashboard';
-  let returnTo = url.searchParams.get('returnTo') || '/dashboard/admin';
+  let nextPath = url.searchParams.get('next') || APP_ROUTES.DASHBOARD;
+  let returnTo = url.searchParams.get('returnTo') || APP_ROUTES.ADMIN_DASHBOARD;
 
   if (contentType.includes('application/json')) {
     try {
       const body = (await request.json()) as Record<string, unknown>;
       targetUserId = String(body.targetUserId || body.userId || targetUserId || '').trim();
-      nextPath = String(body.next || nextPath || '/dashboard');
-      returnTo = String(body.returnTo || returnTo || '/dashboard/admin');
+      nextPath = String(body.next || nextPath || APP_ROUTES.DASHBOARD);
+      returnTo = String(body.returnTo || returnTo || APP_ROUTES.ADMIN_DASHBOARD);
     } catch {
       return null;
     }
@@ -29,8 +30,8 @@ async function readImpersonationTarget(request: Request) {
     try {
       const form = await request.formData();
       targetUserId = String(form.get('targetUserId') || form.get('userId') || targetUserId || '').trim();
-      nextPath = String(form.get('next') || nextPath || '/dashboard');
-      returnTo = String(form.get('returnTo') || returnTo || '/dashboard/admin');
+      nextPath = String(form.get('next') || nextPath || APP_ROUTES.DASHBOARD);
+      returnTo = String(form.get('returnTo') || returnTo || APP_ROUTES.ADMIN_DASHBOARD);
     } catch {
       return null;
     }
@@ -91,7 +92,7 @@ export async function POST(request: Request) {
     },
   });
 
-  const response = NextResponse.redirect(new URL(input.nextPath, request.url));
+  const response = NextResponse.redirect(new URL(input.nextPath, getAppOrigin(request)));
   setImpersonationCookies(response, originalToken, input.returnTo);
   setSessionCookie(response, impersonationToken);
   return response;

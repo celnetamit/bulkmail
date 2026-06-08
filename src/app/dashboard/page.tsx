@@ -6,6 +6,7 @@ import { getSystemHealthSnapshot } from '@/lib/observability';
 import { recordResourceMetric } from '@/lib/resource-analytics';
 import { DashboardOverviewTabs } from '@/components/dashboard-overview-tabs';
 import { IconCampaign, IconList, IconMail, IconPlus, IconTemplate } from '@/components/dashboard-icons';
+import { APP_ROUTES } from '@/lib/routes';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 
@@ -13,7 +14,7 @@ export const dynamic = 'force-dynamic';
 
 export default async function DashboardOverview() {
   const user = await getCurrentUserFromCookies();
-  if (!user) redirect('/login');
+  if (!user) redirect(APP_ROUTES.LOGIN);
 
   recordResourceMetric({
     scopeType: 'GLOBAL',

@@ -19,6 +19,7 @@ import {
   IconSettings,
   IconTemplate,
 } from '@/components/dashboard-icons';
+import { APP_ROUTES } from '@/lib/routes';
 
 type NavItem = {
   href: string;
@@ -38,36 +39,36 @@ const GROUPS: NavGroup[] = [
   {
     label: 'Work',
     items: [
-      { href: '/dashboard', label: 'Overview', exact: true, icon: IconHome },
-      { href: '/dashboard/lists', label: 'Lists', icon: IconList },
-      { href: '/dashboard/contacts', label: 'Emails', icon: IconMail },
-      { href: '/dashboard/templates', label: 'Templates', icon: IconTemplate },
-      { href: '/dashboard/campaigns', label: 'Campaigns', icon: IconCampaign },
-      { href: '/dashboard/media-library', label: 'Media Library', icon: IconMedia },
+      { href: APP_ROUTES.DASHBOARD, label: 'Overview', exact: true, icon: IconHome },
+      { href: `${APP_ROUTES.DASHBOARD}/lists`, label: 'Lists', icon: IconList },
+      { href: `${APP_ROUTES.DASHBOARD}/contacts`, label: 'Emails', icon: IconMail },
+      { href: `${APP_ROUTES.DASHBOARD}/templates`, label: 'Templates', icon: IconTemplate },
+      { href: `${APP_ROUTES.DASHBOARD}/campaigns`, label: 'Campaigns', icon: IconCampaign },
+      { href: `${APP_ROUTES.DASHBOARD}/media-library`, label: 'Media Library', icon: IconMedia },
     ],
   },
   {
     label: 'Insights',
     items: [
-      { href: '/dashboard/analytics', label: 'Analytics', icon: IconAnalytics },
-      { href: '/dashboard/resources', label: 'Resources', role: ['MANAGER', 'ADMIN'], icon: IconResources },
+      { href: `${APP_ROUTES.DASHBOARD}/analytics`, label: 'Analytics', icon: IconAnalytics },
+      { href: `${APP_ROUTES.DASHBOARD}/resources`, label: 'Resources', role: ['MANAGER', 'ADMIN'], icon: IconResources },
     ],
   },
   {
     label: 'Assistants',
     items: [
-      { href: '/dashboard/agents', label: 'Agents', icon: IconAgents },
-      { href: '/dashboard/help', label: 'Help', icon: IconHelp },
+      { href: `${APP_ROUTES.DASHBOARD}/agents`, label: 'Agents', icon: IconAgents },
+      { href: `${APP_ROUTES.DASHBOARD}/help`, label: 'Help', icon: IconHelp },
     ],
   },
   {
     label: 'Admin',
     items: [
-      { href: '/dashboard/settings', label: 'Settings', icon: IconSettings },
-      { href: '/dashboard/manager', label: 'Manager', role: ['MANAGER', 'ADMIN'], icon: IconManager },
-      { href: '/dashboard/admin', label: 'Admin', adminOnly: true, icon: IconAdmin },
-      { href: '/dashboard/admin/housekeeping', label: 'Housekeeping', adminOnly: true, icon: IconSettings },
-      { href: '/dashboard/admin/agents', label: 'AI Settings', adminOnly: true, icon: IconImport },
+      { href: `${APP_ROUTES.DASHBOARD}/settings`, label: 'Settings', icon: IconSettings },
+      { href: `${APP_ROUTES.DASHBOARD}/manager`, label: 'Manager', role: ['MANAGER', 'ADMIN'], icon: IconManager },
+      { href: APP_ROUTES.ADMIN_DASHBOARD, label: 'Admin', adminOnly: true, icon: IconAdmin },
+      { href: `${APP_ROUTES.ADMIN_DASHBOARD}/housekeeping`, label: 'Housekeeping', adminOnly: true, icon: IconSettings },
+      { href: `${APP_ROUTES.ADMIN_DASHBOARD}/agents`, label: 'AI Settings', adminOnly: true, icon: IconImport },
     ],
   },
 ];

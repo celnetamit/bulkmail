@@ -3,12 +3,13 @@ import { NextResponse } from 'next/server';
 import { createProvisionedPasswordHash, createSessionToken, isAdminEmailAllowed, setSessionCookie } from '@/lib/auth';
 import { executeSql, queryRow } from '@/lib/sqlite';
 import { getAppOrigin, getGoogleClientId, getGoogleClientSecret, getGoogleRedirectUri, sanitizeNextPath } from '@/lib/google-oauth';
+import { APP_ROUTES } from '@/lib/routes';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
 function redirectToLogin(request: Request, error: string) {
-  return NextResponse.redirect(new URL(`/login?error=${error}`, getAppOrigin(request)));
+  return NextResponse.redirect(new URL(`${APP_ROUTES.LOGIN}?error=${error}`, getAppOrigin(request)));
 }
 
 export async function GET(request: Request) {

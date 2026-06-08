@@ -2,6 +2,7 @@ import bcrypt from 'bcryptjs';
 import { randomUUID } from 'node:crypto';
 import { SignJWT, jwtVerify } from 'jose';
 import { cookies } from 'next/headers';
+import { APP_ROUTES } from '@/lib/routes';
 import { NextResponse } from 'next/server';
 import { startCampaignSendQueueWorker } from '@/lib/campaign-send-queue';
 import { ensureSenderIdentitySchema } from '@/lib/mail-settings';
@@ -162,7 +163,7 @@ export async function getCurrentUserFromCookies() {
 
 export async function getImpersonationContextFromCookies(): Promise<ImpersonationContext | null> {
   const originalToken = cookies().get(IMPERSONATION_ORIGINAL_COOKIE)?.value || null;
-  const returnTo = sanitizeNextPath(cookies().get(IMPERSONATION_RETURN_COOKIE)?.value || '/dashboard/admin');
+  const returnTo = sanitizeNextPath(cookies().get(IMPERSONATION_RETURN_COOKIE)?.value || APP_ROUTES.ADMIN_DASHBOARD);
 
   if (!originalToken) return null;
 
