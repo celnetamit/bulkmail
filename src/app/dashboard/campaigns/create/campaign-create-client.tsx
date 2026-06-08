@@ -10,6 +10,17 @@ import { useToast } from '@/components/toast-provider';
 
 type List = { id: string; name: string; isDefaultTestList?: number | boolean; contactsCount?: number; campaignsCount?: number };
 type Template = { id: string; name: string; subject: string; bodyHtml: string };
+type SenderIdentity = {
+  defaultFromName: string;
+  defaultFromEmail: string;
+  defaultReplyToEmail: string;
+  fromName: string;
+  fromEmail: string;
+  replyToEmail: string;
+  senderFromName: string;
+  senderFromEmail: string;
+  senderReplyToEmail: string;
+};
 type Campaign = {
   id: string;
   name: string;
@@ -101,6 +112,7 @@ export function CampaignCreateClient({ campaignId, templateIdFromQuery }: Campai
   const [loading, setLoading] = useState(true);
   const [riskLoading, setRiskLoading] = useState(false);
   const [risk, setRisk] = useState<CampaignRiskResult | null>(null);
+  const [senderIdentity, setSenderIdentity] = useState<SenderIdentity | null>(null);
   const [lastJob, setLastJob] = useState<{ skipReason?: string | null; lastError?: string | null; status?: string | null; finishedAt?: string | null } | null>(null);
   const skipTemplateApplyRef = useRef(false);
   const [editingCampaignId, setEditingCampaignId] = useState<string | null>(campaignId || null);
@@ -121,17 +133,20 @@ export function CampaignCreateClient({ campaignId, templateIdFromQuery }: Campai
 
   async function loadAll() {
     setLoading(true);
-    const [listsRes, templatesRes] = await Promise.all([
+    const [listsRes, templatesRes, settingsRes] = await Promise.all([
       fetch('/api/lists?all=true&owner=self', { cache: 'no-store' }),
       fetch('/api/templates?owner=self', { cache: 'no-store' }),
+      fetch('/api/settings', { cache: 'no-store' }),
     ]);
     const listsData = (await readJsonResponse<{ lists: List[] }>(listsRes)) || { lists: [] };
     const templatesData = (await readJsonResponse<{ templates: Template[] }>(templatesRes)) || { templates: [] };
+    const settingsData = (await readJsonResponse<{ senderIdentity?: SenderIdentity }>(settingsRes)) || {};
     const nextLists = listsData.lists || [];
     const nextTemplates = templatesData.templates || [];
 
     setLists(nextLists);
     setTemplates(nextTemplates);
+    setSenderIdentity(settingsData.senderIdentity || null);
     if (!editingCampaignId && selectedListIds.length === 0 && nextLists[0]) setSelectedListIds([nextLists[0].id]);
     if (!campaignId && templateIdFromQuery) setTemplateId(templateIdFromQuery);
 
@@ -257,6 +272,10 @@ export function CampaignCreateClient({ campaignId, templateIdFromQuery }: Campai
     () => templates.find((template) => template.id === templateId)?.name || null,
     [templateId, templates],
   );
+  const visibleSenderName = senderIdentity?.senderFromName || senderIdentity?.defaultFromName || '';
+  const visibleSenderEmail = senderIdentity?.senderFromEmail || senderIdentity?.defaultFromEmail || '';
+  const visibleReplyToEmail = senderIdentity?.senderReplyToEmail || senderIdentity?.defaultReplyToEmail || '';
+  const senderIdentitySummary = visibleSenderName && visibleSenderEmail ? `${visibleSenderName} <${visibleSenderEmail}>` : visibleSenderEmail || visibleSenderName || 'Not set';
 
   function severityClass(severity: CampaignRiskSeverity) {
     if (severity === 'block') return 'badge-danger';
@@ -270,7 +289,7 @@ export function CampaignCreateClient({ campaignId, templateIdFromQuery }: Campai
         <div className="page-header__row">
           <div>
             <h1>{pageTitle}</h1>
-            <p>Compose a campaign draft, attach a list, and keep the list view clean.</p>
+            <p>Compose a campaign draft, attach a list, and review the sender identity before sending.</p>
           </div>
           <Link className="btn-secondary" href="/dashboard/campaigns">Back to Campaigns</Link>
         </div>
@@ -365,6 +384,29 @@ export function CampaignCreateClient({ campaignId, templateIdFromQuery }: Campai
             }}
           />
           <EmailRichEditor value={bodyHtml} onChange={setBodyHtml} placeholder="Compose the campaign body..." />
+          <section className="card" style={{ padding: '1rem', background: 'rgba(15, 23, 42, 0.35)' }}>
+            <div className="campaign-risk-panel__header" style={{ marginBottom: '0.75rem' }}>
+              <div>
+                <h2 style={{ marginBottom: '0.25rem' }}>Sender Identity</h2>
+                <p className="form-note" style={{ marginBottom: 0 }}>
+                  This is the sender profile recipients will see right before the campaign is dispatched.
+                </p>
+              </div>
+              <span className="badge badge-info">Pre-send check</span>
+            </div>
+            <p style={{ marginBottom: '0.5rem' }}>
+              <strong>From:</strong> {senderIdentitySummary}
+            </p>
+            <p className="form-note" style={{ marginBottom: '0.75rem' }}>
+              <strong>Reply-to:</strong> {visibleReplyToEmail || 'Same as sender'}
+            </p>
+            <p className="form-note" style={{ marginBottom: '0.75rem' }}>
+              Leaving Sender name blank uses the logged-in user&apos;s name by default.
+            </p>
+            <Link className="btn-secondary" href="/dashboard/settings">
+              Update in Settings
+            </Link>
+          </section>
           <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
             <button className="btn-primary" type="submit" disabled={saving || loading}>
               {saving ? 'Saving...' : editingCampaignId ? 'Update Draft' : 'Create Draft'}
