@@ -109,6 +109,35 @@ type CampaignActivity = {
   }>;
 };
 
+type CampaignRiskSeverity = 'block' | 'warning' | 'info';
+type CampaignRiskStatus = 'blocked' | 'warning' | 'ready';
+type CampaignRiskItem = {
+  key: string;
+  title: string;
+  detail: string;
+  severity: CampaignRiskSeverity;
+  category: 'compliance' | 'spam' | 'audience' | 'deliverability';
+};
+type CampaignRiskResult = {
+  status: CampaignRiskStatus;
+  score: number;
+  summary: string;
+  counts: {
+    blocks: number;
+    warnings: number;
+    infos: number;
+  };
+  audience: {
+    lists: number;
+    totalContacts: number;
+    subscribedContacts: number;
+    suppressedContacts: number;
+    invalidContacts: number;
+    duplicateContacts: number;
+  };
+  items: CampaignRiskItem[];
+};
+
 type SenderIdentity = {
   defaultFromName: string;
   defaultFromEmail: string;
@@ -167,6 +196,9 @@ export default function CampaignsPage() {
   const [controllingId, setControllingId] = useState<string | null>(null);
   const [campaignDetailsLoading, setCampaignDetailsLoading] = useState(false);
   const [sendConfirmCampaign, setSendConfirmCampaign] = useState<Campaign | null>(null);
+  const [sendConfirmRisk, setSendConfirmRisk] = useState<CampaignRiskResult | null>(null);
+  const [sendConfirmRiskLoading, setSendConfirmRiskLoading] = useState(false);
+  const [sendConfirmRiskError, setSendConfirmRiskError] = useState('');
   const selectedCampaignCount = selectedCampaignIds.length;
 
   const loadCampaigns = useCallback(async () => {
@@ -210,6 +242,50 @@ export default function CampaignsPage() {
   useEffect(() => {
     loadSenderIdentity();
   }, [loadSenderIdentity]);
+
+  useEffect(() => {
+    if (!sendConfirmCampaign) {
+      setSendConfirmRisk(null);
+      setSendConfirmRiskError('');
+      setSendConfirmRiskLoading(false);
+      return;
+    }
+
+    const controller = new AbortController();
+
+    const loadSendPreview = async () => {
+      setSendConfirmRiskLoading(true);
+      setSendConfirmRiskError('');
+      try {
+        const response = await fetch(`/api/campaigns/${sendConfirmCampaign.id}/send`, {
+          method: 'GET',
+          cache: 'no-store',
+          signal: controller.signal,
+        });
+        const data = (await response.json().catch(() => ({}))) as { risk?: CampaignRiskResult; error?: string };
+        if (controller.signal.aborted) return;
+        if (!response.ok) {
+          setSendConfirmRisk(null);
+          setSendConfirmRiskError(data.error || 'The send preview could not be loaded.');
+          return;
+        }
+        setSendConfirmRisk(data.risk || null);
+      } catch {
+        if (!controller.signal.aborted) {
+          setSendConfirmRisk(null);
+          setSendConfirmRiskError('The send preview could not be loaded.');
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setSendConfirmRiskLoading(false);
+        }
+      }
+    };
+
+    loadSendPreview();
+
+    return () => controller.abort();
+  }, [sendConfirmCampaign]);
 
   const campaignIdSignature = useMemo(() => campaigns.map((campaign) => campaign.id).join(','), [campaigns]);
 
@@ -545,6 +621,7 @@ export default function CampaignsPage() {
   const replyToEmail = senderIdentity?.senderReplyToEmail || senderIdentity?.defaultReplyToEmail || '';
   const senderSummary = senderName && senderEmail ? `${senderName} <${senderEmail}>` : senderEmail || senderName || 'Not set';
   const sendTargetLists = sendConfirmCampaign ? (sendConfirmCampaign.lists || [sendConfirmCampaign.list]).map((list) => list.name).join(', ') : '';
+  const sendConfirmBlocked = sendConfirmRisk?.status === 'blocked';
 
   async function controlCampaign(id: string, action: 'pause' | 'resume' | 'cancel') {
     setControllingId(id);
@@ -1027,6 +1104,52 @@ export default function CampaignsPage() {
             <section className="card" style={{ padding: '1rem', marginBottom: '1rem', background: 'rgba(15, 23, 42, 0.35)' }}>
               <div className="campaign-risk-panel__header" style={{ marginBottom: '0.75rem' }}>
                 <div>
+                  <h3 style={{ marginBottom: '0.25rem' }}>Send Risk Summary</h3>
+                  <p className="form-note" style={{ marginBottom: 0 }}>
+                    {sendConfirmRiskLoading
+                      ? 'Checking compliance, spam, audience, and deliverability before you confirm...'
+                      : sendConfirmRisk?.summary || sendConfirmRiskError || 'The send API will evaluate risk before it queues the campaign.'}
+                  </p>
+                </div>
+                {sendConfirmRisk ? <span className={`badge ${sendConfirmRisk.status === 'blocked' ? 'badge-danger' : sendConfirmRisk.status === 'warning' ? 'badge-warning' : 'badge-success'}`}>{sendConfirmRisk.status}</span> : null}
+              </div>
+
+              {sendConfirmRisk ? (
+                <>
+                  <div className="campaign-risk-stats">
+                    <span><strong>{sendConfirmRisk.score}</strong> risk score</span>
+                    <span><strong>{sendConfirmRisk.counts.blocks}</strong> blocks</span>
+                    <span><strong>{sendConfirmRisk.counts.warnings}</strong> warnings</span>
+                    <span><strong>{sendConfirmRisk.audience.subscribedContacts}</strong> subscribed</span>
+                    <span><strong>{sendConfirmRisk.audience.suppressedContacts}</strong> suppressed</span>
+                  </div>
+                  <div className="campaign-risk-list">
+                    {sendConfirmRisk.items.length === 0 ? (
+                      <p className="form-note">No campaign risk issues detected.</p>
+                    ) : (
+                      sendConfirmRisk.items.map((item) => (
+                        <article className="campaign-risk-item" key={item.key}>
+                          <div className="campaign-risk-item__head">
+                            <span className={`badge ${item.severity === 'block' ? 'badge-danger' : item.severity === 'warning' ? 'badge-warning' : 'badge-info'}`}>{item.severity}</span>
+                            <span className="badge badge-info">{item.category}</span>
+                          </div>
+                          <h3>{item.title}</h3>
+                          <p>{item.detail}</p>
+                        </article>
+                      ))
+                    )}
+                  </div>
+                </>
+              ) : sendConfirmRiskError ? (
+                <p className="form-note" style={{ marginBottom: 0 }}>
+                  {sendConfirmRiskError}
+                </p>
+              ) : null}
+            </section>
+
+            <section className="card" style={{ padding: '1rem', marginBottom: '1rem', background: 'rgba(15, 23, 42, 0.35)' }}>
+              <div className="campaign-risk-panel__header" style={{ marginBottom: '0.75rem' }}>
+                <div>
                   <h3 style={{ marginBottom: '0.25rem' }}>Sender Identity</h3>
                   <p className="form-note" style={{ marginBottom: 0 }}>
                     Recipients will see this name and address when the campaign leaves the queue.
@@ -1078,7 +1201,7 @@ export default function CampaignsPage() {
                   setSendConfirmCampaign(null);
                   await sendCampaign(targetId);
                 }}
-                disabled={sendingId === sendConfirmCampaign.id}
+                disabled={sendingId === sendConfirmCampaign.id || sendConfirmRiskLoading || sendConfirmBlocked}
               >
                 {sendingId === sendConfirmCampaign.id ? 'Sending...' : 'Confirm send'}
               </button>

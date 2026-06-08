@@ -8,6 +8,16 @@ import { analyzeCampaignRisk } from '@/lib/campaign-risk';
 
 type Params = { params: { id: string } };
 
+export async function GET(_: Request, { params }: Params) {
+  const auth = await requireUserFromCookies();
+  if ('error' in auth) return auth.error;
+
+  const risk = await analyzeCampaignRisk(auth.user.userId, params.id);
+  if (!risk) return fail('Campaign not found.', 404);
+
+  return ok({ risk });
+}
+
 export async function POST(_: Request, { params }: Params) {
   const auth = await requireUserFromCookies();
   if ('error' in auth) return auth.error;
