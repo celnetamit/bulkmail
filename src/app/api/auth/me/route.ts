@@ -1,4 +1,4 @@
-import { requireUserFromCookies } from '@/lib/auth';
+import { getImpersonationContextFromCookies, requireUserFromCookies } from '@/lib/auth';
 import { getCapabilities } from '@/lib/permissions';
 import { ok } from '@/lib/http';
 
@@ -7,6 +7,7 @@ export const dynamic = 'force-dynamic';
 export async function GET() {
   const auth = await requireUserFromCookies();
   if ('error' in auth) return auth.error;
+  const impersonation = await getImpersonationContextFromCookies();
 
   return ok({
       user: {
@@ -21,5 +22,11 @@ export async function GET() {
         senderReplyToEmail: auth.user.senderReplyToEmail,
         capabilities: getCapabilities(auth.user.role),
       },
+      impersonation: impersonation
+        ? {
+            returnTo: impersonation.returnTo,
+            originalUser: impersonation.originalUser,
+          }
+        : null,
   });
 }

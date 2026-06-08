@@ -1,5 +1,5 @@
-import { clearSessionCookie } from '@/lib/auth';
-import { getAppOrigin } from '@/lib/google-oauth';
+import { clearImpersonationCookies, clearSessionCookie } from '@/lib/auth';
+import { getAppOrigin, sanitizeNextPath } from '@/lib/google-oauth';
 import { ok } from '@/lib/http';
 import { NextResponse } from 'next/server';
 
@@ -10,14 +10,17 @@ export async function POST(request: Request) {
   const url = new URL(request.url);
   const nextPath = url.searchParams.get('next');
   const origin = getAppOrigin(request);
+  const safeNext = sanitizeNextPath(nextPath);
 
   if (nextPath) {
-    const response = NextResponse.redirect(new URL(nextPath, origin));
+    const response = NextResponse.redirect(new URL(safeNext, origin));
     clearSessionCookie(response);
+    clearImpersonationCookies(response);
     return response;
   }
 
   const response = ok({ success: true });
   clearSessionCookie(response);
+  clearImpersonationCookies(response);
   return response;
 }

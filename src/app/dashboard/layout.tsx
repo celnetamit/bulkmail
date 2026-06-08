@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation';
-import { getCurrentUserFromCookies } from '@/lib/auth';
+import { getCurrentUserFromCookies, getImpersonationContextFromCookies } from '@/lib/auth';
 import { DashboardShell } from '@/components/dashboard-shell';
 
 export const dynamic = 'force-dynamic';
@@ -11,6 +11,7 @@ export default async function DashboardLayout({
   children: React.ReactNode;
 }) {
   const user = await getCurrentUserFromCookies();
+  const impersonation = await getImpersonationContextFromCookies();
 
   if (!user) {
     redirect('/login');
@@ -19,7 +20,7 @@ export default async function DashboardLayout({
   const role = user.role as 'USER' | 'MANAGER' | 'ADMIN';
 
   return (
-    <DashboardShell email={user.email} role={role}>
+    <DashboardShell email={user.email} role={role} impersonation={impersonation}>
       {children}
     </DashboardShell>
   );

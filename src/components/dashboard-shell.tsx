@@ -10,9 +10,18 @@ type DashboardShellProps = {
   children: ReactNode;
   email: string;
   role: 'USER' | 'MANAGER' | 'ADMIN';
+  impersonation?: {
+    returnTo: string;
+    originalUser: {
+      userId: string;
+      email: string;
+      name: string | null;
+      role: string;
+    };
+  } | null;
 };
 
-export function DashboardShell({ children, email, role }: DashboardShellProps) {
+export function DashboardShell({ children, email, role, impersonation }: DashboardShellProps) {
   const [isNavOpen, setIsNavOpen] = useState(false);
   const navId = useId();
   const pathname = usePathname();
@@ -66,6 +75,26 @@ export function DashboardShell({ children, email, role }: DashboardShellProps) {
           <DashboardNav role={role} onNavigate={() => setIsNavOpen(false)} />
         </aside>
         <main className="dashboard-content">
+          {impersonation ? (
+            <div className="impersonation-banner" role="status" aria-live="polite">
+              <div className="impersonation-banner__content">
+                <div>
+                  <p className="impersonation-banner__eyebrow">Impersonation mode</p>
+                  <strong>
+                    Viewing as {email}
+                  </strong>
+                  <p>
+                    You are using {impersonation.originalUser.email} ({impersonation.originalUser.role}) behind the scenes.
+                  </p>
+                </div>
+                <form action="/api/admin/impersonation/end" method="post">
+                  <button type="submit" className="btn-secondary">
+                    Return to {impersonation.originalUser.email}
+                  </button>
+                </form>
+              </div>
+            </div>
+          ) : null}
           <header className="dashboard-header">
             <div className="dashboard-header__leading">
               <button

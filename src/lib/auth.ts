@@ -5,11 +5,14 @@ import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 import { startCampaignSendQueueWorker } from '@/lib/campaign-send-queue';
 import { ensureSenderIdentitySchema } from '@/lib/mail-settings';
+import { sanitizeNextPath } from '@/lib/google-oauth';
 import { ensurePlatformSettingsSchema } from '@/lib/platform-settings';
 import { hasCapability } from '@/lib/permissions';
 import { executeSql, queryRow } from '@/lib/sqlite';
 
-const SESSION_COOKIE = 'mailflow_session';
+export const SESSION_COOKIE = 'mailflow_session';
+export const IMPERSONATION_ORIGINAL_COOKIE = 'mailflow_impersonation_original';
+export const IMPERSONATION_RETURN_COOKIE = 'mailflow_impersonation_return';
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 7;
 const DEFAULT_ADMIN_EMAIL_ALLOWLIST = ['amit.rai@celnet.in', 'puneet.mehrotra@celnet.in'];
 
@@ -34,6 +37,7 @@ export function isAdminEmailAllowed(email: string) {
 type SessionPayload = {
   userId: string;
   email: string;
+  impersonation?: boolean;
 };
 
 export type AuthUser = {
@@ -48,6 +52,16 @@ export type AuthUser = {
   senderFromEmail: string | null;
   senderReplyToEmail: string | null;
   lastLoginAt: Date | null;
+};
+
+export type ImpersonationContext = {
+  returnTo: string;
+  originalUser: {
+    userId: string;
+    email: string;
+    name: string | null;
+    role: string;
+  };
 };
 
 export async function hashPassword(password: string) {
@@ -80,6 +94,7 @@ export async function readSessionToken(token: string) {
     return {
       userId: payload.userId,
       email: payload.email,
+      impersonation: payload.impersonation === true,
     };
   } catch {
     return null;
@@ -118,7 +133,8 @@ async function getUserRecordFromToken(token: string | null) {
     [session.userId],
   );
 
-  if (!user || !Boolean(user.isActive)) return null;
+  if (!user) return null;
+  if (!Boolean(user.isActive) && !session.impersonation) return null;
 
   if (isAdminEmailAllowed(user.email) && user.role !== 'ADMIN') {
     executeSql('UPDATE "User" SET role = ?, "updatedAt" = CURRENT_TIMESTAMP WHERE id = ?', ['ADMIN', user.id]);
@@ -142,6 +158,26 @@ async function getUserRecordFromToken(token: string | null) {
 
 export async function getCurrentUserFromCookies() {
   return getUserRecordFromSession();
+}
+
+export async function getImpersonationContextFromCookies(): Promise<ImpersonationContext | null> {
+  const originalToken = cookies().get(IMPERSONATION_ORIGINAL_COOKIE)?.value || null;
+  const returnTo = sanitizeNextPath(cookies().get(IMPERSONATION_RETURN_COOKIE)?.value || '/dashboard/admin');
+
+  if (!originalToken) return null;
+
+  const originalUser = await getUserRecordFromToken(originalToken);
+  if (!originalUser) return null;
+
+  return {
+    returnTo,
+    originalUser: {
+      userId: originalUser.userId,
+      email: originalUser.email,
+      name: originalUser.name,
+      role: originalUser.role,
+    },
+  };
 }
 
 export async function getCurrentUserFromRequest(request: Request) {
@@ -206,6 +242,49 @@ export function setSessionCookie(response: NextResponse, token: string) {
 export function clearSessionCookie(response: NextResponse) {
   response.cookies.set({
     name: SESSION_COOKIE,
+    value: '',
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: process.env.NODE_ENV === 'production',
+    path: '/',
+    maxAge: 0,
+  });
+}
+
+export function setImpersonationCookies(response: NextResponse, originalToken: string, returnTo: string) {
+  response.cookies.set({
+    name: IMPERSONATION_ORIGINAL_COOKIE,
+    value: originalToken,
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: process.env.NODE_ENV === 'production',
+    path: '/',
+    maxAge: SESSION_TTL_SECONDS,
+  });
+
+  response.cookies.set({
+    name: IMPERSONATION_RETURN_COOKIE,
+    value: returnTo,
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: process.env.NODE_ENV === 'production',
+    path: '/',
+    maxAge: SESSION_TTL_SECONDS,
+  });
+}
+
+export function clearImpersonationCookies(response: NextResponse) {
+  response.cookies.set({
+    name: IMPERSONATION_ORIGINAL_COOKIE,
+    value: '',
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: process.env.NODE_ENV === 'production',
+    path: '/',
+    maxAge: 0,
+  });
+  response.cookies.set({
+    name: IMPERSONATION_RETURN_COOKIE,
     value: '',
     httpOnly: true,
     sameSite: 'lax',
