@@ -199,6 +199,7 @@ export default function CampaignsPage() {
   const [sendConfirmRisk, setSendConfirmRisk] = useState<CampaignRiskResult | null>(null);
   const [sendConfirmRiskLoading, setSendConfirmRiskLoading] = useState(false);
   const [sendConfirmRiskError, setSendConfirmRiskError] = useState('');
+  const firstBlockingRiskItemRef = useRef<HTMLElement | null>(null);
   const selectedCampaignCount = selectedCampaignIds.length;
 
   const loadCampaigns = useCallback(async () => {
@@ -622,6 +623,20 @@ export default function CampaignsPage() {
   const senderSummary = senderName && senderEmail ? `${senderName} <${senderEmail}>` : senderEmail || senderName || 'Not set';
   const sendTargetLists = sendConfirmCampaign ? (sendConfirmCampaign.lists || [sendConfirmCampaign.list]).map((list) => list.name).join(', ') : '';
   const sendConfirmBlocked = sendConfirmRisk?.status === 'blocked';
+  const firstBlockingRiskItemKey = useMemo(
+    () => sendConfirmRisk?.items.find((item) => item.severity === 'block')?.key || null,
+    [sendConfirmRisk],
+  );
+
+  useEffect(() => {
+    if (sendConfirmRisk?.status !== 'blocked') return;
+
+    const target = firstBlockingRiskItemRef.current;
+    if (!target) return;
+
+    target.focus({ preventScroll: true });
+    target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [sendConfirmRisk?.status, firstBlockingRiskItemKey]);
 
   async function controlCampaign(id: string, action: 'pause' | 'resume' | 'cancel') {
     setControllingId(id);
@@ -1128,7 +1143,13 @@ export default function CampaignsPage() {
                       <p className="form-note">No campaign risk issues detected.</p>
                     ) : (
                       sendConfirmRisk.items.map((item) => (
-                        <article className="campaign-risk-item" key={item.key}>
+                        <article
+                          className="campaign-risk-item"
+                          key={item.key}
+                          ref={item.key === firstBlockingRiskItemKey ? firstBlockingRiskItemRef : undefined}
+                          tabIndex={item.key === firstBlockingRiskItemKey ? -1 : undefined}
+                          style={item.key === firstBlockingRiskItemKey ? { outline: '2px solid rgba(248, 113, 113, 0.8)', outlineOffset: '4px' } : undefined}
+                        >
                           <div className="campaign-risk-item__head">
                             <span className={`badge ${item.severity === 'block' ? 'badge-danger' : item.severity === 'warning' ? 'badge-warning' : 'badge-info'}`}>{item.severity}</span>
                             <span className="badge badge-info">{item.category}</span>
