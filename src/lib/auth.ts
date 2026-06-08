@@ -44,6 +44,7 @@ export type AuthUser = {
   isActive: boolean;
   dailyEmailLimit: number;
   imageUploadLimitKb: number | null;
+  senderFromName: string | null;
   senderFromEmail: string | null;
   senderReplyToEmail: string | null;
   lastLoginAt: Date | null;
@@ -108,11 +109,12 @@ async function getUserRecordFromToken(token: string | null) {
     isActive: number | boolean;
     dailyEmailLimit: number;
     imageUploadLimitKb: number | null;
+    senderFromName: string | null;
     senderFromEmail: string | null;
     senderReplyToEmail: string | null;
     lastLoginAt: string | null;
   }>(
-    'SELECT id, email, name, role, "isActive", "dailyEmailLimit", "imageUploadLimitKb", "senderFromEmail", "senderReplyToEmail", "lastLoginAt" FROM "User" WHERE id = ? LIMIT 1',
+    'SELECT id, email, name, role, "isActive", "dailyEmailLimit", "imageUploadLimitKb", "senderFromName", "senderFromEmail", "senderReplyToEmail", "lastLoginAt" FROM "User" WHERE id = ? LIMIT 1',
     [session.userId],
   );
 
@@ -131,6 +133,7 @@ async function getUserRecordFromToken(token: string | null) {
     isActive: Boolean(user.isActive),
     dailyEmailLimit: user.dailyEmailLimit,
     imageUploadLimitKb: user.imageUploadLimitKb ?? null,
+    senderFromName: user.senderFromName ?? null,
     senderFromEmail: user.senderFromEmail ?? null,
     senderReplyToEmail: user.senderReplyToEmail ?? null,
     lastLoginAt: user.lastLoginAt ? new Date(user.lastLoginAt) : null,

@@ -54,6 +54,7 @@ export async function PUT(request: Request) {
   const canManageSettings = hasCapability(auth.user.role, 'manage_settings');
 
   const senderIdentity = await saveSenderIdentity(auth.user.userId, {
+    senderFromName: 'senderFromName' in payload ? String(payload.senderFromName || '') : undefined,
     senderFromEmail: 'senderFromEmail' in payload ? String(payload.senderFromEmail || '') : undefined,
     senderReplyToEmail: 'senderReplyToEmail' in payload ? String(payload.senderReplyToEmail || '') : undefined,
   });
@@ -68,6 +69,7 @@ export async function PUT(request: Request) {
       entityId: auth.user.userId,
       scopeType: 'SELF',
       metadata: {
+        senderFromName: senderIdentity.senderFromName || null,
         senderFromEmail: senderIdentity.senderFromEmail || null,
         senderReplyToEmail: senderIdentity.senderReplyToEmail || null,
       },
@@ -138,6 +140,7 @@ export async function PUT(request: Request) {
     scopeType: 'GLOBAL',
     metadata: {
       provider,
+      senderFromName: senderIdentity.senderFromName || null,
       senderFromEmail: senderIdentity.senderFromEmail || null,
       senderReplyToEmail: senderIdentity.senderReplyToEmail || null,
       imageUploadLimitKb: imageUploadLimitKbRaw,

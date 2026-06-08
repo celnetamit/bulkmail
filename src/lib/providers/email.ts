@@ -35,6 +35,23 @@ const UNSUBSCRIBE_URL_PLACEHOLDER = '{{unsubscribeUrl}}';
 const DEFAULT_SEND_CONCURRENCY = 5;
 const MIN_PROGRESS_UPDATE_INTERVAL = 25;
 
+function formatSenderAddress(name: string | null | undefined, email: string) {
+  const trimmedName = String(name || '').trim();
+  return trimmedName ? `${trimmedName} <${email}>` : email;
+}
+
+function formatSesSenderAddress(name: string | null | undefined, email: string) {
+  const trimmedName = String(name || '').trim();
+  if (!trimmedName) return email;
+
+  if (/[^\u0020-\u007e]/.test(trimmedName)) {
+    const encodedName = Buffer.from(trimmedName, 'utf8').toString('base64');
+    return `=?UTF-8?B?${encodedName}?= <${email}>`;
+  }
+
+  return `${trimmedName} <${email}>`;
+}
+
 function dedupeRecipients(recipients: CampaignRecipient[]) {
   const seen = new Set<string>();
   const unique: CampaignRecipient[] = [];
@@ -105,7 +122,7 @@ async function sendViaMock(
 
 async function sendViaResend(
   input: { subject: string; bodyHtml: string; recipients: CampaignRecipient[] },
-  transport: { resendApiKey: string; fromEmail: string; replyToEmail: string },
+  transport: { resendApiKey: string; fromEmail: string; fromName: string; replyToEmail: string },
 ): Promise<SendResult> {
   const results: SendResult = [];
 
@@ -117,7 +134,7 @@ async function sendViaResend(
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        from: transport.fromEmail,
+        from: formatSenderAddress(transport.fromName, transport.fromEmail),
         reply_to: transport.replyToEmail,
         to: [contact.email],
         subject: input.subject,
@@ -142,6 +159,7 @@ async function sendViaAwsSes(
   transport: {
     awsRegion: string;
     fromEmail: string;
+    fromName: string;
     replyToEmail: string;
     userId?: string;
     campaignId?: string;
@@ -162,7 +180,7 @@ async function sendViaAwsSes(
   for (const contact of input.recipients) {
     const response = await client.send(
       new SendEmailCommand({
-        FromEmailAddress: transport.fromEmail,
+        FromEmailAddress: formatSesSenderAddress(transport.fromName, transport.fromEmail),
         ReplyToAddresses: [transport.replyToEmail],
         Destination: { ToAddresses: [contact.email] },
         EmailTags: [
@@ -206,6 +224,7 @@ async function sendEmailBatch(
     return sendViaResend(input, {
       resendApiKey: transport.resendApiKey,
       fromEmail: senderIdentity.fromEmail,
+      fromName: senderIdentity.fromName,
       replyToEmail: senderIdentity.replyToEmail,
     });
   }
@@ -217,6 +236,7 @@ async function sendEmailBatch(
     return sendViaAwsSes(input, {
       awsRegion: transport.awsRegion,
       fromEmail: senderIdentity.fromEmail,
+      fromName: senderIdentity.fromName,
       replyToEmail: senderIdentity.replyToEmail,
       userId,
       campaignId: input.campaignId,

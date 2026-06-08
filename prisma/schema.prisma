@@ -19,6 +19,7 @@ model User {
   isActive  Boolean  @default(true)
   dailyEmailLimit Int @default(100000)
   imageUploadLimitKb Int?
+  senderFromName String?
   senderFromEmail String?
   senderReplyToEmail String?
   lastLoginAt DateTime?

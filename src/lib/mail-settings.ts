@@ -57,15 +57,20 @@ export type ResolvedMailTransport = {
 
 type SenderIdentityRow = {
   email: string;
+  name: string | null;
+  senderFromName: string | null;
   senderFromEmail: string | null;
   senderReplyToEmail: string | null;
 };
 
 export type SenderIdentityView = {
+  defaultFromName: string;
   defaultFromEmail: string;
   defaultReplyToEmail: string;
+  fromName: string;
   fromEmail: string;
   replyToEmail: string;
+  senderFromName: string;
   senderFromEmail: string;
   senderReplyToEmail: string;
 };
@@ -110,6 +115,11 @@ function normalizeOptionalEmail(value: string | null | undefined) {
   return normalizeEmailAddress(trimmed);
 }
 
+function normalizeOptionalText(value: string | null | undefined) {
+  const trimmed = String(value || '').trim();
+  return trimmed || '';
+}
+
 function validateOptionalEmail(value: string, fieldLabel: string) {
   if (value && !isValidEmailAddress(value)) {
     throw new Error(`${fieldLabel} must be a valid email address.`);
@@ -119,7 +129,7 @@ function validateOptionalEmail(value: string, fieldLabel: string) {
 export function ensureSenderIdentitySchema() {
   if (senderIdentitySchemaInitialized) return;
 
-  for (const columnName of ['senderFromEmail', 'senderReplyToEmail']) {
+  for (const columnName of ['senderFromName', 'senderFromEmail', 'senderReplyToEmail']) {
     if (!columnExists('User', columnName)) {
       executeSql(`ALTER TABLE "User" ADD COLUMN "${columnName}" TEXT`);
     }
@@ -181,6 +191,8 @@ async function getSenderIdentityRow(userId: string) {
     `
       SELECT
         email,
+        name,
+        "senderFromName",
         "senderFromEmail",
         "senderReplyToEmail"
       FROM "User"
@@ -198,16 +210,22 @@ export async function getSenderIdentity(userId: string): Promise<SenderIdentityV
   }
 
   const defaultFromEmail = normalizeEmailAddress(row.email);
+  const defaultFromName = normalizeOptionalText(row.name) || row.email;
+  const storedFromName = normalizeOptionalText(row.senderFromName);
   const storedFromEmail = normalizeOptionalEmail(row.senderFromEmail);
   const storedReplyToEmail = normalizeOptionalEmail(row.senderReplyToEmail);
   const fromEmail = storedFromEmail || defaultFromEmail;
+  const fromName = storedFromName || defaultFromName;
   const replyToEmail = storedReplyToEmail || fromEmail;
 
   return {
+    defaultFromName,
     defaultFromEmail,
     defaultReplyToEmail: fromEmail,
+    fromName,
     fromEmail,
     replyToEmail,
+    senderFromName: storedFromName,
     senderFromEmail: storedFromEmail,
     senderReplyToEmail: storedReplyToEmail,
   };
@@ -215,11 +233,13 @@ export async function getSenderIdentity(userId: string): Promise<SenderIdentityV
 
 export async function saveSenderIdentity(
   userId: string,
-  input: { senderFromEmail?: string; senderReplyToEmail?: string },
+  input: { senderFromName?: string; senderFromEmail?: string; senderReplyToEmail?: string },
 ) {
   ensureSenderIdentitySchema();
 
   const current = await getSenderIdentity(userId);
+  const nextSenderFromName =
+    input.senderFromName !== undefined ? normalizeOptionalText(input.senderFromName) : current.senderFromName;
   const nextSenderFromEmail =
     input.senderFromEmail !== undefined ? normalizeOptionalEmail(input.senderFromEmail) : current.senderFromEmail;
   const fallbackFromEmail = nextSenderFromEmail || current.defaultFromEmail;
@@ -236,12 +256,13 @@ export async function saveSenderIdentity(
     `
       UPDATE "User"
       SET
+        "senderFromName" = ?,
         "senderFromEmail" = ?,
         "senderReplyToEmail" = ?,
         "updatedAt" = CURRENT_TIMESTAMP
       WHERE "id" = ?
     `,
-    [nextSenderFromEmail || null, nextSenderReplyToEmail || null, userId],
+    [nextSenderFromName || null, nextSenderFromEmail || null, nextSenderReplyToEmail || null, userId],
   );
 
   return getSenderIdentity(userId);

@@ -24,10 +24,13 @@ type Settings = {
 };
 
 type SenderIdentity = {
+  defaultFromName: string;
   defaultFromEmail: string;
   defaultReplyToEmail: string;
+  fromName: string;
   fromEmail: string;
   replyToEmail: string;
+  senderFromName: string;
   senderFromEmail: string;
   senderReplyToEmail: string;
 };
@@ -87,6 +90,7 @@ type CurrentUser = {
   userId: string;
   email: string;
   name: string | null;
+  senderFromName: string | null;
   senderFromEmail: string | null;
   senderReplyToEmail: string | null;
   capabilities: string[];
@@ -122,6 +126,7 @@ export default function SettingsPage() {
   const [dmarcVerified, setDmarcVerified] = useState(false);
   const [senderFromEmail, setSenderFromEmail] = useState('');
   const [senderReplyToEmail, setSenderReplyToEmail] = useState('');
+  const [senderFromName, setSenderFromName] = useState('');
 
   const [testToEmail, setTestToEmail] = useState('');
   const [testSubject, setTestSubject] = useState('MailFlow test email');
@@ -197,6 +202,7 @@ export default function SettingsPage() {
     }
 
     setSenderIdentity(data.senderIdentity || null);
+    setSenderFromName(data.senderIdentity?.senderFromName || '');
     setSenderFromEmail(data.senderIdentity?.senderFromEmail || '');
     setSenderReplyToEmail(data.senderIdentity?.senderReplyToEmail || '');
 
@@ -244,6 +250,7 @@ export default function SettingsPage() {
       method: 'PUT',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
+        senderFromName,
         senderFromEmail,
         senderReplyToEmail,
       }),
@@ -258,6 +265,7 @@ export default function SettingsPage() {
     }
 
     setSenderIdentity(data.senderIdentity || null);
+    setSenderFromName(data.senderIdentity?.senderFromName || '');
     setSenderFromEmail(data.senderIdentity?.senderFromEmail || '');
     setSenderReplyToEmail(data.senderIdentity?.senderReplyToEmail || '');
     toast.success('Sender settings saved', 'Your from and reply-to defaults were updated.');
@@ -353,10 +361,15 @@ export default function SettingsPage() {
         <h2>Personal Sender Identity</h2>
         <form className="auth-form" onSubmit={saveSenderSettings}>
           <input
+            value={senderFromName}
+            onChange={(e) => setSenderFromName(e.target.value)}
+            placeholder={currentUser?.name || currentUser?.email || 'Sender name'}
+          />
+          <input
             type="email"
             value={senderFromEmail}
             onChange={(e) => setSenderFromEmail(e.target.value)}
-            placeholder={currentUser?.email || 'your@email.com'}
+            placeholder={senderIdentity?.defaultFromEmail || currentUser?.email || 'your@email.com'}
           />
           <input
             type="email"
@@ -369,6 +382,7 @@ export default function SettingsPage() {
           </button>
         </form>
         <p className="form-note">
+          Leave Sender name blank to use your login name: <strong>{senderIdentity?.defaultFromName || currentUser?.name || currentUser?.email || 'Not available'}</strong>.
           Leave From email blank to use your login email: <strong>{senderIdentity?.defaultFromEmail || currentUser?.email || 'Not available'}</strong>.
           Leave Reply-to blank to use the current From email automatically.
         </p>
