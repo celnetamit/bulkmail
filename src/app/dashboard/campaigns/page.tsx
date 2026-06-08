@@ -109,6 +109,18 @@ type CampaignActivity = {
   }>;
 };
 
+type SenderIdentity = {
+  defaultFromName: string;
+  defaultFromEmail: string;
+  defaultReplyToEmail: string;
+  fromName: string;
+  fromEmail: string;
+  replyToEmail: string;
+  senderFromName: string;
+  senderFromEmail: string;
+  senderReplyToEmail: string;
+};
+
 function formatDuration(seconds: number | null | undefined) {
   if (seconds == null) return '-';
   if (seconds < 60) return `${seconds}s`;
@@ -144,6 +156,7 @@ export default function CampaignsPage() {
   const [listsLoaded, setListsLoaded] = useState(false);
   const [sendingId, setSendingId] = useState<string | null>(null);
   const [testingId, setTestingId] = useState<string | null>(null);
+  const [senderIdentity, setSenderIdentity] = useState<SenderIdentity | null>(null);
   const [selectedCampaignIds, setSelectedCampaignIds] = useState<string[]>([]);
   const [showArchived, setShowArchived] = useState(false);
   const [bulkLoading, setBulkLoading] = useState(false);
@@ -153,6 +166,7 @@ export default function CampaignsPage() {
   const [activityLoading, setActivityLoading] = useState(false);
   const [controllingId, setControllingId] = useState<string | null>(null);
   const [campaignDetailsLoading, setCampaignDetailsLoading] = useState(false);
+  const [sendConfirmCampaign, setSendConfirmCampaign] = useState<Campaign | null>(null);
   const selectedCampaignCount = selectedCampaignIds.length;
 
   const loadCampaigns = useCallback(async () => {
@@ -165,6 +179,15 @@ export default function CampaignsPage() {
     setCampaigns(campaignsData.campaigns || []);
     setSelectedCampaignIds([]);
   }, [showArchived, toast]);
+
+  const loadSenderIdentity = useCallback(async () => {
+    const response = await fetch('/api/settings', { cache: 'no-store' });
+    const data = (await response.json().catch(() => ({}))) as { senderIdentity?: SenderIdentity; error?: string };
+    if (!response.ok) {
+      return;
+    }
+    setSenderIdentity(data.senderIdentity || null);
+  }, []);
 
   const loadLists = useCallback(async () => {
     if (listsLoading || listsLoaded) return;
@@ -183,6 +206,10 @@ export default function CampaignsPage() {
   useEffect(() => {
     loadCampaigns();
   }, [loadCampaigns]);
+
+  useEffect(() => {
+    loadSenderIdentity();
+  }, [loadSenderIdentity]);
 
   const campaignIdSignature = useMemo(() => campaigns.map((campaign) => campaign.id).join(','), [campaigns]);
 
@@ -512,6 +539,12 @@ export default function CampaignsPage() {
     }
     await loadCampaigns();
   }
+
+  const senderName = senderIdentity?.senderFromName || senderIdentity?.defaultFromName || '';
+  const senderEmail = senderIdentity?.senderFromEmail || senderIdentity?.defaultFromEmail || '';
+  const replyToEmail = senderIdentity?.senderReplyToEmail || senderIdentity?.defaultReplyToEmail || '';
+  const senderSummary = senderName && senderEmail ? `${senderName} <${senderEmail}>` : senderEmail || senderName || 'Not set';
+  const sendTargetLists = sendConfirmCampaign ? (sendConfirmCampaign.lists || [sendConfirmCampaign.list]).map((list) => list.name).join(', ') : '';
 
   async function controlCampaign(id: string, action: 'pause' | 'resume' | 'cancel') {
     setControllingId(id);
@@ -899,7 +932,7 @@ export default function CampaignsPage() {
                       <button
                         className="mini-btn"
                         type="button"
-                        onClick={() => sendCampaign(c.id)}
+                        onClick={() => setSendConfirmCampaign(c)}
                         disabled={!canManageCampaign || sendingId === c.id || c.status === 'QUEUED' || c.status === 'RETRYING' || c.status === 'SENDING' || c.status === 'PAUSED' || Boolean(c.isArchived)}
                       >
                         {sendingId === c.id ? 'Sending...' : c.status === 'QUEUED' || c.status === 'RETRYING' || c.status === 'SENDING' || c.status === 'PAUSED' ? c.status : 'Send'}
@@ -947,6 +980,112 @@ export default function CampaignsPage() {
           </table>
         </div>
       </div>
+
+      {sendConfirmCampaign ? (
+        <div
+          className="modal-backdrop"
+          role="presentation"
+          onClick={() => {
+            if (sendingId === sendConfirmCampaign.id) return;
+            setSendConfirmCampaign(null);
+          }}
+        >
+          <section
+            className="modal-card"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="send-confirmation-title"
+            onClick={(event) => event.stopPropagation()}
+            style={{ width: 'min(720px, 100%)' }}
+          >
+            <div className="campaign-risk-panel__header" style={{ marginBottom: '1rem' }}>
+              <div>
+                <h2 id="send-confirmation-title" style={{ marginBottom: '0.25rem' }}>
+                  Confirm Send
+                </h2>
+                <p className="form-note" style={{ marginBottom: 0 }}>
+                  This is the last step before dispatch. Double-check the sender identity and audience below.
+                </p>
+              </div>
+              <button
+                className="mini-btn"
+                type="button"
+                onClick={() => setSendConfirmCampaign(null)}
+                disabled={sendingId === sendConfirmCampaign.id}
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="campaign-risk-stats" style={{ marginBottom: '1rem' }}>
+              <span><strong>{sendConfirmCampaign.name}</strong></span>
+              <span><strong>{sendConfirmCampaign.status}</strong></span>
+              <span><strong>{sendTargetLists || sendConfirmCampaign.list.name}</strong></span>
+              <span><strong>{sendConfirmCampaign.subject || 'No subject'}</strong></span>
+            </div>
+
+            <section className="card" style={{ padding: '1rem', marginBottom: '1rem', background: 'rgba(15, 23, 42, 0.35)' }}>
+              <div className="campaign-risk-panel__header" style={{ marginBottom: '0.75rem' }}>
+                <div>
+                  <h3 style={{ marginBottom: '0.25rem' }}>Sender Identity</h3>
+                  <p className="form-note" style={{ marginBottom: 0 }}>
+                    Recipients will see this name and address when the campaign leaves the queue.
+                  </p>
+                </div>
+                <span className="badge badge-info">Final check</span>
+              </div>
+              <p style={{ marginBottom: '0.5rem' }}>
+                <strong>From:</strong> {senderSummary}
+              </p>
+              <p className="form-note" style={{ marginBottom: '0.75rem' }}>
+                <strong>Reply-to:</strong> {replyToEmail || 'Same as sender'}
+              </p>
+              <p className="form-note" style={{ marginBottom: '0.75rem' }}>
+                Leaving Sender name blank uses the logged-in user&apos;s name by default.
+              </p>
+              <Link className="btn-secondary" href="/dashboard/settings" onClick={() => setSendConfirmCampaign(null)}>
+                Update in Settings
+              </Link>
+            </section>
+
+            <div className="campaign-risk-list" style={{ marginBottom: '1rem' }}>
+              <article className="campaign-risk-item">
+                <div className="campaign-risk-item__head">
+                  <span className="badge badge-info">send</span>
+                  <span className="badge badge-info">confirmation</span>
+                </div>
+                <h3>Ready to send?</h3>
+                <p>
+                  Clicking confirm will dispatch this campaign now using the current delivery provider.
+                </p>
+              </article>
+            </div>
+
+            <div className="contact-drawer__actions" style={{ justifyContent: 'flex-end' }}>
+              <button
+                className="btn-secondary"
+                type="button"
+                onClick={() => setSendConfirmCampaign(null)}
+                disabled={sendingId === sendConfirmCampaign.id}
+              >
+                Cancel
+              </button>
+              <button
+                className="btn-primary"
+                type="button"
+                onClick={async () => {
+                  const targetId = sendConfirmCampaign.id;
+                  setSendConfirmCampaign(null);
+                  await sendCampaign(targetId);
+                }}
+                disabled={sendingId === sendConfirmCampaign.id}
+              >
+                {sendingId === sendConfirmCampaign.id ? 'Sending...' : 'Confirm send'}
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
     </div>
   );
 }
