@@ -662,6 +662,13 @@ export default function CampaignsPage() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [sendConfirmCampaign]);
 
+  function confirmSendCampaign() {
+    if (!sendConfirmCampaign || sendConfirmRiskLoading || sendConfirmBlocked) return;
+    const targetId = sendConfirmCampaign.id;
+    setSendConfirmCampaign(null);
+    void sendCampaign(targetId);
+  }
+
   async function controlCampaign(id: string, action: 'pause' | 'resume' | 'cancel') {
     setControllingId(id);
     const response = await fetch(`/api/campaigns/${id}/control`, {
@@ -1112,6 +1119,14 @@ export default function CampaignsPage() {
             aria-modal="true"
             aria-labelledby="send-confirmation-title"
             onClick={(event) => event.stopPropagation()}
+            onKeyDown={(event) => {
+              if (event.target !== event.currentTarget) return;
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                confirmSendCampaign();
+              }
+            }}
+            tabIndex={-1}
             style={{ width: 'min(720px, 100%)' }}
           >
             <div className="campaign-risk-panel__header" style={{ marginBottom: '1rem' }}>
@@ -1242,11 +1257,7 @@ export default function CampaignsPage() {
                 className="btn-primary"
                 ref={confirmSendButtonRef}
                 type="button"
-                onClick={async () => {
-                  const targetId = sendConfirmCampaign.id;
-                  setSendConfirmCampaign(null);
-                  await sendCampaign(targetId);
-                }}
+                onClick={confirmSendCampaign}
                 disabled={sendingId === sendConfirmCampaign.id || sendConfirmRiskLoading || sendConfirmBlocked}
               >
                 {sendingId === sendConfirmCampaign.id ? 'Sending...' : 'Confirm send'}
