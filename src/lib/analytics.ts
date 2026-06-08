@@ -238,7 +238,7 @@ export async function getUserAnalyticsSummary(userId: string, options?: { campai
   );
 
   const sent = counts.SENT;
-  const delivered = counts.DELIVERED;
+  const delivered = counts.DELIVERED > 0 ? counts.DELIVERED : sent;
   const opened = counts.OPENED;
   const clicked = counts.CLICKED;
   const bounced = counts.BOUNCED;

@@ -133,38 +133,62 @@ export default function AnalyticsPage() {
   }
 
   return (
-    <div className="overview">
+    <div className="overview analytics-page">
       <header className="page-header">
-        <h1>Analytics</h1>
-        <p>Track campaign performance with filterable event metrics.</p>
+        <div className="page-header__row">
+          <div>
+            <h1>Analytics</h1>
+            <p>Track campaign performance with filterable event metrics.</p>
+          </div>
+        </div>
       </header>
 
-      <div className="card" style={{ padding: '1rem', marginBottom: '1rem' }}>
-        <h2>Filters</h2>
-        <form className="auth-form" onSubmit={applyFilters}>
-          <select className="status-select" value={campaignId} onChange={(e) => setCampaignId(e.target.value)}>
-            <option value="">All Campaigns</option>
-            {summary?.campaigns.map((campaign) => (
-              <option key={campaign.id} value={campaign.id}>
-                {campaign.name}{campaign.ownerEmail ? ` - ${campaign.ownerName || campaign.ownerEmail}` : ''}
-              </option>
-            ))}
-          </select>
-          <select className="status-select" value={listId} onChange={(e) => setListId(e.target.value)}>
-            <option value="">All Lists</option>
-            {(events?.lists || summary?.lists || []).map((list) => (
-              <option key={list.id} value={list.id}>
-                {list.name}{list.ownerEmail ? ` - ${list.ownerName || list.ownerEmail}` : ''}
-              </option>
-            ))}
-          </select>
-          <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
-          <input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
-          <button className="btn-primary" type="submit">Apply Filters</button>
+      <section className="card analytics-panel analytics-filters-panel">
+        <div className="section-header section-header--compact">
+          <div>
+            <p className="admin-eyebrow">Filters</p>
+            <h2>Scope your report</h2>
+            <p>Choose a campaign, list, or date range before refreshing the summary and event detail tables.</p>
+          </div>
+        </div>
+        <form className="analytics-filter-form" onSubmit={applyFilters}>
+          <label className="analytics-filter-field">
+            <span>Campaign</span>
+            <select className="status-select" value={campaignId} onChange={(e) => setCampaignId(e.target.value)}>
+              <option value="">All Campaigns</option>
+              {summary?.campaigns.map((campaign) => (
+                <option key={campaign.id} value={campaign.id}>
+                  {campaign.name}{campaign.ownerEmail ? ` - ${campaign.ownerName || campaign.ownerEmail}` : ''}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="analytics-filter-field">
+            <span>List</span>
+            <select className="status-select" value={listId} onChange={(e) => setListId(e.target.value)}>
+              <option value="">All Lists</option>
+              {(events?.lists || summary?.lists || []).map((list) => (
+                <option key={list.id} value={list.id}>
+                  {list.name}{list.ownerEmail ? ` - ${list.ownerName || list.ownerEmail}` : ''}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="analytics-filter-field">
+            <span>From</span>
+            <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
+          </label>
+          <label className="analytics-filter-field">
+            <span>To</span>
+            <input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
+          </label>
+          <div className="analytics-filter-actions">
+            <button className="btn-primary" type="submit">Apply Filters</button>
+          </div>
         </form>
-      </div>
+      </section>
 
-      <div className="stats-grid">
+      <div className="stats-grid analytics-stats-grid">
         <div className="stat-card"><h3>Sent</h3><p className="stat-value">{metrics?.sent ?? 0}</p></div>
         <div className="stat-card"><h3>Delivered</h3><p className="stat-value">{metrics?.delivered ?? 0}</p></div>
         <div className="stat-card"><h3>Opened</h3><p className="stat-value">{metrics?.opened ?? 0}</p></div>
@@ -176,10 +200,15 @@ export default function AnalyticsPage() {
         <div className="stat-card"><h3>Suppressed Contacts</h3><p className="stat-value text-yellow">{metrics?.suppressedContacts ?? 0}</p></div>
       </div>
 
-      <div className="card" style={{ padding: '1rem', marginTop: '1rem' }}>
-        <h2>Rates</h2>
+      <section className="card analytics-panel" style={{ marginTop: '1rem' }}>
+        <div className="section-header section-header--compact">
+          <div>
+            <p className="admin-eyebrow">Rates</p>
+            <h2>Delivery and engagement ratios</h2>
+          </div>
+        </div>
         <div className="table-wrap">
-          <table className="data-table">
+          <table className="data-table analytics-table">
             <thead><tr><th>Metric</th><th>Value</th></tr></thead>
             <tbody>
               <tr><td>Open Rate</td><td>{(metrics?.openRate ?? 0).toFixed(2)}%</td></tr>
@@ -191,12 +220,17 @@ export default function AnalyticsPage() {
             </tbody>
           </table>
         </div>
-      </div>
+      </section>
 
-      <div className="card" style={{ padding: '1rem', marginTop: '1rem' }}>
-        <h2>Detection</h2>
+      <section className="card analytics-panel" style={{ marginTop: '1rem' }}>
+        <div className="section-header section-header--compact">
+          <div>
+            <p className="admin-eyebrow">Detection</p>
+            <h2>Health signals</h2>
+          </div>
+        </div>
         <div className="table-wrap">
-          <table className="data-table">
+          <table className="data-table analytics-table">
             <thead><tr><th>Signal</th><th>Status</th><th>Value</th><th>Detail</th></tr></thead>
             <tbody>
               {(metrics?.detections || []).map((detection) => (
@@ -211,12 +245,17 @@ export default function AnalyticsPage() {
             </tbody>
           </table>
         </div>
-      </div>
+      </section>
 
-      <div className="card" style={{ padding: '1rem', marginTop: '1rem' }}>
-        <h2>Audience Status</h2>
+      <section className="card analytics-panel" style={{ marginTop: '1rem' }}>
+        <div className="section-header section-header--compact">
+          <div>
+            <p className="admin-eyebrow">Audience Status</p>
+            <h2>Suppression mix</h2>
+          </div>
+        </div>
         <div className="table-wrap">
-          <table className="data-table">
+          <table className="data-table analytics-table">
             <thead><tr><th>Status</th><th>Contacts</th></tr></thead>
             <tbody>
               <tr><td>Subscribed</td><td>{metrics?.contactStats.subscribed ?? 0}</td></tr>
@@ -226,14 +265,19 @@ export default function AnalyticsPage() {
             </tbody>
           </table>
         </div>
-      </div>
+      </section>
 
-      <div className="card" style={{ padding: '1rem', marginTop: '1rem' }}>
-        <h2>Recipient Event Details</h2>
-        <p className="form-note" style={{ marginBottom: '0.75rem' }}>
-          This table shows a paginated slice of the tracked events behind the current filter window.
-        </p>
-        <div className="pagination-controls" style={{ marginBottom: '0.75rem' }}>
+      <section className="card analytics-panel" style={{ marginTop: '1rem' }}>
+        <div className="section-header section-header--compact">
+          <div>
+            <p className="admin-eyebrow">Recipient Event Details</p>
+            <h2>Paginated activity feed</h2>
+            <p className="form-note">
+              This table shows a paginated slice of the tracked events behind the current filter window.
+            </p>
+          </div>
+        </div>
+        <div className="pagination-controls analytics-pagination-controls" style={{ marginBottom: '0.75rem' }}>
           <span>
             Page {eventPagination?.page || 1} of {eventPagination?.totalPages || 1}
             {' '}
@@ -248,8 +292,8 @@ export default function AnalyticsPage() {
             </button>
           </div>
         </div>
-        <div className="table-wrap">
-          <table className="data-table">
+        <div className="table-wrap analytics-table-wrap">
+          <table className="data-table analytics-table analytics-events-table">
             <thead>
               <tr>
                 <th>Type</th>
@@ -278,7 +322,7 @@ export default function AnalyticsPage() {
             </tbody>
           </table>
         </div>
-      </div>
+      </section>
     </div>
   );
 }
