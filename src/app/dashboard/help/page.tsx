@@ -54,6 +54,10 @@ const tips = [
     title: 'If you need images',
     body: 'Use the visual editor upload button to add images. The size limit is controlled by your admin, and per-user overrides may apply.',
   },
+  {
+    title: 'If the sender name looks wrong',
+    body: 'Open Settings and check Personal Sender Identity. Leave the sender name blank to use your login name automatically, or override it if you want campaigns to show a different friendly from name.',
+  },
 ];
 
 const awsSnsSteps = [

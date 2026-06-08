@@ -574,6 +574,11 @@ export default function CampaignsPage() {
         <div className="stat-card"><h3>Bounced</h3><p className="stat-value text-red">{summary.bounced}</p></div>
         <div className="stat-card"><h3>Unsubscribed</h3><p className="stat-value text-yellow">{summary.unsubscribed}</p></div>
         <div className="stat-card"><h3>Avg Open Rate</h3><p className="stat-value">{formatPercent(summary.averageOpenRate)}</p></div>
+        <div className="stat-card">
+          <h3>Sender Identity</h3>
+          <p className="stat-value" style={{ fontSize: '1rem' }}>Settings</p>
+          <Link className="mini-btn" href="/dashboard/settings">Open Settings</Link>
+        </div>
       </div>
 
       <input
