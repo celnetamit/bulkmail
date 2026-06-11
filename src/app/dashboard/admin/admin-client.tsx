@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { buildComplianceItems } from '@/lib/compliance';
 import { APP_ROUTES, API_ROUTES } from '@/lib/routes';
@@ -49,6 +50,32 @@ type SummaryResponse = {
     openTotal: number;
     bounceTotal: number;
     unsubscribeTotal: number;
+  };
+  overlapAnalytics: {
+    repeatedEmails: number;
+    repeatedContactRecords: number;
+    sharedEmailsWithUnsubscribes: number;
+    mixedStatusSharedEmails: number;
+    fullySuppressedSharedEmails: number;
+    matchingTotal: number;
+    page: number;
+    pageSize: number;
+    totalPages: number;
+    sort: OverlapSort;
+    scope: {
+      from: string | null;
+      to: string | null;
+      teamId: string | null;
+      userId: string | null;
+    };
+    topSharedEmails: Array<{
+      email: string;
+      userCount: number;
+      recordCount: number;
+      subscribedCount: number;
+      unsubscribedCount: number;
+      bouncedCount: number;
+    }>;
   };
   users: UserRow[];
   recentAudits: Array<{
@@ -110,6 +137,14 @@ type SummaryResponse = {
       loadAverage15m: number;
     };
   };
+  overlapScopeOptions: {
+    teams: Array<{
+      id: string;
+      name: string;
+      managerName: string | null;
+      memberCount: number;
+    }>;
+  };
 };
 
 type Settings = {
@@ -123,6 +158,9 @@ type Settings = {
   dmarcVerified: boolean;
   source: 'database' | 'env';
 };
+
+type OverlapFilter = 'all' | 'mixed' | 'unsubscribed';
+type OverlapSort = 'users' | 'records' | 'subscribed' | 'unsubscribed' | 'bounced' | 'email';
 
 function percent(part: number, total: number) {
   if (total <= 0) return 0;
@@ -157,8 +195,86 @@ function normalizeDismissedAlerts(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === 'string') : [];
 }
 
+function overlapSortLabel(value: OverlapSort) {
+  if (value === 'records') return 'Records';
+  if (value === 'subscribed') return 'Subscribed';
+  if (value === 'unsubscribed') return 'Unsubscribed';
+  if (value === 'bounced') return 'Bounced';
+  if (value === 'email') return 'Email';
+  return 'Users';
+}
+
+function buildOverlapPageWindow(currentPage: number, totalPages: number) {
+  const pageSet = new Set<number>([1, totalPages, currentPage - 1, currentPage, currentPage + 1]);
+  return Array.from(pageSet)
+    .filter((page) => page >= 1 && page <= totalPages)
+    .sort((a, b) => a - b);
+}
+
+function normalizeOverlapFilterValue(value: string | null): OverlapFilter {
+  if (value === 'mixed' || value === 'unsubscribed') return value;
+  return 'all';
+}
+
+function normalizeOverlapSortValue(value: string | null): OverlapSort {
+  if (
+    value === 'records' ||
+    value === 'subscribed' ||
+    value === 'unsubscribed' ||
+    value === 'bounced' ||
+    value === 'email'
+  ) {
+    return value;
+  }
+  return 'users';
+}
+
+function normalizePositivePage(value: string | null) {
+  const parsed = Number.parseInt(value || '', 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+}
+
+function normalizeDateValue(value: string | null) {
+  return value?.trim() || '';
+}
+
+function formatDateLabel(value: string) {
+  if (!value) return '';
+  const date = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function getDatePresetRange(preset: '7d' | '30d' | 'month') {
+  const now = new Date();
+  const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  const to = today.toISOString().slice(0, 10);
+
+  if (preset === 'month') {
+    const start = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1));
+    return { from: start.toISOString().slice(0, 10), to };
+  }
+
+  const days = preset === '7d' ? 6 : 29;
+  const start = new Date(today);
+  start.setUTCDate(start.getUTCDate() - days);
+  return { from: start.toISOString().slice(0, 10), to };
+}
+
 export default function AdminDashboardClient() {
   const toast = useToast();
+  const router = useRouter();
+  const pathname = usePathname();
+  const safePathname = pathname || APP_ROUTES.ADMIN_DASHBOARD;
+  const searchParams = useSearchParams();
+  const searchParamsString = searchParams?.toString() ?? '';
+  const initialOverlapFilter = normalizeOverlapFilterValue(searchParams?.get('overlapFilter') ?? null);
+  const initialOverlapSort = normalizeOverlapSortValue(searchParams?.get('overlapSort') ?? null);
+  const initialOverlapPage = normalizePositivePage(searchParams?.get('overlapPage') ?? null);
+  const initialOverlapFrom = normalizeDateValue(searchParams?.get('overlapFrom') ?? null);
+  const initialOverlapTo = normalizeDateValue(searchParams?.get('overlapTo') ?? null);
+  const initialOverlapTeamId = searchParams?.get('overlapTeamId') ?? '';
+  const initialOverlapUserId = searchParams?.get('overlapUserId') ?? '';
   const [summary, setSummary] = useState<SummaryResponse | null>(null);
   const [settings, setSettings] = useState<Settings | null>(null);
   const [name, setName] = useState('');
@@ -173,27 +289,85 @@ export default function AdminDashboardClient() {
   const [userQuery, setUserQuery] = useState('');
   const [userRoleFilter, setUserRoleFilter] = useState<'all' | 'ADMIN' | 'MANAGER' | 'USER'>('all');
   const [userStatusFilter, setUserStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
+  const [overlapFilter, setOverlapFilter] = useState<OverlapFilter>(initialOverlapFilter);
+  const [overlapPage, setOverlapPage] = useState(initialOverlapPage);
+  const [overlapSort, setOverlapSort] = useState<OverlapSort>(initialOverlapSort);
+  const [overlapJumpPage, setOverlapJumpPage] = useState(String(initialOverlapPage));
+  const [overlapFrom, setOverlapFrom] = useState(initialOverlapFrom);
+  const [overlapTo, setOverlapTo] = useState(initialOverlapTo);
+  const [overlapTeamId, setOverlapTeamId] = useState(initialOverlapTeamId);
+  const [overlapUserId, setOverlapUserId] = useState(initialOverlapUserId);
 
-  async function load() {
-    const [overviewResponse, settingsResponse] = await Promise.all([
-      fetch('/api/admin/overview', { cache: 'no-store' }),
-      fetch('/api/settings', { cache: 'no-store' }),
-    ]);
-
+  async function loadSummary(
+    activeFilter: OverlapFilter = overlapFilter,
+    activePage: number = overlapPage,
+    activeSort: OverlapSort = overlapSort,
+    activeScope: {
+      from: string;
+      to: string;
+      teamId: string;
+      userId: string;
+    } = {
+      from: overlapFrom,
+      to: overlapTo,
+      teamId: overlapTeamId,
+      userId: overlapUserId,
+    },
+  ) {
+    const params = new URLSearchParams();
+    if (activeFilter !== 'all') params.set('overlapFilter', activeFilter);
+    params.set('overlapPage', String(activePage));
+    if (activeSort !== 'users') params.set('overlapSort', activeSort);
+    if (activeScope.from) params.set('overlapFrom', activeScope.from);
+    if (activeScope.to) params.set('overlapTo', activeScope.to);
+    if (activeScope.teamId) params.set('overlapTeamId', activeScope.teamId);
+    if (activeScope.userId) params.set('overlapUserId', activeScope.userId);
+    const url = params.size > 0 ? `/api/admin/overview?${params.toString()}` : '/api/admin/overview';
+    const overviewResponse = await fetch(url, { cache: 'no-store' });
     const data = (await overviewResponse.json()) as SummaryResponse & { error?: string };
     if (!overviewResponse.ok) {
       toast.error('Admin overview failed', data.error || 'The admin dashboard data could not be loaded.');
       return;
     }
     setSummary(data);
+    if (data.overlapAnalytics?.page && data.overlapAnalytics.page !== activePage) {
+      setOverlapPage(data.overlapAnalytics.page);
+    }
+    if (data.overlapAnalytics?.page) {
+      setOverlapJumpPage(String(data.overlapAnalytics.page));
+    }
+    return data;
+  }
 
+  async function loadSettings() {
+    const settingsResponse = await fetch('/api/settings', { cache: 'no-store' });
     if (settingsResponse.ok) {
       const settingsData = (await settingsResponse.json()) as { settings?: Settings };
       setSettings(settingsData.settings || null);
     } else {
       setSettings(null);
     }
+  }
 
+  async function load(
+    activeFilter: OverlapFilter = overlapFilter,
+    activePage: number = overlapPage,
+    activeSort: OverlapSort = overlapSort,
+    activeScope: {
+      from: string;
+      to: string;
+      teamId: string;
+      userId: string;
+    } = {
+      from: overlapFrom,
+      to: overlapTo,
+      teamId: overlapTeamId,
+      userId: overlapUserId,
+    },
+  ) {
+    const data = await loadSummary(activeFilter, activePage, activeSort, activeScope);
+    await loadSettings();
+    if (!data) return;
     const nextDrafts: Record<string, Partial<UserRow>> = {};
     for (const user of data.users || []) {
       nextDrafts[user.id] = {
@@ -208,8 +382,44 @@ export default function AdminDashboardClient() {
   }
 
   useEffect(() => {
-    load();
+    loadSettings();
   }, []);
+
+  useEffect(() => {
+    const params = new URLSearchParams(searchParamsString);
+    if (overlapFilter === 'all') params.delete('overlapFilter');
+    else params.set('overlapFilter', overlapFilter);
+    if (overlapSort === 'users') params.delete('overlapSort');
+    else params.set('overlapSort', overlapSort);
+    if (overlapPage <= 1) params.delete('overlapPage');
+    else params.set('overlapPage', String(overlapPage));
+    if (overlapFrom) params.set('overlapFrom', overlapFrom);
+    else params.delete('overlapFrom');
+    if (overlapTo) params.set('overlapTo', overlapTo);
+    else params.delete('overlapTo');
+    if (overlapTeamId) params.set('overlapTeamId', overlapTeamId);
+    else params.delete('overlapTeamId');
+    if (overlapUserId) params.set('overlapUserId', overlapUserId);
+    else params.delete('overlapUserId');
+    const query = params.toString();
+    if (query !== searchParamsString) {
+      router.replace(query ? `${safePathname}?${query}` : safePathname, { scroll: false });
+    }
+  }, [overlapFilter, overlapFrom, overlapPage, overlapSort, overlapTeamId, overlapTo, overlapUserId, router, safePathname, searchParamsString]);
+
+  useEffect(() => {
+    void loadSummary(overlapFilter, overlapPage, overlapSort, {
+      from: overlapFrom,
+      to: overlapTo,
+      teamId: overlapTeamId,
+      userId: overlapUserId,
+    });
+  }, [overlapFilter, overlapFrom, overlapPage, overlapSort, overlapTeamId, overlapTo, overlapUserId]);
+
+  useEffect(() => {
+    setOverlapPage(1);
+    setOverlapJumpPage('1');
+  }, [overlapFilter, overlapSort, overlapFrom, overlapTo, overlapTeamId, overlapUserId]);
 
   useEffect(() => {
     if (!summary?.viewer?.userId) return;
@@ -347,6 +557,50 @@ export default function AdminDashboardClient() {
       return alert.level === alertFilter;
     });
   }, [summary, dismissedAlertKeys, alertFilter]);
+  const visibleOverlapRows = useMemo(() => summary?.overlapAnalytics.topSharedEmails || [], [summary]);
+  const overlapPageMeta = summary?.overlapAnalytics;
+  const overlapPageWindow = useMemo(
+    () => buildOverlapPageWindow(overlapPageMeta?.page ?? 1, overlapPageMeta?.totalPages ?? 1),
+    [overlapPageMeta?.page, overlapPageMeta?.totalPages],
+  );
+  const selectedOverlapTeam = useMemo(
+    () => (summary?.overlapScopeOptions.teams || []).find((team) => team.id === overlapTeamId) || null,
+    [summary?.overlapScopeOptions.teams, overlapTeamId],
+  );
+  const overlapUserOptions = useMemo(
+    () =>
+      (summary?.users || [])
+        .slice()
+        .sort((a, b) => a.email.localeCompare(b.email))
+        .map((user) => ({
+          id: user.id,
+          label: `${user.email}${user.name ? ` · ${user.name}` : ''}`,
+        })),
+    [summary?.users],
+  );
+  const selectedOverlapUser = useMemo(
+    () => overlapUserOptions.find((user) => user.id === overlapUserId) || null,
+    [overlapUserId, overlapUserOptions],
+  );
+  const activeOverlapScopeBadges = useMemo(() => {
+    const badges: string[] = [];
+    if (overlapFrom && overlapTo) badges.push(`Date: ${formatDateLabel(overlapFrom)} to ${formatDateLabel(overlapTo)}`);
+    else if (overlapFrom) badges.push(`From: ${formatDateLabel(overlapFrom)}`);
+    else if (overlapTo) badges.push(`Until: ${formatDateLabel(overlapTo)}`);
+    if (selectedOverlapTeam) badges.push(`Team: ${selectedOverlapTeam.name}`);
+    if (selectedOverlapUser) badges.push(`User: ${selectedOverlapUser.label}`);
+    return badges;
+  }, [overlapFrom, overlapTo, selectedOverlapTeam, selectedOverlapUser]);
+  const overlapExportHref = useMemo(() => {
+    const params = new URLSearchParams();
+    if (overlapFilter !== 'all') params.set('overlapFilter', overlapFilter);
+    if (overlapSort !== 'users') params.set('overlapSort', overlapSort);
+    if (overlapFrom) params.set('overlapFrom', overlapFrom);
+    if (overlapTo) params.set('overlapTo', overlapTo);
+    if (overlapTeamId) params.set('overlapTeamId', overlapTeamId);
+    if (overlapUserId) params.set('overlapUserId', overlapUserId);
+    return `/api/admin/overlap-export${params.toString() ? `?${params.toString()}` : ''}`;
+  }, [overlapFilter, overlapFrom, overlapSort, overlapTeamId, overlapTo, overlapUserId]);
   const compliance = useMemo<
     Array<{
       key: string;
@@ -389,7 +643,7 @@ export default function AdminDashboardClient() {
           <div className="admin-hero__actions">
             <Link className="btn-secondary" href={`${APP_ROUTES.ADMIN_DASHBOARD}/agents`}>AI Settings</Link>
             <Link className="btn-secondary" href={`${APP_ROUTES.DASHBOARD}/help`}>Help</Link>
-            <button className="btn-primary" type="button" onClick={load}>
+            <button className="btn-primary" type="button" onClick={() => void load()}>
               Refresh
             </button>
           </div>
@@ -409,6 +663,253 @@ export default function AdminDashboardClient() {
         <div className="stat-card"><h3>Opened</h3><p className="stat-value">{summary?.totals.openTotal ?? 0}</p></div>
         <div className="stat-card"><h3>Bounced</h3><p className="stat-value text-red">{summary?.totals.bounceTotal ?? 0}</p></div>
       </div>
+
+      <section className="card dashboard-panel admin-section" style={{ marginBottom: '1rem' }}>
+        <div className="admin-section__header">
+          <div>
+            <p className="admin-eyebrow">Overlap Analytics</p>
+            <h2>Shared Contact Emails</h2>
+            <p className="form-note">See where the same email address exists under multiple users, then narrow the analysis by collection date, team, or a specific involved user.</p>
+          </div>
+        </div>
+        <div className="admin-directory-toolbar" style={{ marginBottom: '0.85rem' }}>
+          <input type="date" value={overlapFrom} onChange={(event) => setOverlapFrom(event.target.value)} aria-label="Overlap from date" />
+          <input type="date" value={overlapTo} onChange={(event) => setOverlapTo(event.target.value)} aria-label="Overlap to date" />
+          <select className="status-select" value={overlapTeamId} onChange={(event) => setOverlapTeamId(event.target.value)}>
+            <option value="">All teams</option>
+            {(summary?.overlapScopeOptions.teams || []).map((team) => (
+              <option key={team.id} value={team.id}>
+                {team.name} ({team.memberCount})
+              </option>
+            ))}
+          </select>
+          <select className="status-select" value={overlapUserId} onChange={(event) => setOverlapUserId(event.target.value)}>
+            <option value="">Any involved user</option>
+            {overlapUserOptions.map((user) => (
+              <option key={user.id} value={user.id}>
+                {user.label}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            className="mini-btn"
+            onClick={() => {
+              const next = getDatePresetRange('7d');
+              setOverlapFrom(next.from);
+              setOverlapTo(next.to);
+            }}
+          >
+            Last 7 days
+          </button>
+          <button
+            type="button"
+            className="mini-btn"
+            onClick={() => {
+              const next = getDatePresetRange('30d');
+              setOverlapFrom(next.from);
+              setOverlapTo(next.to);
+            }}
+          >
+            Last 30 days
+          </button>
+          <button
+            type="button"
+            className="mini-btn"
+            onClick={() => {
+              const next = getDatePresetRange('month');
+              setOverlapFrom(next.from);
+              setOverlapTo(next.to);
+            }}
+          >
+            This month
+          </button>
+          <button
+            type="button"
+            className="mini-btn"
+            onClick={() => {
+              setOverlapFrom('');
+              setOverlapTo('');
+              setOverlapTeamId('');
+              setOverlapUserId('');
+            }}
+            disabled={!overlapFrom && !overlapTo && !overlapTeamId && !overlapUserId}
+          >
+            Clear scope
+          </button>
+        </div>
+        {activeOverlapScopeBadges.length > 0 ? (
+          <div className="overlap-scope-badges" style={{ marginBottom: '0.85rem' }}>
+            {activeOverlapScopeBadges.map((badge) => (
+              <span key={badge} className="badge badge-info overlap-scope-badge">
+                {badge}
+              </span>
+            ))}
+          </div>
+        ) : null}
+        <div className="stats-grid dashboard-stats" style={{ marginBottom: '1rem' }}>
+          <div className="stat-card"><h3>Repeated Emails</h3><p className="stat-value">{summary?.overlapAnalytics.repeatedEmails ?? 0}</p></div>
+          <div className="stat-card"><h3>Shared Records</h3><p className="stat-value">{summary?.overlapAnalytics.repeatedContactRecords ?? 0}</p></div>
+          <div className="stat-card"><h3>With Unsubscribes</h3><p className="stat-value text-yellow">{summary?.overlapAnalytics.sharedEmailsWithUnsubscribes ?? 0}</p></div>
+          <div className="stat-card"><h3>Mixed Status</h3><p className="stat-value text-yellow">{summary?.overlapAnalytics.mixedStatusSharedEmails ?? 0}</p></div>
+          <div className="stat-card"><h3>Fully Suppressed</h3><p className="stat-value text-red">{summary?.overlapAnalytics.fullySuppressedSharedEmails ?? 0}</p></div>
+        </div>
+        <div className="alert-toolbar">
+          <div className="alert-filter-chips" role="tablist" aria-label="Shared email filters">
+            {([
+              ['all', 'All shared'],
+              ['mixed', 'Only mixed-status'],
+              ['unsubscribed', 'Only unsubscribed'],
+            ] as const).map(([value, label]) => {
+              const active = overlapFilter === value;
+              return (
+                <button
+                  key={value}
+                  type="button"
+                  className={`mini-btn ${active ? 'mini-btn--active' : ''}`}
+                  onClick={() => setOverlapFilter(value)}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+          <div className="alert-filter-chips">
+            <p className="form-note" style={{ marginBottom: 0 }}>
+              Matching total: {summary?.overlapAnalytics.matchingTotal ?? 0} · showing {visibleOverlapRows.length}
+              {overlapFilter === 'all' ? ' shared' : overlapFilter === 'mixed' ? ' mixed-status shared' : ' unsubscribed shared'} emails.
+            </p>
+            <a className="mini-btn" href={overlapExportHref}>
+              Export CSV
+            </a>
+          </div>
+        </div>
+        <div className="alert-toolbar" style={{ marginTop: '0.5rem', marginBottom: '0.75rem' }}>
+          <p className="form-note" style={{ marginBottom: 0 }}>
+            Page {overlapPageMeta?.page ?? 1} of {overlapPageMeta?.totalPages ?? 1}
+            {overlapPageMeta?.matchingTotal
+              ? ` · rows ${((overlapPageMeta.page - 1) * overlapPageMeta.pageSize) + 1}-${Math.min(
+                  overlapPageMeta.page * overlapPageMeta.pageSize,
+                  overlapPageMeta.matchingTotal,
+                )}`
+              : ' · no matching rows'}
+            {` · sorted by ${overlapSortLabel(overlapSort)}`}
+          </p>
+          <div className="alert-filter-chips" aria-label="Shared email pagination">
+            <button
+              type="button"
+              className="mini-btn"
+              onClick={() => setOverlapPage((current) => Math.max(1, current - 1))}
+              disabled={(overlapPageMeta?.page ?? 1) <= 1}
+            >
+              Previous
+            </button>
+            {overlapPageWindow.map((page) => (
+              <button
+                key={page}
+                type="button"
+                className={`mini-btn ${(overlapPageMeta?.page ?? 1) === page ? 'mini-btn--active' : ''}`}
+                onClick={() => setOverlapPage(page)}
+              >
+                {page}
+              </button>
+            ))}
+            <button
+              type="button"
+              className="mini-btn"
+              onClick={() =>
+                setOverlapPage((current) => {
+                  const totalPages = overlapPageMeta?.totalPages ?? 1;
+                  return Math.min(totalPages, current + 1);
+                })
+              }
+              disabled={(overlapPageMeta?.page ?? 1) >= (overlapPageMeta?.totalPages ?? 1)}
+            >
+              Next
+            </button>
+            <form
+              className="overlap-jump-form"
+              onSubmit={(event) => {
+                event.preventDefault();
+                const parsed = Number.parseInt(overlapJumpPage, 10);
+                const totalPages = overlapPageMeta?.totalPages ?? 1;
+                if (!Number.isFinite(parsed)) return;
+                setOverlapPage(Math.min(totalPages, Math.max(1, parsed)));
+              }}
+            >
+              <label className="overlap-jump-label" htmlFor="overlap-page-jump">
+                Jump
+              </label>
+              <input
+                id="overlap-page-jump"
+                className="overlap-jump-input"
+                type="number"
+                min={1}
+                max={overlapPageMeta?.totalPages ?? 1}
+                value={overlapJumpPage}
+                onChange={(event) => setOverlapJumpPage(event.target.value)}
+              />
+              <button type="submit" className="mini-btn">
+                Go
+              </button>
+            </form>
+          </div>
+        </div>
+        <div className="table-wrap">
+          <table className="data-table">
+            <thead>
+              <tr>
+                {([
+                  ['email', 'Email'],
+                  ['users', 'Users'],
+                  ['records', 'Records'],
+                  ['subscribed', 'Subscribed'],
+                  ['unsubscribed', 'Unsubscribed'],
+                  ['bounced', 'Bounced'],
+                ] as const).map(([value, label]) => (
+                  <th key={value}>
+                    <button
+                      type="button"
+                      className={`table-sort-btn ${overlapSort === value ? 'table-sort-btn--active' : ''}`}
+                      onClick={() => setOverlapSort(value)}
+                    >
+                      {label}
+                      <span className="table-sort-indicator">{overlapSort === value ? '↓' : ''}</span>
+                    </button>
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {visibleOverlapRows.length === 0 ? (
+                <tr>
+                  <td colSpan={6}>No shared emails match this filter.</td>
+                </tr>
+              ) : (
+                visibleOverlapRows.map((row) => (
+                  <tr key={row.email}>
+                    <td>
+                      <strong>{row.email}</strong>
+                      <div className="cell-subtitle">
+                        {row.unsubscribedCount > 0 && row.subscribedCount > 0
+                          ? 'Mixed subscribe state across users'
+                          : row.unsubscribedCount > 0 || row.bouncedCount > 0
+                            ? 'Suppressed under at least one user'
+                            : 'Shared but still subscribed'}
+                      </div>
+                    </td>
+                    <td>{row.userCount}</td>
+                    <td>{row.recordCount}</td>
+                    <td>{row.subscribedCount}</td>
+                    <td className="text-yellow">{row.unsubscribedCount}</td>
+                    <td className="text-red">{row.bouncedCount}</td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
 
       <div className="admin-panels" style={{ marginBottom: '1rem' }}>
         <div className="card dashboard-panel admin-panel-card">

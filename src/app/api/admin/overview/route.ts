@@ -1,4 +1,11 @@
 import { requireAdminFromCookies } from '@/lib/auth';
+import {
+  getOverlapAnalytics,
+  normalizeOverlapFilter,
+  normalizeOverlapSort,
+  normalizePositiveInt,
+  OVERLAP_PAGE_SIZE,
+} from '@/lib/admin-overlap';
 import { listRecentAuditEvents } from '@/lib/audit';
 import { ok } from '@/lib/http';
 import { buildSystemHealthAlerts, getSystemHealthSnapshot, listRecentSystemEvents } from '@/lib/observability';
@@ -9,10 +16,18 @@ import { queryRows, queryRow } from '@/lib/sqlite';
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
-export async function GET() {
+export async function GET(request: Request) {
   const auth = await requireAdminFromCookies();
   if ('error' in auth) return auth.error;
 
+  const { searchParams } = new URL(request.url);
+  const activeOverlapFilter = normalizeOverlapFilter(searchParams.get('overlapFilter'));
+  const overlapPage = normalizePositiveInt(searchParams.get('overlapPage'), 1);
+  const overlapSort = normalizeOverlapSort(searchParams.get('overlapSort'));
+  const overlapFrom = searchParams.get('overlapFrom')?.trim() || null;
+  const overlapTo = searchParams.get('overlapTo')?.trim() || null;
+  const overlapTeamId = searchParams.get('overlapTeamId')?.trim() || null;
+  const overlapUserId = searchParams.get('overlapUserId')?.trim() || null;
   const from = startOfUtcDay();
 
   let live = null;
@@ -53,6 +68,40 @@ export async function GET() {
   let openTotal = 0;
   let bounceTotal = 0;
   let unsubscribeTotal = 0;
+  let overlapAnalytics = {
+    repeatedEmails: 0,
+    repeatedContactRecords: 0,
+    sharedEmailsWithUnsubscribes: 0,
+    mixedStatusSharedEmails: 0,
+    fullySuppressedSharedEmails: 0,
+    matchingTotal: 0,
+    page: 1,
+    pageSize: OVERLAP_PAGE_SIZE,
+    totalPages: 1,
+    sort: overlapSort,
+    scope: {
+      from: overlapFrom,
+      to: overlapTo,
+      teamId: overlapTeamId,
+      userId: overlapUserId,
+    },
+    topSharedEmails: [] as Array<{
+      email: string;
+      userCount: number;
+      recordCount: number;
+      subscribedCount: number;
+      unsubscribedCount: number;
+      bouncedCount: number;
+    }>,
+  };
+  let overlapScopeOptions = {
+    teams: [] as Array<{
+      id: string;
+      name: string;
+      managerName: string | null;
+      memberCount: number;
+    }>,
+  };
 
   try {
     users = queryRows<{
@@ -98,6 +147,41 @@ export async function GET() {
         WHERE status IN ('UNSUBSCRIBED', 'BOUNCED')
       `,
     )?.count || 0;
+    overlapAnalytics = getOverlapAnalytics({
+      filter: activeOverlapFilter,
+      page: overlapPage,
+      sort: overlapSort,
+      scope: {
+        from: overlapFrom,
+        to: overlapTo,
+        teamId: overlapTeamId,
+        userId: overlapUserId,
+      },
+    });
+    overlapScopeOptions = {
+      teams: queryRows<{
+        id: string;
+        name: string;
+        managerName: string | null;
+        memberCount: number;
+      }>(
+        `
+          SELECT
+            t.id,
+            t.name,
+            m.name as "managerName",
+            COALESCE(COUNT(tm.id), 0) as "memberCount"
+          FROM "Team" t
+          INNER JOIN "User" m ON m.id = t."managerId"
+          LEFT JOIN "TeamMember" tm ON tm."teamId" = t.id
+          GROUP BY t.id, t.name, m.name
+          ORDER BY t.name ASC
+        `,
+      ).map((team) => ({
+        ...team,
+        memberCount: Number(team.memberCount || 0),
+      })),
+    };
     const contactRows = queryRows<{ userId: string; count: number }>(
       `
         SELECT l."userId" as "userId", COUNT(*) as count
@@ -259,6 +343,8 @@ export async function GET() {
     },
     systemHealth,
     systemAlerts: buildSystemHealthAlerts(systemHealth),
+    overlapAnalytics,
+    overlapScopeOptions,
     users: usersWithStats,
     recentAudits,
     recentSystemEvents,

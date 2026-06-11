@@ -738,6 +738,18 @@ p {
   padding: 0.75rem;
 }
 
+.overlap-scope-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.overlap-scope-badge {
+  background: #e0f2fe;
+  color: #075985;
+  border-color: #bae6fd;
+}
+
 .admin-form-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -3698,6 +3710,52 @@ p {
   border-color: #93c5fd;
   background: #dbeafe;
   color: #1d4ed8;
+}
+
+.table-sort-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.table-sort-btn--active {
+  color: #1d4ed8;
+}
+
+.table-sort-indicator {
+  min-width: 0.55rem;
+  color: #94a3b8;
+}
+
+.table-sort-btn--active .table-sort-indicator {
+  color: currentColor;
+}
+
+.overlap-jump-form {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.overlap-jump-label {
+  font-size: 0.82rem;
+  color: #475569;
+}
+
+.overlap-jump-input {
+  width: 4.25rem;
+  padding: 0.35rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid var(--border-color);
+  background: #fff;
+  color: #0f172a;
 }
 
 .alert-card__head-row {
