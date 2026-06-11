@@ -4,6 +4,7 @@ import { fail, ok } from '@/lib/http';
 import { sendTestEmail } from '@/lib/providers/email';
 import { queryRow, queryRows } from '@/lib/sqlite';
 import { getDefaultTestList } from '@/lib/campaign-lists';
+import { isCampaignLockedForEditing } from '@/lib/campaign-send-queue';
 
 type Params = { params: { id: string } };
 
@@ -16,15 +17,17 @@ export async function POST(_: Request, { params }: Params) {
     name: string;
     subject: string;
     bodyHtml: string;
+    status: string;
     isArchived: number | boolean;
     userId: string;
   }>(
-    'SELECT id, name, subject, "bodyHtml", CASE WHEN COALESCE("isArchived", FALSE) THEN 1 ELSE 0 END as "isArchived", "userId" FROM "Campaign" WHERE id = ? AND "userId" = ? LIMIT 1',
+    'SELECT id, name, subject, status, "bodyHtml", CASE WHEN COALESCE("isArchived", FALSE) THEN 1 ELSE 0 END as "isArchived", "userId" FROM "Campaign" WHERE id = ? AND "userId" = ? LIMIT 1',
     [params.id, auth.user.userId],
   );
 
   if (!campaign) return fail('Campaign not found.', 404);
   if (campaign.isArchived) return fail('Archived campaigns cannot be tested.', 409);
+  if (isCampaignLockedForEditing(campaign.status)) return fail('Sent campaigns cannot be tested.', 409);
 
   const testList = getDefaultTestList(auth.user.userId);
   if (!testList) {

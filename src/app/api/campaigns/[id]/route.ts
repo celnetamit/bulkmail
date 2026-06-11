@@ -158,7 +158,7 @@ export async function PATCH(request: Request, { params }: Params) {
     return fail('Archived campaigns cannot be edited.', 409);
   }
   if (isCampaignLockedForEditing(existing.status)) {
-    return fail('Queued or sending campaigns cannot be edited.', 409);
+    return fail('Sent, queued, retrying, paused, or sending campaigns cannot be edited.', 409);
   }
   const previousListId = existing.listId;
 
@@ -337,7 +337,7 @@ export async function DELETE(_: Request, { params }: Params) {
   );
   if (!existing) return fail('Campaign not found.', 404);
   if (isCampaignLockedForEditing(existing.status)) {
-    return fail('Queued or sending campaigns cannot be deleted.', 409);
+    return fail('Sent, queued, retrying, paused, or sending campaigns cannot be deleted.', 409);
   }
 
   executeSql('DELETE FROM "Campaign" WHERE id = ? AND "userId" = ?', [params.id, auth.user.userId]);

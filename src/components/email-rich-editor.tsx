@@ -7,6 +7,7 @@ type Props = {
   onChange: (value: string) => void;
   placeholder?: string;
   label?: string;
+  disabled?: boolean;
 };
 
 type InsertedMedia = {
@@ -263,6 +264,7 @@ export function EmailRichEditor({
   onChange,
   placeholder = 'Write your email content...',
   label = 'Email body',
+  disabled = false,
 }: Props) {
   const [mode, setMode] = useState<Mode>('visual');
   const visualRef = useRef<HTMLDivElement | null>(null);
@@ -294,6 +296,7 @@ export function EmailRichEditor({
   }, [mode, placeholder, value]);
 
   function syncVisualContent() {
+    if (disabled) return;
     const bodyHtml = visualRef.current?.innerHTML || '';
     const nextValue = composeDocument(shellRef.current.headHtml, bodyHtml);
     lastAppliedValueRef.current = nextValue;
@@ -301,6 +304,7 @@ export function EmailRichEditor({
   }
 
   function saveSelection() {
+    if (disabled) return;
     const selection = window.getSelection();
     if (!selection || selection.rangeCount === 0) return;
     const range = selection.getRangeAt(0);
@@ -336,6 +340,7 @@ export function EmailRichEditor({
   }
 
   function handleVisualCommand(command: ToolbarCommand, value?: string) {
+    if (disabled) return;
     const el = visualRef.current;
     if (!el) return;
     el.focus();
@@ -387,6 +392,7 @@ export function EmailRichEditor({
   }
 
   async function uploadImage(file: File) {
+    if (disabled) return;
     if (file.size > 50 * 1024) {
       setUploadMessage('Images must be 50 KB or smaller.');
       return;
@@ -440,12 +446,14 @@ export function EmailRichEditor({
   }
 
   function openMediaLibrary() {
+    if (disabled) return;
     saveSelection();
     window.open('/dashboard/media-library?pick=1', '_blank', 'width=1024,height=840');
   }
 
   useEffect(() => {
     function handleMessage(event: MessageEvent) {
+      if (disabled) return;
       if (event.origin !== window.location.origin) return;
       if (!event.data || typeof event.data !== 'object') return;
       if ((event.data as { type?: string }).type !== 'mailflow.insert-media') return;
@@ -470,7 +478,7 @@ export function EmailRichEditor({
 
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
-  }, []);
+  }, [disabled]);
 
   return (
     <div className="email-editor email-editor--html">
@@ -492,6 +500,7 @@ export function EmailRichEditor({
       <p className="form-note">
         Use <code>{UNSUBSCRIBE_URL_PLACEHOLDER}</code> in a link, or insert the Footer block, to place the live unsubscribe link.
       </p>
+      {disabled ? <p className="form-note">This campaign is read-only, so the editor is disabled.</p> : null}
 
       {mode === 'visual' ? (
         <div className="email-editor__panel">
@@ -500,35 +509,36 @@ export function EmailRichEditor({
             <span>Click and type in the email canvas. Image uploads follow the configured limit.</span>
           </div>
           <div className="email-editor__toolbar">
-            <button type="button" className="mini-btn" onClick={() => handleVisualCommand('undo')}>Undo</button>
-            <button type="button" className="mini-btn" onClick={() => handleVisualCommand('redo')}>Redo</button>
-            <button type="button" className="mini-btn" onClick={() => handleVisualCommand('bold')}>Bold</button>
-            <button type="button" className="mini-btn" onClick={() => handleVisualCommand('italic')}>Italic</button>
-            <button type="button" className="mini-btn" onClick={() => handleVisualCommand('underline')}>Underline</button>
-            <button type="button" className="mini-btn" onClick={() => handleVisualCommand('formatBlock', 'p')}>P</button>
-            <button type="button" className="mini-btn" onClick={() => handleVisualCommand('formatBlock', 'h1')}>H1</button>
-            <button type="button" className="mini-btn" onClick={() => handleVisualCommand('formatBlock', 'h2')}>H2</button>
-            <button type="button" className="mini-btn" onClick={() => handleVisualCommand('insertUnorderedList')}>Bullets</button>
-            <button type="button" className="mini-btn" onClick={() => handleVisualCommand('insertOrderedList')}>Numbered</button>
-            <button type="button" className="mini-btn" onClick={() => handleVisualCommand('justifyLeft')}>Left</button>
-            <button type="button" className="mini-btn" onClick={() => handleVisualCommand('justifyCenter')}>Center</button>
-            <button type="button" className="mini-btn" onClick={() => handleVisualCommand('justifyRight')}>Right</button>
-            <button type="button" className="mini-btn" onClick={() => handleVisualCommand('justifyFull')}>Justify</button>
-            <button type="button" className="mini-btn" onClick={() => handleVisualCommand('createLink')}>Link</button>
-            <button type="button" className="mini-btn" onClick={() => handleVisualCommand('unlink')}>Unlink</button>
-            <button type="button" className="mini-btn" onClick={() => handleVisualCommand('insertHorizontalRule')}>Rule</button>
-            <button type="button" className="mini-btn" onClick={() => handleVisualCommand('insertImage')}>Image</button>
-            <button type="button" className="mini-btn" onClick={() => uploadInputRef.current?.click()} disabled={uploading}>
+            <button type="button" className="mini-btn" onClick={() => handleVisualCommand('undo')} disabled={disabled}>Undo</button>
+            <button type="button" className="mini-btn" onClick={() => handleVisualCommand('redo')} disabled={disabled}>Redo</button>
+            <button type="button" className="mini-btn" onClick={() => handleVisualCommand('bold')} disabled={disabled}>Bold</button>
+            <button type="button" className="mini-btn" onClick={() => handleVisualCommand('italic')} disabled={disabled}>Italic</button>
+            <button type="button" className="mini-btn" onClick={() => handleVisualCommand('underline')} disabled={disabled}>Underline</button>
+            <button type="button" className="mini-btn" onClick={() => handleVisualCommand('formatBlock', 'p')} disabled={disabled}>P</button>
+            <button type="button" className="mini-btn" onClick={() => handleVisualCommand('formatBlock', 'h1')} disabled={disabled}>H1</button>
+            <button type="button" className="mini-btn" onClick={() => handleVisualCommand('formatBlock', 'h2')} disabled={disabled}>H2</button>
+            <button type="button" className="mini-btn" onClick={() => handleVisualCommand('insertUnorderedList')} disabled={disabled}>Bullets</button>
+            <button type="button" className="mini-btn" onClick={() => handleVisualCommand('insertOrderedList')} disabled={disabled}>Numbered</button>
+            <button type="button" className="mini-btn" onClick={() => handleVisualCommand('justifyLeft')} disabled={disabled}>Left</button>
+            <button type="button" className="mini-btn" onClick={() => handleVisualCommand('justifyCenter')} disabled={disabled}>Center</button>
+            <button type="button" className="mini-btn" onClick={() => handleVisualCommand('justifyRight')} disabled={disabled}>Right</button>
+            <button type="button" className="mini-btn" onClick={() => handleVisualCommand('justifyFull')} disabled={disabled}>Justify</button>
+            <button type="button" className="mini-btn" onClick={() => handleVisualCommand('createLink')} disabled={disabled}>Link</button>
+            <button type="button" className="mini-btn" onClick={() => handleVisualCommand('unlink')} disabled={disabled}>Unlink</button>
+            <button type="button" className="mini-btn" onClick={() => handleVisualCommand('insertHorizontalRule')} disabled={disabled}>Rule</button>
+            <button type="button" className="mini-btn" onClick={() => handleVisualCommand('insertImage')} disabled={disabled}>Image</button>
+            <button type="button" className="mini-btn" onClick={() => uploadInputRef.current?.click()} disabled={uploading || disabled}>
               {uploading ? 'Uploading...' : 'Upload image'}
             </button>
-            <button type="button" className="mini-btn" onClick={openMediaLibrary}>
+            <button type="button" className="mini-btn" onClick={openMediaLibrary} disabled={disabled}>
               Media library
             </button>
-            <button type="button" className="mini-btn" onClick={() => insertTable()}>Table</button>
-            <button type="button" className="mini-btn" onClick={() => handleVisualCommand('removeFormat')}>Clear</button>
+            <button type="button" className="mini-btn" onClick={() => insertTable()} disabled={disabled}>Table</button>
+            <button type="button" className="mini-btn" onClick={() => handleVisualCommand('removeFormat')} disabled={disabled}>Clear</button>
             <select
               className="status-select email-editor__select email-editor__select--wide"
               defaultValue=""
+              disabled={disabled}
               onChange={(event) => {
                 const block = event.target.value as InsertBlock;
                 if (!block) return;
@@ -554,6 +564,7 @@ export function EmailRichEditor({
             <select
               className="status-select email-editor__select"
               value={fontFamily}
+              disabled={disabled}
               onChange={(event) => {
                 setFontFamily(event.target.value);
                 handleVisualCommand('fontName', event.target.value);
@@ -569,6 +580,7 @@ export function EmailRichEditor({
             <select
               className="status-select email-editor__select"
               value={fontSize}
+              disabled={disabled}
               onChange={(event) => {
                 setFontSize(event.target.value);
                 handleVisualCommand('fontSize', event.target.value);
@@ -586,6 +598,7 @@ export function EmailRichEditor({
               <input
                 type="color"
                 value={foreColor}
+                disabled={disabled}
                 onChange={(event) => {
                   setForeColor(event.target.value);
                   handleVisualCommand('foreColor', event.target.value);
@@ -597,6 +610,7 @@ export function EmailRichEditor({
               <input
                 type="color"
                 value={highlightColor}
+                disabled={disabled}
                 onChange={(event) => {
                   setHighlightColor(event.target.value);
                   handleVisualCommand('hiliteColor', event.target.value);
@@ -609,15 +623,17 @@ export function EmailRichEditor({
               <div
                 ref={visualRef}
                 className="email-editor__visual-surface"
-                contentEditable
+                contentEditable={!disabled}
                 suppressContentEditableWarning
                 role="textbox"
                 aria-multiline="true"
+                aria-readonly={disabled}
                 style={{ fontFamily }}
-                onInput={syncVisualContent}
-                onMouseUp={saveSelection}
-                onKeyUp={saveSelection}
+                onInput={disabled ? undefined : syncVisualContent}
+                onMouseUp={disabled ? undefined : saveSelection}
+                onKeyUp={disabled ? undefined : saveSelection}
                 onFocus={(event) => {
+                  if (disabled) return;
                   saveSelection();
                   const current = event.currentTarget.innerHTML;
                   if (!current) {
@@ -633,6 +649,7 @@ export function EmailRichEditor({
             type="file"
             accept="image/*"
             hidden
+            disabled={disabled}
             onChange={(event) => {
               const file = event.currentTarget.files?.[0];
               if (file) {
@@ -654,6 +671,7 @@ export function EmailRichEditor({
             className="auth-textarea email-editor__source"
             rows={24}
             value={value}
+            disabled={disabled}
             onChange={(event) => onChange(event.target.value)}
             spellCheck={false}
             placeholder={placeholder}

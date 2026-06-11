@@ -9,9 +9,10 @@ type Props = {
   selectedIds: string[];
   onChange: (ids: string[]) => void;
   placeholder?: string;
+  disabled?: boolean;
 };
 
-export default function SearchableMultiSelect({ lists, selectedIds, onChange, placeholder }: Props) {
+export default function SearchableMultiSelect({ lists, selectedIds, onChange, placeholder, disabled = false }: Props) {
   const listboxId = useId();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -40,11 +41,13 @@ export default function SearchableMultiSelect({ lists, selectedIds, onChange, pl
   );
 
   function toggle(id: string) {
+    if (disabled) return;
     if (selectedIds.includes(id)) onChange(selectedIds.filter((s) => s !== id));
     else onChange([...selectedIds, id]);
   }
 
   function openMenu() {
+    if (disabled) return;
     setOpen(true);
     setTimeout(() => searchRef.current?.focus(), 20);
   }
@@ -54,7 +57,9 @@ export default function SearchableMultiSelect({ lists, selectedIds, onChange, pl
       <div
         className="searchable-multiselect__control"
         tabIndex={0}
+        aria-disabled={disabled}
         onClick={() => {
+          if (disabled) return;
           if (open) {
             setOpen(false);
             return;
@@ -62,6 +67,7 @@ export default function SearchableMultiSelect({ lists, selectedIds, onChange, pl
           openMenu();
         }}
         onKeyDown={(e) => {
+          if (disabled) return;
           if (e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowDown') {
             e.preventDefault();
             openMenu();
@@ -81,12 +87,13 @@ export default function SearchableMultiSelect({ lists, selectedIds, onChange, pl
               {selectedItems.map((item) => (
                   <span key={item.id} className="searchable-multiselect__tag">
                     <span className="searchable-multiselect__tag-label">{item.name}</span>
-                    <button
-                      type="button"
-                      className="searchable-multiselect__tag-remove"
-                      onClick={(ev) => { ev.stopPropagation(); onChange(selectedIds.filter((s) => s !== item.id)); }}
-                      aria-label={`Remove ${item.name}`}
-                    >
+                      <button
+                        type="button"
+                        className="searchable-multiselect__tag-remove"
+                        disabled={disabled}
+                        onClick={(ev) => { ev.stopPropagation(); onChange(selectedIds.filter((s) => s !== item.id)); }}
+                        aria-label={`Remove ${item.name}`}
+                      >
                       ×
                     </button>
                   </span>
@@ -104,7 +111,7 @@ export default function SearchableMultiSelect({ lists, selectedIds, onChange, pl
           <div className="searchable-multiselect__menu-head">
             <span>{selectedIds.length} selected</span>
             {selectedIds.length > 0 ? (
-              <button type="button" className="searchable-multiselect__clear" onClick={() => onChange([])}>
+              <button type="button" className="searchable-multiselect__clear" onClick={() => onChange([])} disabled={disabled}>
                 Clear
               </button>
             ) : null}
@@ -113,9 +120,11 @@ export default function SearchableMultiSelect({ lists, selectedIds, onChange, pl
             ref={searchRef}
             className="searchable-multiselect__search"
             value={query}
+            disabled={disabled}
             onChange={(e) => { setQuery(e.target.value); setFocusedIndex(0); }}
             placeholder="Search lists..."
             onKeyDown={(e) => {
+              if (disabled) return;
               if (e.key === 'ArrowDown') {
                 e.preventDefault();
                 setFocusedIndex((i) => Math.min(i + 1, filtered.length - 1));
@@ -148,8 +157,10 @@ export default function SearchableMultiSelect({ lists, selectedIds, onChange, pl
                     ref={(el) => { itemsRef.current[idx] = el; }}
                     tabIndex={0}
                     className={`searchable-multiselect__item ${sel ? 'searchable-multiselect__item--selected' : ''}`}
+                    aria-disabled={disabled}
                     onClick={() => toggle(l.id)}
                     onKeyDown={(e) => {
+                      if (disabled) return;
                       if (e.key === 'Enter' || e.key === ' ') {
                         e.preventDefault();
                         toggle(l.id);

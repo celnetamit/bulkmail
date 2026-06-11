@@ -80,8 +80,8 @@ export async function POST(request: Request) {
 
   const ownedById = new Map(ownedCampaigns.map((campaign) => [campaign.id, campaign]));
 
-  if (action === 'archive' && ownedCampaigns.some((campaign) => isCampaignLockedForEditing(campaign.status))) {
-    return fail('Queued, paused, or sending campaigns cannot be archived.', 409);
+  if ((action === 'archive' || action === 'unarchive') && ownedCampaigns.some((campaign) => isCampaignLockedForEditing(campaign.status))) {
+    return fail('Sent, queued, retrying, paused, or sending campaigns cannot be archived or restored.', 409);
   }
 
   if (action === 'archive' || action === 'unarchive') {
@@ -134,7 +134,7 @@ export async function POST(request: Request) {
       if (!current) continue;
 
       if (isCampaignLockedForEditing(current.status)) {
-        return fail('Queued, paused, or sending campaigns cannot be retargeted.', 409);
+        return fail('Sent, queued, retrying, paused, or sending campaigns cannot be retargeted.', 409);
       }
 
       executeSql(

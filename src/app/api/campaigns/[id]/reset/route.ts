@@ -17,7 +17,7 @@ export async function POST(request: Request, { params }: Params) {
   );
   if (!existing) return fail('Campaign not found.', 404);
   if (isCampaignLockedForEditing(existing.status)) {
-    return fail('Cannot reset a queued, paused, or sending campaign.', 409);
+    return fail('Cannot reset a sent, queued, retrying, paused, or sending campaign.', 409);
   }
 
   let wipeEvents = false;

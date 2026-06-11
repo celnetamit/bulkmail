@@ -35,6 +35,24 @@ const UNSUBSCRIBE_URL_PLACEHOLDER = '{{unsubscribeUrl}}';
 const DEFAULT_SEND_CONCURRENCY = 5;
 const MIN_PROGRESS_UPDATE_INTERVAL = 25;
 
+function getAppOrigin() {
+  const envOrigin =
+    process.env.APP_URL?.trim() ||
+    process.env.PUBLIC_APP_URL?.trim() ||
+    process.env.COOLIFY_URL?.trim() ||
+    '';
+
+  if (envOrigin) {
+    try {
+      return new URL(envOrigin).origin;
+    } catch {
+      // fall through to the local fallback below
+    }
+  }
+
+  return 'http://localhost:3000';
+}
+
 function formatSenderAddress(name: string | null | undefined, email: string) {
   const trimmedName = String(name || '').trim();
   return trimmedName ? `${trimmedName} <${email}>` : email;
@@ -100,6 +118,13 @@ function appendUnsubscribeFooter(bodyHtml: string, unsubscribeUrl: string) {
 
 function injectUnsubscribeUrl(bodyHtml: string, unsubscribeUrl: string) {
   return bodyHtml.split(UNSUBSCRIBE_URL_PLACEHOLDER).join(unsubscribeUrl);
+}
+
+function applyUnsubscribeLink(bodyHtml: string, unsubscribeUrl: string) {
+  const htmlWithInjectedUnsubscribe = injectUnsubscribeUrl(bodyHtml, unsubscribeUrl);
+  return htmlWithInjectedUnsubscribe === bodyHtml
+    ? appendUnsubscribeFooter(bodyHtml, unsubscribeUrl)
+    : htmlWithInjectedUnsubscribe;
 }
 
 function appendOpenTrackingPixel(bodyHtml: string, trackingUrl: string) {
@@ -468,12 +493,7 @@ export async function dispatchCampaignEmails(userId: string, input: SendInput) {
       email: contact.email,
     });
     const trackingUrl = `${input.appUrl.replace(/\/$/, '')}/api/track/open?token=${encodeURIComponent(trackingToken)}`;
-    const htmlWithInjectedUnsubscribe = injectUnsubscribeUrl(input.bodyHtml, unsubscribeUrl);
-    const htmlWithUnsubscribe =
-      htmlWithInjectedUnsubscribe === input.bodyHtml
-        ? appendUnsubscribeFooter(input.bodyHtml, unsubscribeUrl)
-        : htmlWithInjectedUnsubscribe;
-    const html = appendOpenTrackingPixel(htmlWithUnsubscribe, trackingUrl);
+    const html = appendOpenTrackingPixel(applyUnsubscribeLink(input.bodyHtml, unsubscribeUrl), trackingUrl);
 
     const sent = await sendEmailBatch(userId, {
       subject: input.subject,
@@ -691,9 +711,15 @@ export async function dispatchCampaignEmails(userId: string, input: SendInput) {
 
 export async function sendTestEmail(userId: string, input: TestEmailInput) {
   const recipients = [{ id: 'test-recipient', email: input.toEmail, status: 'SUBSCRIBED' }];
+  const unsubscribeToken = await createUnsubscribeToken({
+    kind: 'test',
+    userId,
+    email: input.toEmail,
+  });
+  const unsubscribeUrl = `${getAppOrigin()}/api/unsubscribe?token=${encodeURIComponent(unsubscribeToken)}`;
   const sent = await sendEmailBatch(userId, {
     subject: input.subject,
-    bodyHtml: input.bodyHtml,
+    bodyHtml: applyUnsubscribeLink(input.bodyHtml, unsubscribeUrl),
     recipients,
   });
 

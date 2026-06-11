@@ -33,6 +33,8 @@ type Campaign = {
   lastJob?: { skipReason?: string | null; lastError?: string | null; status?: string | null; finishedAt?: string | null } | null;
 };
 
+const READ_ONLY_CAMPAIGN_STATUSES = new Set(['SENT']);
+
 type CampaignRiskSeverity = 'block' | 'warning' | 'info';
 type CampaignRiskStatus = 'blocked' | 'warning' | 'ready';
 type CampaignRiskItem = {
@@ -114,14 +116,18 @@ export function CampaignCreateClient({ campaignId, templateIdFromQuery }: Campai
   const [risk, setRisk] = useState<CampaignRiskResult | null>(null);
   const [senderIdentity, setSenderIdentity] = useState<SenderIdentity | null>(null);
   const [lastJob, setLastJob] = useState<{ skipReason?: string | null; lastError?: string | null; status?: string | null; finishedAt?: string | null } | null>(null);
-  const skipTemplateApplyRef = useRef(false);
+  const [campaignStatus, setCampaignStatus] = useState<string | null>(null);
   const [editingCampaignId, setEditingCampaignId] = useState<string | null>(campaignId || null);
+  const campaignHydratedRef = useRef(!campaignId);
+  const nameTouchedRef = useRef(false);
 
   const [name, setName] = useState('');
   const [selectedListIds, setSelectedListIds] = useState<string[]>([]);
   const [templateId, setTemplateId] = useState('');
   const [subject, setSubject] = useState('');
   const [bodyHtml, setBodyHtml] = useState(starterTemplate('Campaign body'));
+  const templateChangeRef = useRef(templateId);
+  const [templatePulseVariant, setTemplatePulseVariant] = useState<0 | 1>(0);
 
   async function loadCampaignRisk(nextCampaignId: string) {
     setRiskLoading(true);
@@ -151,14 +157,16 @@ export function CampaignCreateClient({ campaignId, templateIdFromQuery }: Campai
     if (!campaignId && templateIdFromQuery) setTemplateId(templateIdFromQuery);
 
     if (campaignId) {
+      campaignHydratedRef.current = false;
       const campaignRes = await fetch(`/api/campaigns/${campaignId}`, { cache: 'no-store' });
       if (campaignRes.ok) {
         const campaignData = (await readJsonResponse<{ campaign?: Campaign }>(campaignRes)) || {};
         const campaign = campaignData.campaign;
         if (campaign) {
-          skipTemplateApplyRef.current = true;
           setEditingCampaignId(campaign.id);
+          setCampaignStatus(campaign.status);
           setName(campaign.name);
+          nameTouchedRef.current = false;
           setSelectedListIds((campaign.lists && campaign.lists.length > 0 ? campaign.lists : campaign.list ? [campaign.list] : []).map((list) => list.id));
           setTemplateId(campaign.template?.id || '');
           setSubject(campaign.subject);
@@ -169,6 +177,7 @@ export function CampaignCreateClient({ campaignId, templateIdFromQuery }: Campai
       } else {
         toast.error('Campaign load failed', 'The requested campaign draft could not be opened.');
       }
+      campaignHydratedRef.current = true;
     }
 
     setLoading(false);
@@ -178,19 +187,31 @@ export function CampaignCreateClient({ campaignId, templateIdFromQuery }: Campai
 
   useEffect(() => {
     const selected = templates.find((t) => t.id === templateId);
-    if (skipTemplateApplyRef.current) {
-      skipTemplateApplyRef.current = false;
+    if (campaignId && !campaignHydratedRef.current) {
       return;
     }
-    if (selected && !editingCampaignId) {
+    if (selected) {
       setSubject(selected.subject);
       setBodyHtml(selected.bodyHtml);
+      if (!nameTouchedRef.current || !name.trim()) {
+        setName(selected.name);
+      }
     }
-  }, [templateId, editingCampaignId, templates]);
+  }, [campaignId, name, templateId, templates]);
+
+  useEffect(() => {
+    if (templateChangeRef.current !== templateId) {
+      templateChangeRef.current = templateId;
+      if (templateId) {
+        setTemplatePulseVariant((current) => (current === 0 ? 1 : 0));
+      }
+    }
+  }, [templateId]);
 
   function resetForm() {
     setEditingCampaignId(null);
     setName('');
+    nameTouchedRef.current = false;
     setSelectedListIds(lists[0]?.id ? [lists[0].id] : []);
     setTemplateId(templateIdFromQuery || '');
     setSubject('');
@@ -202,6 +223,10 @@ export function CampaignCreateClient({ campaignId, templateIdFromQuery }: Campai
 
   async function saveCampaign(event: FormEvent) {
     event.preventDefault();
+    if (isReadOnlyCampaign) {
+      toast.warning('Sent campaigns are read-only', 'Copy this campaign to create a new editable draft.');
+      return;
+    }
     setSaving(true);
 
     if (selectedListIds.length === 0) {
@@ -242,6 +267,10 @@ export function CampaignCreateClient({ campaignId, templateIdFromQuery }: Campai
 
   async function testCampaign() {
     if (!editingCampaignId) return;
+    if (isReadOnlyCampaign) {
+      toast.warning('Sent campaigns are read-only', 'Copy this campaign before running a test send.');
+      return;
+    }
 
     setTesting(true);
 
@@ -261,7 +290,11 @@ export function CampaignCreateClient({ campaignId, templateIdFromQuery }: Campai
   }
 
 
-  const pageTitle = useMemo(() => (editingCampaignId ? 'Edit Campaign Draft' : 'Create Campaign Draft'), [editingCampaignId]);
+  const isReadOnlyCampaign = Boolean(editingCampaignId && campaignStatus && READ_ONLY_CAMPAIGN_STATUSES.has(campaignStatus));
+  const pageTitle = useMemo(
+    () => (editingCampaignId ? (isReadOnlyCampaign ? 'View Sent Campaign' : 'Edit Campaign Draft') : 'Create Campaign Draft'),
+    [editingCampaignId, isReadOnlyCampaign],
+  );
   const hasDefaultTestList = useMemo(() => lists.some((list) => Boolean(list.isDefaultTestList)), [lists]);
   const riskStatusClass = risk?.status === 'ready' ? 'badge-success' : risk?.status === 'blocked' ? 'badge-danger' : 'badge-warning';
   const selectedListNames = useMemo(
@@ -289,7 +322,11 @@ export function CampaignCreateClient({ campaignId, templateIdFromQuery }: Campai
         <div className="page-header__row">
           <div>
             <h1>{pageTitle}</h1>
-            <p>Compose a campaign draft, attach a list, and review the sender identity before sending.</p>
+            <p>
+              {isReadOnlyCampaign
+                ? 'This campaign has already been sent, so it is read-only. Use Copy to create a new draft.'
+                : 'Compose a campaign draft, attach a list, and review the sender identity before sending.'}
+            </p>
           </div>
           <Link className="btn-secondary" href="/dashboard/campaigns">Back to Campaigns</Link>
         </div>
@@ -352,10 +389,30 @@ export function CampaignCreateClient({ campaignId, templateIdFromQuery }: Campai
 
       <div className="card" style={{ padding: '1rem' }}>
         <form className="auth-form" onSubmit={saveCampaign}>
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Campaign name" required />
+          {isReadOnlyCampaign ? (
+            <div className="badge badge-info" style={{ marginBottom: '0.75rem' }}>
+              Sent campaign read-only
+            </div>
+          ) : null}
+          <fieldset disabled={saving || testing || loading || isReadOnlyCampaign} style={{ border: 0, padding: 0, margin: 0 }}>
+          <input
+            value={name}
+            onChange={(e) => {
+              nameTouchedRef.current = true;
+              setName(e.target.value);
+            }}
+            placeholder="Campaign name"
+            required
+          />
           <div style={{ marginBottom: '0.5rem' }}>
             <label style={{ display: 'block', marginBottom: '.5rem', color: 'var(--muted-text)' }}>Lists</label>
-            <SearchableMultiSelect lists={lists} selectedIds={selectedListIds} onChange={setSelectedListIds} placeholder="Select lists..." />
+            <SearchableMultiSelect
+              lists={lists}
+              selectedIds={selectedListIds}
+              onChange={setSelectedListIds}
+              placeholder="Select lists..."
+              disabled={isReadOnlyCampaign}
+            />
             {lists.length === 0 ? (
               <p className="form-note">No lists yet. Create at least one list before saving the campaign.</p>
             ) : null}
@@ -365,11 +422,42 @@ export function CampaignCreateClient({ campaignId, templateIdFromQuery }: Campai
               ? 'One-click test sends use your default test list.'
               : 'Set a default test list in Lists to enable one-click test sends.'}
           </p>
-          <select className="status-select" value={templateId} onChange={(e) => setTemplateId(e.target.value)}>
-            <option value="">No Template</option>
-            {templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-          </select>
-          <input value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="Subject" required />
+          <div className="campaign-template-picker">
+            <label className="campaign-template-picker__label" htmlFor="campaign-template">
+              Template
+            </label>
+            <select
+              id="campaign-template"
+              className="status-select campaign-template-picker__select"
+              value={templateId}
+              onChange={(e) => setTemplateId(e.target.value)}
+            >
+              <option value="">No Template</option>
+              {templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+            </select>
+            <div className="campaign-template-picker__hint">
+              <span className="campaign-template-picker__selected">
+                {linkedTemplateName ? `Selected: ${linkedTemplateName}` : 'No template selected'}
+              </span>
+              <span className="badge badge-info campaign-template-picker__badge">Will fill fields</span>
+            </div>
+          </div>
+          <div className={`campaign-template-field ${linkedTemplateName ? 'campaign-template-field--ghost' : ''} ${linkedTemplateName ? `campaign-template-field--pulse-${templatePulseVariant}` : ''}`}>
+            <div className="campaign-template-field__topline">
+              <label className="campaign-template-field__label" htmlFor="campaign-subject">
+                Subject
+              </label>
+              {linkedTemplateName ? <span className="campaign-template-field__status">Auto-filled from {linkedTemplateName}</span> : null}
+            </div>
+            <input
+              id="campaign-subject"
+              className="campaign-template-field__input"
+              value={subject}
+              onChange={(e) => setSubject(e.target.value)}
+              placeholder="Subject"
+              required
+            />
+          </div>
           <EmailMagicComposer
             surface="campaign"
             draftName={name}
@@ -377,13 +465,19 @@ export function CampaignCreateClient({ campaignId, templateIdFromQuery }: Campai
             bodyHtml={bodyHtml}
             linkedTemplateName={linkedTemplateName}
             listNames={selectedListNames}
-            disabled={saving || testing || loading}
+            disabled={saving || testing || loading || isReadOnlyCampaign}
             onApply={({ subject: nextSubject, bodyHtml: nextBodyHtml }) => {
               setSubject(nextSubject);
               setBodyHtml(nextBodyHtml);
             }}
           />
-          <EmailRichEditor value={bodyHtml} onChange={setBodyHtml} placeholder="Compose the campaign body..." />
+          <div className={`campaign-template-field campaign-template-field--body ${linkedTemplateName ? 'campaign-template-field--ghost' : ''} ${linkedTemplateName ? `campaign-template-field--pulse-${templatePulseVariant}` : ''}`}>
+            <div className="campaign-template-field__topline">
+              <label className="campaign-template-field__label">Body</label>
+              {linkedTemplateName ? <span className="campaign-template-field__status">Auto-filled from {linkedTemplateName}</span> : null}
+            </div>
+            <EmailRichEditor value={bodyHtml} onChange={setBodyHtml} placeholder="Compose the campaign body..." disabled={isReadOnlyCampaign} />
+          </div>
           <section className="card" style={{ padding: '1rem', background: 'rgba(15, 23, 42, 0.35)' }}>
             <div className="campaign-risk-panel__header" style={{ marginBottom: '0.75rem' }}>
               <div>
@@ -408,27 +502,28 @@ export function CampaignCreateClient({ campaignId, templateIdFromQuery }: Campai
             </Link>
           </section>
           <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
-            <button className="btn-primary" type="submit" disabled={saving || loading}>
-              {saving ? 'Saving...' : editingCampaignId ? 'Update Draft' : 'Create Draft'}
+            <button className="btn-primary" type="submit" disabled={saving || loading || isReadOnlyCampaign}>
+              {saving ? 'Saving...' : editingCampaignId ? (isReadOnlyCampaign ? 'Read Only' : 'Update Draft') : 'Create Draft'}
             </button>
             {editingCampaignId ? (
               <button
                 className="btn-secondary"
                 type="button"
                 onClick={testCampaign}
-                disabled={testing || saving || loading || !hasDefaultTestList}
-                title={hasDefaultTestList ? 'Send this campaign to the default test list.' : 'Set a default test list in Lists first.'}
+                disabled={testing || saving || loading || !hasDefaultTestList || isReadOnlyCampaign}
+                title={isReadOnlyCampaign ? 'Sent campaigns are read-only.' : hasDefaultTestList ? 'Send this campaign to the default test list.' : 'Set a default test list in Lists first.'}
               >
                 {testing ? 'Sending test...' : 'Test campaign'}
               </button>
             ) : null}
-            <button className="mini-btn" type="button" onClick={resetForm}>
+            <button className="mini-btn" type="button" onClick={resetForm} disabled={isReadOnlyCampaign}>
               Reset
             </button>
           </div>
           <p className="form-note">
             Use a default test list for one-click test sends, then select one or more customer lists for the real campaign.
           </p>
+          </fieldset>
         </form>
       </div>
     </div>

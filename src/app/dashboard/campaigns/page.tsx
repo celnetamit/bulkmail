@@ -36,6 +36,17 @@ type Campaign = {
   isOwner?: boolean;
 };
 
+const READ_ONLY_CAMPAIGN_STATUSES = new Set(['SENT']);
+const ACTION_LOCKED_CAMPAIGN_STATUSES = new Set(['QUEUED', 'RETRYING', 'SENDING', 'PAUSED', 'SENT']);
+
+function isReadOnlyCampaignStatus(status: string) {
+  return READ_ONLY_CAMPAIGN_STATUSES.has(status);
+}
+
+function isActionLockedCampaignStatus(status: string) {
+  return ACTION_LOCKED_CAMPAIGN_STATUSES.has(status);
+}
+
 type CampaignDetailMap = Record<string, {
   lists: { id: string; name: string; isDefaultTestList: number | boolean }[];
   listCount: number;
@@ -416,6 +427,11 @@ export default function CampaignsPage() {
 
   const selectableCampaigns = campaigns.filter((campaign) => campaign.isOwner !== false);
   const allVisibleSelected = selectableCampaigns.length > 0 && selectableCampaigns.every((campaign) => selectedCampaignIds.includes(campaign.id));
+  const selectedCampaigns = useMemo(
+    () => campaigns.filter((campaign) => selectedCampaignIds.includes(campaign.id)),
+    [campaigns, selectedCampaignIds],
+  );
+  const hasReadOnlySelectedCampaign = selectedCampaigns.some((campaign) => isReadOnlyCampaignStatus(campaign.status));
 
   function toggleSelectedCampaign(id: string) {
     const campaign = campaigns.find((entry) => entry.id === id);
@@ -434,6 +450,10 @@ export default function CampaignsPage() {
 
   async function runBulkCampaignAction(action: 'archive' | 'unarchive' | 'duplicate' | 'retarget') {
     if (selectedCampaignIds.length === 0) return;
+    if (action !== 'duplicate' && hasReadOnlySelectedCampaign) {
+      toast.warning('Sent campaigns are read-only', 'Copy sent campaigns instead of archiving or retargeting them.');
+      return;
+    }
     if (action === 'retarget' && retargetListIds.length === 0) {
       toast.warning('Choose a retarget list', 'Select one or more lists before retargeting campaigns.');
       return;
@@ -887,18 +907,19 @@ export default function CampaignsPage() {
         <div className="bulk-action-bar" style={{ marginBottom: '0.75rem' }}>
           <div className="bulk-action-bar__summary">
             <strong>{selectedCampaignCount}</strong> selected
+            {hasReadOnlySelectedCampaign ? <span style={{ marginLeft: '0.75rem' }}>Sent campaigns stay read-only; use Copy for a new draft.</span> : null}
           </div>
           <div className="bulk-action-bar__actions">
-            <button className="mini-btn" type="button" onClick={() => runBulkCampaignAction('archive')} disabled={bulkLoading || selectedCampaignCount === 0}>
+            <button className="mini-btn" type="button" onClick={() => runBulkCampaignAction('archive')} disabled={bulkLoading || selectedCampaignCount === 0 || hasReadOnlySelectedCampaign}>
               Archive
             </button>
-            <button className="mini-btn" type="button" onClick={() => runBulkCampaignAction('unarchive')} disabled={bulkLoading || selectedCampaignCount === 0}>
+            <button className="mini-btn" type="button" onClick={() => runBulkCampaignAction('unarchive')} disabled={bulkLoading || selectedCampaignCount === 0 || hasReadOnlySelectedCampaign}>
               Unarchive
             </button>
             <button className="mini-btn" type="button" onClick={() => runBulkCampaignAction('duplicate')} disabled={bulkLoading || selectedCampaignCount === 0}>
               Duplicate
             </button>
-            <button className="mini-btn" type="button" onClick={() => runBulkCampaignAction('retarget')} disabled={bulkLoading || selectedCampaignCount === 0 || retargetListIds.length === 0}>
+            <button className="mini-btn" type="button" onClick={() => runBulkCampaignAction('retarget')} disabled={bulkLoading || selectedCampaignCount === 0 || retargetListIds.length === 0 || hasReadOnlySelectedCampaign}>
               Retarget
             </button>
             <button className="mini-btn" type="button" onClick={() => exportCampaigns(selectedCampaignIds)} disabled={bulkLoading || selectedCampaignCount === 0}>
@@ -1031,23 +1052,34 @@ export default function CampaignsPage() {
                     </div>
                   </td>
                   <td data-label="Actions" className="campaigns-table__actions">
+                    {isReadOnlyCampaignStatus(c.status) ? (
+                      <div className="campaigns-table__meta campaigns-table__meta--muted" style={{ marginBottom: '0.5rem' }}>
+                        Sent campaigns are read-only. Use Copy to create a new draft.
+                      </div>
+                    ) : null}
                     <div className="campaigns-table__action-row">
-                      <button
-                        className="mini-btn"
-                        type="button"
-                        onClick={() => router.push(`/dashboard/campaigns/create?campaignId=${c.id}`)}
-                        disabled={!canManageCampaign || c.status === 'QUEUED' || c.status === 'RETRYING' || c.status === 'SENDING' || c.status === 'PAUSED' || Boolean(c.isArchived)}
-                      >
-                        Edit Draft
-                      </button>
+                      {c.status === 'SENT' ? (
+                        <Link className="mini-btn" href={`/dashboard/campaigns/${c.id}`}>
+                          View Details
+                        </Link>
+                      ) : (
+                        <button
+                          className="mini-btn"
+                          type="button"
+                          onClick={() => router.push(`/dashboard/campaigns/create?campaignId=${c.id}`)}
+                          disabled={!canManageCampaign || isActionLockedCampaignStatus(c.status) || Boolean(c.isArchived)}
+                        >
+                          Edit Draft
+                        </button>
+                      )}
                       <button className="mini-btn" type="button" onClick={() => duplicateCampaign(c.id)} disabled={!canManageCampaign}>Copy</button>
-                      <button className="mini-btn" type="button" onClick={() => testCampaign(c.id)} disabled={!canManageCampaign || testingId === c.id || Boolean(c.isArchived)}>
+                      <button className="mini-btn" type="button" onClick={() => testCampaign(c.id)} disabled={!canManageCampaign || testingId === c.id || Boolean(c.isArchived) || isReadOnlyCampaignStatus(c.status)}>
                         {testingId === c.id ? 'Testing...' : 'Test'}
                       </button>
                       <Link className="mini-btn" href={`/dashboard/analytics?campaignId=${c.id}`}>Stats</Link>
                     </div>
                     <div className="campaigns-table__action-row campaigns-table__action-row--select">
-                      <select className="status-select" value={c.status} onChange={(e) => updateStatus(c, e.target.value)} disabled={!canManageCampaign || c.status === 'QUEUED' || c.status === 'RETRYING' || c.status === 'SENDING' || c.status === 'PAUSED' || Boolean(c.isArchived)}>
+                      <select className="status-select" value={c.status} onChange={(e) => updateStatus(c, e.target.value)} disabled={!canManageCampaign || isActionLockedCampaignStatus(c.status) || Boolean(c.isArchived)}>
                         <option>DRAFT</option><option>SCHEDULED</option><option>QUEUED</option><option>RETRYING</option><option>SENDING</option><option>PAUSED</option><option>CANCELLED</option><option>SENT</option><option>FAILED</option><option>SKIPPED</option>
                       </select>
                     </div>
@@ -1056,9 +1088,9 @@ export default function CampaignsPage() {
                         className="mini-btn"
                         type="button"
                         onClick={() => setSendConfirmCampaign(c)}
-                        disabled={!canManageCampaign || sendingId === c.id || c.status === 'QUEUED' || c.status === 'RETRYING' || c.status === 'SENDING' || c.status === 'PAUSED' || Boolean(c.isArchived)}
+                        disabled={!canManageCampaign || sendingId === c.id || isActionLockedCampaignStatus(c.status) || Boolean(c.isArchived)}
                       >
-                        {sendingId === c.id ? 'Sending...' : c.status === 'QUEUED' || c.status === 'RETRYING' || c.status === 'SENDING' || c.status === 'PAUSED' ? c.status : 'Send'}
+                        {sendingId === c.id ? 'Sending...' : isActionLockedCampaignStatus(c.status) ? c.status : 'Send'}
                       </button>
                       {c.status === 'PAUSED' ? (
                         <button className="mini-btn" type="button" onClick={() => controlCampaign(c.id, 'resume')} disabled={!canManageCampaign || controllingId === c.id}>
@@ -1074,7 +1106,7 @@ export default function CampaignsPage() {
                           {controllingId === c.id ? 'Working...' : 'Cancel'}
                         </button>
                       ) : (
-                        <button className="mini-btn danger" type="button" onClick={() => deleteCampaign(c.id)} disabled={!canManageCampaign || c.status === 'QUEUED' || c.status === 'RETRYING' || c.status === 'SENDING' || c.status === 'PAUSED'}>Delete</button>
+                        <button className="mini-btn danger" type="button" onClick={() => deleteCampaign(c.id)} disabled={!canManageCampaign || isActionLockedCampaignStatus(c.status) || Boolean(c.isArchived)}>Delete</button>
                       )}
                       <button
                         className="mini-btn"
@@ -1090,7 +1122,7 @@ export default function CampaignsPage() {
                           toast.success('Campaign reset', 'The campaign was reset to a fresh state.');
                           await loadCampaigns();
                         }}
-                        disabled={!canManageCampaign || c.status === 'QUEUED' || c.status === 'RETRYING' || c.status === 'SENDING' || c.status === 'PAUSED' || Boolean(c.isArchived)}
+                        disabled={!canManageCampaign || isActionLockedCampaignStatus(c.status) || Boolean(c.isArchived)}
                       >
                         Reset
                       </button>
