@@ -536,8 +536,8 @@ export function ContactsClient() {
       </div>
 
       <div className="card">
-        <div className="table-wrap">
-          <table className="data-table">
+        <div className="table-wrap contacts-table-wrap">
+          <table className="data-table contacts-table">
             <thead>
               <tr>
                 <th className="contacts-table__select-cell">

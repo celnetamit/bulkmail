@@ -237,8 +237,8 @@ export default function AnalyticsPage() {
             <h2>Delivery and engagement ratios</h2>
           </div>
         </div>
-        <div className="table-wrap">
-          <table className="data-table analytics-table">
+        <div className="table-wrap analytics-summary-wrap">
+          <table className="data-table analytics-table analytics-summary-table">
             <thead><tr><th>Metric</th><th>Value</th></tr></thead>
             <tbody>
               <tr><td>Open Rate</td><td>{(metrics?.openRate ?? 0).toFixed(2)}%</td></tr>
@@ -259,8 +259,8 @@ export default function AnalyticsPage() {
             <h2>Health signals</h2>
           </div>
         </div>
-        <div className="table-wrap">
-          <table className="data-table analytics-table">
+        <div className="table-wrap analytics-summary-wrap">
+          <table className="data-table analytics-table analytics-signal-table">
             <thead><tr><th>Signal</th><th>Status</th><th>Value</th><th>Detail</th></tr></thead>
             <tbody>
               {(metrics?.detections || []).map((detection) => (
@@ -284,8 +284,8 @@ export default function AnalyticsPage() {
             <h2>Suppression mix</h2>
           </div>
         </div>
-        <div className="table-wrap">
-          <table className="data-table analytics-table">
+        <div className="table-wrap analytics-summary-wrap">
+          <table className="data-table analytics-table analytics-status-table">
             <thead><tr><th>Status</th><th>Contacts</th></tr></thead>
             <tbody>
               <tr><td>Subscribed</td><td>{metrics?.contactStats.subscribed ?? 0}</td></tr>

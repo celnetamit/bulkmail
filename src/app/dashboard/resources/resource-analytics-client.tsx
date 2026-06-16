@@ -494,7 +494,7 @@ export default function ResourceAnalyticsClient({ role }: { role: string }) {
             </div>
           </div>
           <div className="table-wrap">
-            <table className="data-table">
+            <table className="data-table resource-daily-table">
               <thead>
                 <tr>
                   <th>Day</th>
@@ -533,7 +533,7 @@ export default function ResourceAnalyticsClient({ role }: { role: string }) {
             </div>
           </div>
           <div className="table-wrap">
-            <table className="data-table">
+            <table className="data-table resource-user-table">
               <thead>
                 <tr>
                   <th>User</th>
@@ -575,7 +575,7 @@ export default function ResourceAnalyticsClient({ role }: { role: string }) {
             </div>
           </div>
           <div className="table-wrap">
-            <table className="data-table">
+            <table className="data-table resource-team-table">
               <thead>
                 <tr>
                   <th>Team</th>
@@ -623,7 +623,7 @@ export default function ResourceAnalyticsClient({ role }: { role: string }) {
             </div>
           </div>
           <div className="table-wrap">
-            <table className="data-table">
+            <table className="data-table resource-campaign-table">
               <thead>
                 <tr>
                   <th>Campaign</th>

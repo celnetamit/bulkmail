@@ -560,7 +560,8 @@ export default function ListsPage() {
             </div>
           ) : null}
 
-          <table className="data-table">
+          <div className="table-wrap list-table-wrap">
+          <table className="data-table lists-table">
             <thead>
               <tr>
                 <th style={{ width: '40px' }}>
@@ -646,6 +647,7 @@ export default function ListsPage() {
               )}
             </tbody>
           </table>
+          </div>
         </section>
 
         <aside className="card lists-detail">

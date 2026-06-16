@@ -64,8 +64,8 @@ export default function TemplatesPage() {
         </div>
       </header>
       <div className="card">
-        <div className="table-wrap">
-          <table className="data-table">
+        <div className="table-wrap templates-table-wrap">
+          <table className="data-table templates-table">
             <thead>
               <tr>
                 <th>Name</th>

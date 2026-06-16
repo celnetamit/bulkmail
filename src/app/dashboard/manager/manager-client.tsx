@@ -465,9 +465,9 @@ export default function ManagerDashboardClient() {
                 </form>
               </div>
 
-              <div className="detail-table-wrap">
+              <div className="detail-table-wrap manager-members-wrap">
                 <h3 style={{ marginBottom: '0.75rem' }}>Members</h3>
-                <table className="data-table">
+                <table className="data-table manager-members-table">
                   <thead>
                     <tr>
                       <th>Member</th>
@@ -536,9 +536,9 @@ export default function ManagerDashboardClient() {
                 </table>
               </div>
 
-              <div className="detail-table-wrap">
+              <div className="detail-table-wrap manager-activity-wrap">
                 <h3 style={{ marginBottom: '0.75rem' }}>Recent Team Activity</h3>
-                <table className="data-table">
+                <table className="data-table manager-activity-table">
                   <thead>
                     <tr>
                       <th>Campaign</th>

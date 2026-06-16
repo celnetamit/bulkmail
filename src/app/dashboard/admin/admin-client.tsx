@@ -855,8 +855,8 @@ export default function AdminDashboardClient() {
             </form>
           </div>
         </div>
-        <div className="table-wrap">
-          <table className="data-table">
+        <div className="table-wrap admin-overlap-wrap">
+          <table className="data-table admin-overlap-table">
             <thead>
               <tr>
                 {([
@@ -1148,8 +1148,8 @@ export default function AdminDashboardClient() {
         <p className="form-note" style={{ marginBottom: '0.75rem' }}>
           Showing {filteredRows.length} of {rows.length} users.
         </p>
-        <div className="table-wrap">
-          <table className="data-table">
+        <div className="table-wrap admin-users-wrap">
+          <table className="data-table admin-users-table">
           <thead>
             <tr>
               <th>User</th>
@@ -1157,13 +1157,12 @@ export default function AdminDashboardClient() {
               <th>Usage</th>
               <th>Content</th>
               <th>Stats</th>
-              <th>Session</th>
-              <th>Save</th>
+              <th>Actions</th>
             </tr>
           </thead>
           <tbody>
             {filteredRows.length === 0 ? (
-              <tr><td colSpan={7}>No users yet.</td></tr>
+              <tr><td colSpan={6}>No users yet.</td></tr>
             ) : filteredRows.map((user) => {
               const draft = drafts[user.id] || {};
               return (
@@ -1173,27 +1172,28 @@ export default function AdminDashboardClient() {
                     <div style={{ fontSize: '0.85rem', color: '#64748b' }}>{user.name || '-'}</div>
                     <div style={{ fontSize: '0.8rem', color: '#64748b' }}>{user.lastLoginAt ? `Last login ${new Date(user.lastLoginAt).toLocaleString()}` : 'Never logged in'}</div>
                   </td>
-                  <td style={{ minWidth: '220px' }}>
-                    <select className="status-select" value={String(draft.role || user.role)} onChange={(e) => updateDraft(user.id, 'role', e.target.value)}>
-                      <option value="USER">USER</option>
-                      <option value="MANAGER">MANAGER</option>
-                      <option value="ADMIN">ADMIN</option>
-                    </select>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.5rem', color: '#475569' }}>
-                      <input
-                        type="checkbox"
-                        checked={Boolean(draft.isActive ?? user.isActive)}
-                        onChange={(e) => updateDraft(user.id, 'isActive', e.target.checked)}
-                      />
-                      Active
-                    </label>
+                  <td className="admin-users-table__access">
+                    <div className="admin-users-table__access-grid">
+                      <select className="status-select admin-users-table__role-select" value={String(draft.role || user.role)} onChange={(e) => updateDraft(user.id, 'role', e.target.value)}>
+                        <option value="USER">USER</option>
+                        <option value="MANAGER">MANAGER</option>
+                        <option value="ADMIN">ADMIN</option>
+                      </select>
+                      <label className="admin-users-table__toggle">
+                        <input
+                          type="checkbox"
+                          checked={Boolean(draft.isActive ?? user.isActive)}
+                          onChange={(e) => updateDraft(user.id, 'isActive', e.target.checked)}
+                        />
+                        <span>Active</span>
+                      </label>
                       <input
                         type="number"
                         min={1}
                         step={1}
                         value={String(draft.dailyEmailLimit ?? user.dailyEmailLimit)}
                         onChange={(e) => updateDraft(user.id, 'dailyEmailLimit', Number(e.target.value))}
-                        style={{ marginTop: '0.5rem' }}
+                        className="admin-users-table__limit-input"
                       />
                       <input
                         type="number"
@@ -1202,9 +1202,10 @@ export default function AdminDashboardClient() {
                         value={draft.imageUploadLimitKb === null ? '' : String(draft.imageUploadLimitKb ?? user.imageUploadLimitKb ?? '')}
                         onChange={(e) => updateDraft(user.id, 'imageUploadLimitKb', e.target.value ? Number(e.target.value) : null)}
                         placeholder="Global default"
-                        style={{ marginTop: '0.5rem' }}
+                        className="admin-users-table__limit-input"
                       />
-                    </td>
+                    </div>
+                  </td>
                     <td style={{ minWidth: '220px' }}>
                     <div className="progress-track" aria-hidden="true">
                       <div className="progress-bar" style={{ width: `${percent(user.sentToday, user.dailyEmailLimit)}%` }} />
@@ -1233,24 +1234,24 @@ export default function AdminDashboardClient() {
                     <br />
                     {user.unsubscribeRate.toFixed(2)}% unsubscribe rate
                   </td>
-                  <td>
-                    {summary?.viewer.userId === user.id ? (
-                      <span className="badge badge-info">Current</span>
-                    ) : (
-                      <form className="admin-session-form" action={API_ROUTES.ADMIN_IMPERSONATION_START} method="post">
-                        <input type="hidden" name="targetUserId" value={user.id} />
-                        <input type="hidden" name="next" value={APP_ROUTES.DASHBOARD} />
-                        <input type="hidden" name="returnTo" value={APP_ROUTES.ADMIN_DASHBOARD} />
-                        <button className="mini-btn" type="submit">
-                          Switch
-                        </button>
-                      </form>
-                    )}
-                  </td>
-                  <td>
-                    <button className="mini-btn" type="button" onClick={() => saveUser(user.id)} disabled={savingId === user.id}>
-                      {savingId === user.id ? 'Saving...' : 'Save'}
-                    </button>
+                  <td className="admin-users-table__actions">
+                    <div className="admin-users-table__action-grid">
+                      {summary?.viewer.userId === user.id ? (
+                        <span className="badge badge-info">Current</span>
+                      ) : (
+                        <form className="admin-session-form" action={API_ROUTES.ADMIN_IMPERSONATION_START} method="post">
+                          <input type="hidden" name="targetUserId" value={user.id} />
+                          <input type="hidden" name="next" value={APP_ROUTES.DASHBOARD} />
+                          <input type="hidden" name="returnTo" value={APP_ROUTES.ADMIN_DASHBOARD} />
+                          <button className="mini-btn" type="submit">
+                            Switch
+                          </button>
+                        </form>
+                      )}
+                      <button className="mini-btn" type="button" onClick={() => saveUser(user.id)} disabled={savingId === user.id}>
+                        {savingId === user.id ? 'Saving...' : 'Save'}
+                      </button>
+                    </div>
                   </td>
                 </tr>
               );

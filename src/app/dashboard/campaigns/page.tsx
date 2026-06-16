@@ -1134,7 +1134,7 @@ export default function CampaignsPage() {
                     <div className="campaigns-table__action-row">
                       {c.status === 'SENT' ? (
                         <Link className="mini-btn" href={`/dashboard/campaigns/${c.id}`}>
-                          View Details
+                          View
                         </Link>
                       ) : (
                         <button
@@ -1143,7 +1143,7 @@ export default function CampaignsPage() {
                           onClick={() => router.push(`/dashboard/campaigns/create?campaignId=${c.id}`)}
                           disabled={!canManageCampaign || isActionLockedCampaignStatus(c.status) || Boolean(c.isArchived)}
                         >
-                          Edit Draft
+                          Edit
                         </button>
                       )}
                       <button className="mini-btn" type="button" onClick={() => duplicateCampaign(c.id)} disabled={!canManageCampaign}>Copy</button>
