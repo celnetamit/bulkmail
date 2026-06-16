@@ -1,4 +1,5 @@
 import { readUnsubscribeToken } from '@/lib/unsubscribe';
+import { rateLimit } from '@/lib/rate-limit';
 import { executeSql, queryRow } from '@/lib/sqlite';
 
 type HtmlTone = 'success' | 'warning' | 'error';
@@ -157,6 +158,18 @@ export async function GET(request: Request) {
         ? `This test unsubscribe link works for ${payload.email}. No contacts were unsubscribed.`
         : 'This test unsubscribe link works. No contacts were unsubscribed.',
       tone: 'warning',
+    });
+  }
+
+  // Throttle repeated hits to the same unsubscribe link (keyed by recipient, not
+  // IP). Unsubscribing is idempotent, so once throttled we still show the success
+  // page (the address was already unsubscribed by the earlier requests).
+  const limit = rateLimit(`unsub:${payload.userId}:${payload.email || payload.contactId || ''}`, 10, 60_000);
+  if (!limit.allowed) {
+    return htmlResponse({
+      title: 'You are unsubscribed',
+      message: 'You’re all set. MailFlow has removed this address from future campaign sends.',
+      tone: 'success',
     });
   }
 

@@ -222,7 +222,7 @@ export function ContactsClient() {
       const nextContacts = data?.contacts || [];
       const nextContactIds = new Set(nextContacts.map((contact) => contact.id));
       setContacts(nextContacts);
-      setPagination(data?.pagination || pagination);
+      setPagination((current) => data?.pagination || current);
       setSelectedContactIds((current) => current.filter((id) => nextContactIds.has(id)));
 
       const nextSelected = selectedContactId ? nextContacts.find((contact) => contact.id === selectedContactId) || null : null;

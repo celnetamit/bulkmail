@@ -5,7 +5,7 @@ import { createOpenTrackingToken } from '@/lib/tracking';
 import { isValidEmailAddress, normalizeEmailAddress } from '@/lib/email-address';
 import { recordSystemEvent } from '@/lib/observability';
 import { getPlatformSettings } from '@/lib/platform-settings';
-import { getUserQuotaStatus } from '@/lib/quota';
+import { getUserDailySentCount, getUserQuotaStatus } from '@/lib/quota';
 import { recordResourceMetric } from '@/lib/resource-analytics';
 import { executeSql, queryRow } from '@/lib/sqlite';
 
@@ -235,12 +235,27 @@ async function sendViaAwsSes(
   return results;
 }
 
+type PreparedTransport = {
+  transport: Awaited<ReturnType<typeof resolveMailTransport>>;
+  senderIdentity: Awaited<ReturnType<typeof getSenderIdentity>>;
+};
+
+// Resolve the user's mail transport + sender identity ONCE per send operation.
+// These each issue DB queries, so resolving them per-recipient (as the previous
+// implementation did inside the send loop) multiplied the query/process count by
+// the recipient count for large campaigns.
+async function prepareTransport(userId: string): Promise<PreparedTransport> {
+  const transport = await resolveMailTransport(userId);
+  const senderIdentity = await getSenderIdentity(userId);
+  return { transport, senderIdentity };
+}
+
 async function sendEmailBatch(
   userId: string,
   input: { subject: string; bodyHtml: string; recipients: CampaignRecipient[]; campaignId?: string },
+  prepared: PreparedTransport,
 ) {
-  const transport = await resolveMailTransport(userId);
-  const senderIdentity = await getSenderIdentity(userId);
+  const { transport, senderIdentity } = prepared;
 
   if (transport.provider === 'resend') {
     if (!transport.resendApiKey) {
@@ -476,6 +491,12 @@ export async function dispatchCampaignEmails(userId: string, input: SendInput) {
   let sentCount = 0;
   let failedCount = 0;
   let lastProgressCheckpoint = 0;
+  // Recipients we stop sending to mid-run because the live daily quota got
+  // exhausted (e.g. by a concurrent send). Counted toward skipped at the end.
+  let runtimeQuotaSkipped = 0;
+
+  // Resolve transport + sender identity a single time for the whole campaign.
+  const preparedTransport = await prepareTransport(userId);
 
   async function sendContact(contact: CampaignRecipient) {
     const unsubscribeToken = await createUnsubscribeToken({
@@ -495,12 +516,16 @@ export async function dispatchCampaignEmails(userId: string, input: SendInput) {
     const trackingUrl = `${input.appUrl.replace(/\/$/, '')}/api/track/open?token=${encodeURIComponent(trackingToken)}`;
     const html = appendOpenTrackingPixel(applyUnsubscribeLink(input.bodyHtml, unsubscribeUrl), trackingUrl);
 
-    const sent = await sendEmailBatch(userId, {
-      subject: input.subject,
-      bodyHtml: html,
-      campaignId: input.campaignId,
-      recipients: [contact],
-    });
+    const sent = await sendEmailBatch(
+      userId,
+      {
+        subject: input.subject,
+        bodyHtml: html,
+        campaignId: input.campaignId,
+        recipients: [contact],
+      },
+      preparedTransport,
+    );
 
     const message = sent[0];
     if (message) {
@@ -533,6 +558,17 @@ export async function dispatchCampaignEmails(userId: string, input: SendInput) {
     }
     if (controlStateBeforeChunk === 'CANCELLED') {
       outcome = 'CANCELLED';
+      break;
+    }
+
+    // Live daily-quota guard: re-check the user's sent count before each chunk so
+    // quota consumed concurrently (another campaign, or another server instance
+    // sharing this database) stops this send too, rather than relying solely on
+    // the up-front slice. This is a no-op in the common single-sender case and can
+    // only stop earlier — it never sends beyond the initial cap.
+    const liveSentToday = await getUserDailySentCount(userId);
+    if (liveSentToday >= account.dailyEmailLimit) {
+      runtimeQuotaSkipped = sendableContacts.length - index;
       break;
     }
 
@@ -631,6 +667,7 @@ export async function dispatchCampaignEmails(userId: string, input: SendInput) {
   }
 
   const finishedAt = new Date();
+  const totalSkipped = duplicates + invalid + quotaSkipped + runtimeQuotaSkipped;
   await updateCampaignProgress(input.campaignId, {
     status:
       outcome === 'PAUSED'
@@ -644,7 +681,7 @@ export async function dispatchCampaignEmails(userId: string, input: SendInput) {
     totalRecipients: dedupedContacts.length,
     sentCount,
     failedCount,
-    skippedCount: duplicates + invalid + quotaSkipped,
+    skippedCount: totalSkipped,
     startedAt,
     finishedAt,
     durationSeconds: Math.max(0, Math.round((finishedAt.getTime() - startedAt.getTime()) / 1000)),
@@ -656,7 +693,7 @@ export async function dispatchCampaignEmails(userId: string, input: SendInput) {
     campaignId: input.campaignId,
     sentCount,
     failedCount,
-    skippedCount: duplicates + invalid + quotaSkipped,
+    skippedCount: totalSkipped,
     recipientCount: dedupedContacts.length,
     durationMs: Math.max(0, finishedAt.getTime() - startedAt.getTime()),
     note: buildProgressNote(transport.provider, sendableContacts.length, dedupedContacts.length, sendConcurrency),
@@ -680,8 +717,9 @@ export async function dispatchCampaignEmails(userId: string, input: SendInput) {
       sendableRecipients: sendableContacts.length,
       sentCount,
       failedCount,
-      skippedCount: duplicates + invalid + quotaSkipped,
+      skippedCount: totalSkipped,
       quotaSkipped,
+      runtimeQuotaSkipped,
       duplicates,
       invalid,
       durationSeconds: Math.max(0, Math.round((finishedAt.getTime() - startedAt.getTime()) / 1000)),
@@ -702,9 +740,9 @@ export async function dispatchCampaignEmails(userId: string, input: SendInput) {
     provider: transport.provider,
     sentCount,
     failedCount,
-    skippedCount: duplicates + invalid + quotaSkipped,
+    skippedCount: totalSkipped,
     totalRecipients: dedupedContacts.length,
-    quotaSkippedCount: quotaSkipped,
+    quotaSkippedCount: quotaSkipped + runtimeQuotaSkipped,
     remainingToday: quota.remainingToday,
   };
 }
@@ -717,15 +755,19 @@ export async function sendTestEmail(userId: string, input: TestEmailInput) {
     email: input.toEmail,
   });
   const unsubscribeUrl = `${getAppOrigin()}/api/unsubscribe?token=${encodeURIComponent(unsubscribeToken)}`;
-  const sent = await sendEmailBatch(userId, {
-    subject: input.subject,
-    bodyHtml: applyUnsubscribeLink(input.bodyHtml, unsubscribeUrl),
-    recipients,
-  });
+  const prepared = await prepareTransport(userId);
+  const sent = await sendEmailBatch(
+    userId,
+    {
+      subject: input.subject,
+      bodyHtml: applyUnsubscribeLink(input.bodyHtml, unsubscribeUrl),
+      recipients,
+    },
+    prepared,
+  );
 
-  const transport = await resolveMailTransport(userId);
   return {
-    provider: transport.provider,
+    provider: prepared.transport.provider,
     messageId: sent[0]?.messageId || null,
   };
 }

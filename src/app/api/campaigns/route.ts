@@ -15,7 +15,7 @@ function buildInClause(values: string[]) {
 }
 
 function jsonWithCampaignTimingHeaders(
-  payload: { campaigns: unknown[]; scope: string },
+  payload: { campaigns: unknown[]; scope: string; pagination?: unknown; totals?: unknown },
   input: {
     durationMs: number;
     summaryOnly: boolean;
@@ -45,6 +45,20 @@ export async function GET(request: Request) {
   const summaryOnly = url.searchParams.get('summary') === 'true' || url.searchParams.get('summary') === '1';
   const compact = url.searchParams.get('compact') === 'true' || url.searchParams.get('compact') === '1';
   const ownerScope = buildOwnerScope(auth.user, 'c."userId"');
+
+  // Pagination is opt-in: callers that pass `limit` get a bounded page plus
+  // pagination/aggregate metadata; callers that omit it keep the historical
+  // behaviour of returning every campaign in scope (backward compatible).
+  const limitParam = url.searchParams.get('limit');
+  const parsedLimit = Number(limitParam);
+  const limit =
+    limitParam !== null && limitParam !== '' && Number.isFinite(parsedLimit)
+      ? Math.min(200, Math.max(1, Math.floor(parsedLimit)))
+      : null;
+  const parsedOffset = Number(url.searchParams.get('offset') || '0');
+  const offset = Number.isFinite(parsedOffset) && parsedOffset > 0 ? Math.floor(parsedOffset) : 0;
+  const paginate = limit !== null;
+  const archivedClause = includeArchived ? '' : 'AND COALESCE(c."isArchived", FALSE) = FALSE';
 
   const campaigns = queryRows<{
     id: string;
@@ -100,15 +114,63 @@ export async function GET(request: Request) {
       INNER JOIN "List" l ON l.id = c."listId"
       INNER JOIN "User" u ON u.id = c."userId"
       WHERE ${ownerScope.clause}
-      ${includeArchived ? '' : 'AND COALESCE(c.isArchived, FALSE) = FALSE'}
+      ${archivedClause}
       ORDER BY c."createdAt" DESC
+      ${paginate ? 'LIMIT ? OFFSET ?' : ''}
     `,
-    ownerScope.params,
+    paginate ? [...ownerScope.params, limit, offset] : ownerScope.params,
   );
+
+  // When paginating, compute the total row count plus aggregate send/engagement
+  // totals across ALL sent campaigns in scope, so the client's summary cards stay
+  // accurate even though only a page of campaigns is returned.
+  let pagination: { total: number; limit: number; offset: number; hasMore: boolean } | undefined;
+  let totals:
+    | { sentCampaigns: number; sent: number; opened: number; delivered: number; bounced: number; unsubscribed: number }
+    | undefined;
+  if (paginate) {
+    const totalRow = queryRow<{ total: number }>(
+      `SELECT COUNT(*) as total FROM "Campaign" c WHERE ${ownerScope.clause} ${archivedClause}`,
+      ownerScope.params,
+    );
+    const total = Number(totalRow?.total || 0);
+    pagination = { total, limit: limit as number, offset, hasMore: offset + campaigns.length < total };
+
+    const campaignTotals = queryRow<{ sentCampaignCount: number; sentTotal: number }>(
+      `SELECT COUNT(*) as "sentCampaignCount", COALESCE(SUM(c."sentCount"), 0) as "sentTotal" FROM "Campaign" c WHERE ${ownerScope.clause} ${archivedClause} AND c.status = 'SENT'`,
+      ownerScope.params,
+    );
+    const eventTotals = queryRow<{
+      openedTotal: number;
+      deliveredTotal: number;
+      bouncedTotal: number;
+      unsubscribedTotal: number;
+    }>(
+      `
+        SELECT
+          SUM(CASE WHEN e.type = 'OPENED' THEN 1 ELSE 0 END) as "openedTotal",
+          SUM(CASE WHEN e.type = 'DELIVERED' THEN 1 ELSE 0 END) as "deliveredTotal",
+          SUM(CASE WHEN e.type = 'BOUNCED' THEN 1 ELSE 0 END) as "bouncedTotal",
+          SUM(CASE WHEN e.type = 'UNSUBSCRIBED' THEN 1 ELSE 0 END) as "unsubscribedTotal"
+        FROM "Event" e
+        INNER JOIN "Campaign" c ON c.id = e."campaignId"
+        WHERE ${ownerScope.clause} ${archivedClause} AND c.status = 'SENT'
+      `,
+      ownerScope.params,
+    );
+    totals = {
+      sentCampaigns: Number(campaignTotals?.sentCampaignCount || 0),
+      sent: Number(campaignTotals?.sentTotal || 0),
+      opened: Number(eventTotals?.openedTotal || 0),
+      delivered: Number(eventTotals?.deliveredTotal || 0),
+      bounced: Number(eventTotals?.bouncedTotal || 0),
+      unsubscribed: Number(eventTotals?.unsubscribedTotal || 0),
+    };
+  }
 
   if (campaigns.length === 0) {
     return jsonWithCampaignTimingHeaders(
-      { campaigns: [], scope: ownerScope.scope },
+      { campaigns: [], scope: ownerScope.scope, pagination, totals },
       {
         durationMs: performance.now() - startedAt,
         summaryOnly,
@@ -140,7 +202,7 @@ export async function GET(request: Request) {
     }));
 
     return jsonWithCampaignTimingHeaders(
-      { campaigns: compactCampaigns, scope: ownerScope.scope },
+      { campaigns: compactCampaigns, scope: ownerScope.scope, pagination, totals },
       {
         durationMs: performance.now() - startedAt,
         summaryOnly,
@@ -247,7 +309,7 @@ export async function GET(request: Request) {
     });
 
   return jsonWithCampaignTimingHeaders(
-    { campaigns: campaignsWithStats, scope: ownerScope.scope },
+    { campaigns: campaignsWithStats, scope: ownerScope.scope, pagination, totals },
     {
       durationMs: performance.now() - startedAt,
       summaryOnly,

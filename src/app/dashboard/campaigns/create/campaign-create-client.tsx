@@ -127,6 +127,10 @@ export function CampaignCreateClient({ campaignId, templateIdFromQuery }: Campai
   const [subject, setSubject] = useState('');
   const [bodyHtml, setBodyHtml] = useState(starterTemplate('Campaign body'));
   const templateChangeRef = useRef(templateId);
+  // Tracks the template id whose content was last applied to subject/body, so the
+  // auto-fill effect only runs when the user actually changes the template
+  // selection — never on hydration or unrelated re-renders.
+  const lastAppliedTemplateRef = useRef('');
   const [templatePulseVariant, setTemplatePulseVariant] = useState<0 | 1>(0);
 
   async function loadCampaignRisk(nextCampaignId: string) {
@@ -168,6 +172,10 @@ export function CampaignCreateClient({ campaignId, templateIdFromQuery }: Campai
           setName(campaign.name);
           nameTouchedRef.current = false;
           setSelectedListIds((campaign.lists && campaign.lists.length > 0 ? campaign.lists : campaign.list ? [campaign.list] : []).map((list) => list.id));
+          // Seed the applied-template ref to the campaign's template so the
+          // auto-fill effect treats it as already applied and preserves the
+          // campaign's saved (possibly edited) subject/body below.
+          lastAppliedTemplateRef.current = campaign.template?.id || '';
           setTemplateId(campaign.template?.id || '');
           setSubject(campaign.subject);
           setBodyHtml(campaign.bodyHtml);
@@ -186,10 +194,23 @@ export function CampaignCreateClient({ campaignId, templateIdFromQuery }: Campai
   useEffect(() => { loadAll(); }, []);
 
   useEffect(() => {
-    const selected = templates.find((t) => t.id === templateId);
+    // Wait until an existing campaign has hydrated before touching content.
     if (campaignId && !campaignHydratedRef.current) {
       return;
     }
+    // Only apply template content when the template SELECTION actually changes
+    // (the user picked a template). Hydration, a name keystroke, or templates
+    // finishing loading must never clobber the campaign's edited content.
+    if (templateId === lastAppliedTemplateRef.current) {
+      return;
+    }
+    const selected = templates.find((t) => t.id === templateId);
+    // If a template is selected but the templates list hasn't loaded yet, wait
+    // for it (don't mark as applied) so the content is filled once available.
+    if (templateId && !selected) {
+      return;
+    }
+    lastAppliedTemplateRef.current = templateId;
     if (selected) {
       setSubject(selected.subject);
       setBodyHtml(selected.bodyHtml);

@@ -78,6 +78,8 @@ export default function AnalyticsPage() {
   const [listId, setListId] = useState('');
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
   const loadSummary = useCallback(async () => {
     const params = new URLSearchParams();
@@ -87,6 +89,9 @@ export default function AnalyticsPage() {
     if (to) params.set('to', to);
 
     const response = await fetch(`/api/analytics/summary?${params.toString()}`, { cache: 'no-store' });
+    if (!response.ok) {
+      throw new Error(`Failed to load analytics summary (${response.status}).`);
+    }
     const data = (await response.json()) as SummaryResponse;
     setSummary(data);
   }, [campaignId, listId, from, to]);
@@ -101,19 +106,35 @@ export default function AnalyticsPage() {
     params.set('pageSize', '25');
 
     const response = await fetch(`/api/analytics/events?${params.toString()}`, { cache: 'no-store' });
+    if (!response.ok) {
+      throw new Error(`Failed to load analytics events (${response.status}).`);
+    }
     const data = (await response.json()) as EventDetailsResponse;
     setEvents(data);
   }, [campaignId, listId, from, to]);
 
+  const reload = useCallback(
+    async (nextPage = 1) => {
+      setLoading(true);
+      setError('');
+      try {
+        await Promise.all([loadSummary(), loadEvents(nextPage)]);
+      } catch (loadError) {
+        setError(loadError instanceof Error ? loadError.message : 'Unable to load analytics.');
+      } finally {
+        setLoading(false);
+      }
+    },
+    [loadSummary, loadEvents],
+  );
+
   useEffect(() => {
-    void loadSummary();
-    void loadEvents(1);
-  }, [loadSummary, loadEvents]);
+    void reload(1);
+  }, [reload]);
 
   function applyFilters(event: FormEvent) {
     event.preventDefault();
-    void loadSummary();
-    void loadEvents(1);
+    void reload(1);
   }
 
   const metrics = summary?.metrics;
@@ -129,7 +150,7 @@ export default function AnalyticsPage() {
 
   function goToEventPage(nextPage: number) {
     const bounded = Math.min(Math.max(1, nextPage), totalEventPages);
-    void loadEvents(bounded);
+    void reload(bounded);
   }
 
   return (
@@ -142,6 +163,15 @@ export default function AnalyticsPage() {
           </div>
         </div>
       </header>
+
+      {error ? (
+        <div className="card analytics-panel" role="alert" style={{ borderColor: '#fca5a5', color: '#b91c1c' }}>
+          <strong>Couldn’t load analytics.</strong> {error}{' '}
+          <button className="mini-btn" type="button" onClick={() => void reload(1)}>Retry</button>
+        </div>
+      ) : loading && !summary ? (
+        <div className="card analytics-panel" aria-busy="true">Loading analytics…</div>
+      ) : null}
 
       <section className="card analytics-panel analytics-filters-panel">
         <div className="section-header section-header--compact">

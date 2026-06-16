@@ -82,10 +82,10 @@ export async function PATCH(request: Request, { params }: Params) {
       ? String((body as Record<string, unknown>).name).trim()
       : '';
 
-  const description =
-    typeof body === 'object' && body !== null && 'description' in body
-      ? String((body as Record<string, unknown>).description || '').trim()
-      : '';
+  const hasDescription = typeof body === 'object' && body !== null && 'description' in body;
+  const description = hasDescription
+    ? String((body as Record<string, unknown>).description || '').trim()
+    : '';
   const isDefaultTestList = typeof body === 'object' && body !== null && 'isDefaultTestList' in body
     ? Boolean((body as Record<string, unknown>).isDefaultTestList)
     : undefined;
@@ -99,9 +99,17 @@ export async function PATCH(request: Request, { params }: Params) {
 
   if (!existing) return fail('List not found.', 404);
 
+  // Only overwrite description when the client actually sent the field, so a
+  // rename-only PATCH (no `description` key) does not erase an existing value.
+  const assignments = ['name = ?'];
+  const updateParams: unknown[] = [name];
+  if (hasDescription) {
+    assignments.push('description = ?');
+    updateParams.push(description || null);
+  }
   executeSql(
-    'UPDATE "List" SET name = ?, description = ?, "updatedAt" = CURRENT_TIMESTAMP WHERE id = ? AND "userId" = ?',
-    [name, description || null, params.id, auth.user.userId],
+    `UPDATE "List" SET ${assignments.join(', ')}, "updatedAt" = CURRENT_TIMESTAMP WHERE id = ? AND "userId" = ?`,
+    [...updateParams, params.id, auth.user.userId],
   );
 
   if (isDefaultTestList === true) {
@@ -123,7 +131,7 @@ export async function PATCH(request: Request, { params }: Params) {
     scopeType: 'SELF',
     metadata: {
       changedFields: ['name', 'description', 'isDefaultTestList'].filter((field) =>
-        field === 'name' ? true : field === 'description' ? description !== undefined : isDefaultTestList !== undefined,
+        field === 'name' ? true : field === 'description' ? hasDescription : isDefaultTestList !== undefined,
       ),
       isDefaultTestList,
     },

@@ -55,6 +55,17 @@ export async function PATCH(request: Request, { params }: Params) {
     return fail('No changes provided.', 400);
   }
 
+  // Prevent an admin from locking themselves (and potentially all admins) out by
+  // demoting or deactivating their own account.
+  if (params.id === auth.user.userId) {
+    if (data.role !== undefined && data.role !== 'ADMIN') {
+      return fail('You cannot change your own admin role.', 400);
+    }
+    if (data.isActive === false) {
+      return fail('You cannot deactivate your own account.', 400);
+    }
+  }
+
   const assignments: string[] = [];
   const paramsList: unknown[] = [];
   if (data.name !== undefined) { assignments.push('"name" = ?'); paramsList.push(data.name); }

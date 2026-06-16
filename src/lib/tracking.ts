@@ -1,10 +1,10 @@
 import { SignJWT, jwtVerify } from 'jose';
+import { resolveAppSecret } from '@/lib/crypto';
 
 const TRACKING_TTL_SECONDS = 60 * 60 * 24 * 365;
 
 function getSecret() {
-  const secret = process.env.AUTH_SECRET || 'dev-insecure-auth-secret-change-in-prod';
-  return new TextEncoder().encode(secret);
+  return new TextEncoder().encode(resolveAppSecret());
 }
 
 export type TrackingPayload = {

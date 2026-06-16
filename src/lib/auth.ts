@@ -9,6 +9,7 @@ import { ensureSenderIdentitySchema } from '@/lib/mail-settings';
 import { sanitizeNextPath } from '@/lib/google-oauth';
 import { ensurePlatformSettingsSchema } from '@/lib/platform-settings';
 import { hasCapability } from '@/lib/permissions';
+import { resolveAppSecret } from '@/lib/crypto';
 import { executeSql, queryRow } from '@/lib/sqlite';
 
 export const SESSION_COOKIE = 'mailflow_session';
@@ -18,8 +19,7 @@ const SESSION_TTL_SECONDS = 60 * 60 * 24 * 7;
 const DEFAULT_ADMIN_EMAIL_ALLOWLIST = ['amit.rai@celnet.in', 'puneet.mehrotra@celnet.in'];
 
 function getSessionSecret() {
-  const secret = process.env.AUTH_SECRET || 'dev-insecure-auth-secret-change-in-prod';
-  return new TextEncoder().encode(secret);
+  return new TextEncoder().encode(resolveAppSecret());
 }
 
 function getAdminEmailAllowlist() {

@@ -5,6 +5,7 @@ import { recordAuditEvent } from '@/lib/audit';
 import { fail } from '@/lib/http';
 import { getAppOrigin, sanitizeNextPath } from '@/lib/google-oauth';
 import { APP_ROUTES } from '@/lib/routes';
+import { hasCapability } from '@/lib/permissions';
 import { queryRow } from '@/lib/sqlite';
 
 export const dynamic = 'force-dynamic';
@@ -65,6 +66,16 @@ export async function POST(request: Request) {
   );
 
   if (!target) return fail('Target user not found.', 404);
+  // Impersonating a deactivated account would bypass the isActive gate that the
+  // session resolver intentionally skips for impersonation sessions.
+  if (!Boolean(target.isActive)) {
+    return fail('Cannot impersonate a deactivated account. Reactivate the user first.', 400);
+  }
+  // Disallow lateral impersonation of other administrators to avoid using
+  // impersonation as a privilege-escalation / audit-evasion path.
+  if (hasCapability(target.role, 'manage_users')) {
+    return fail('Cannot impersonate another administrator.', 400);
+  }
 
   const originalToken = cookies().get(SESSION_COOKIE)?.value || '';
   if (!originalToken) return fail('Session not available.', 401);

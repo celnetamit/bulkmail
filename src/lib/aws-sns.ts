@@ -1,6 +1,10 @@
 import { createVerify } from 'node:crypto';
 
 const certCache = new Map<string, string>();
+// Reject SNS messages whose Timestamp is too far from now (in either direction)
+// to limit replay of a previously-captured, validly-signed notification. The
+// window is generous to tolerate clock skew and SNS delivery latency.
+const SNS_MAX_AGE_MS = 60 * 60 * 1000;
 
 type SnsEnvelope = {
   Type?: string;
@@ -141,6 +145,11 @@ export async function verifyAndParseSnsMessage(raw: unknown): Promise<VerifiedSn
 
   if (!topicArn || !messageId || !message || !timestamp || !signature || !signingCertUrl) {
     throw new Error('SNS payload is missing required fields.');
+  }
+
+  const timestampMs = Date.parse(timestamp);
+  if (!Number.isFinite(timestampMs) || Math.abs(Date.now() - timestampMs) > SNS_MAX_AGE_MS) {
+    throw new Error('SNS message timestamp is outside the accepted window.');
   }
 
   if (!isAllowedTopic(topicArn)) {

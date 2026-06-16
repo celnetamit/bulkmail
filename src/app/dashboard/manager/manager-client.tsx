@@ -439,6 +439,9 @@ export default function ManagerDashboardClient() {
                     min={1}
                     step={1}
                   />
+                  <button className="btn-primary" type="submit" disabled={savingTeamId === selectedTeam.id}>
+                    {savingTeamId === selectedTeam.id ? 'Saving...' : 'Save Changes'}
+                  </button>
                 </form>
               </div>
 

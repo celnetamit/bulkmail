@@ -129,13 +129,19 @@ export async function POST(request: Request) {
   }
 
   if (action === 'retarget') {
+    // Validate every campaign BEFORE mutating any of them, so a locked campaign
+    // later in the batch can't leave earlier campaigns already reset to DRAFT.
+    const lockedCampaign = campaignIds.find((campaignId) => {
+      const current = ownedById.get(campaignId);
+      return current ? isCampaignLockedForEditing(current.status) : false;
+    });
+    if (lockedCampaign) {
+      return fail('Sent, queued, retrying, paused, or sending campaigns cannot be retargeted.', 409);
+    }
+
     for (const campaignId of campaignIds) {
       const current = ownedById.get(campaignId);
       if (!current) continue;
-
-      if (isCampaignLockedForEditing(current.status)) {
-        return fail('Sent, queued, retrying, paused, or sending campaigns cannot be retargeted.', 409);
-      }
 
       executeSql(
         `

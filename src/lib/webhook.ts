@@ -1,4 +1,4 @@
-import { decryptSecret } from '@/lib/crypto';
+import { decryptSecret, safeCompareSecret } from '@/lib/crypto';
 import { queryRow } from '@/lib/sqlite';
 
 export async function verifyWebhookSecret(request: Request) {
@@ -6,7 +6,7 @@ export async function verifyWebhookSecret(request: Request) {
   const envExpected = process.env.WEBHOOK_SHARED_SECRET || '';
 
   if (envExpected) {
-    return received === envExpected;
+    return safeCompareSecret(received, envExpected);
   }
 
   const row = queryRow<{ webhookSharedSecretEncrypted: string | null }>(
@@ -19,6 +19,10 @@ export async function verifyWebhookSecret(request: Request) {
     `,
   );
   const expected = row?.webhookSharedSecretEncrypted ? decryptSecret(row.webhookSharedSecretEncrypted) || '' : '';
-  if (!expected) return true;
-  return received === expected;
+  // Fail closed: when no shared secret is configured we cannot authenticate the
+  // caller, so unauthenticated (non-SNS) webhook deliveries must be rejected
+  // rather than silently accepted. SNS payloads are verified separately by
+  // signature in the route handler and never reach this code path.
+  if (!expected) return false;
+  return safeCompareSecret(received, expected);
 }

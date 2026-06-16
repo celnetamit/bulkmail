@@ -10,7 +10,10 @@ import { getPlatformSettings, resolveImageUploadLimitKb } from '@/lib/platform-s
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 const UPLOAD_DIR = `${process.cwd()}/public/uploads/email-media`;
-const IMAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.svg', '.ico', '.tif', '.tiff', '.avif']);
+// NOTE: SVG is intentionally excluded. SVG files served from /public execute
+// embedded <script>/onload JavaScript on the app origin (stored XSS), so they
+// are rejected on upload below.
+const IMAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.ico', '.tif', '.tiff', '.avif']);
 
 type UploadMetadata = {
   folder: string;
@@ -52,7 +55,6 @@ function fileExtension(file: File) {
     'image/png': '.png',
     'image/gif': '.gif',
     'image/webp': '.webp',
-    'image/svg+xml': '.svg',
     'image/bmp': '.bmp',
     'image/tiff': '.tiff',
     'image/x-icon': '.ico',
@@ -187,6 +189,9 @@ export async function POST(request: Request) {
   if (!file.type.startsWith('image/')) {
     return fail('Only image uploads are allowed.', 400);
   }
+  if (file.type === 'image/svg+xml' || extname(file.name || '').toLowerCase() === '.svg') {
+    return fail('SVG uploads are not allowed for security reasons.', 400);
+  }
 
   const platformSettings = await getPlatformSettings();
   const maxUploadKb = resolveImageUploadLimitKb(auth.user.imageUploadLimitKb, platformSettings.imageUploadLimitKb);
@@ -197,6 +202,15 @@ export async function POST(request: Request) {
   }
 
   const bytes = Buffer.from(await file.arrayBuffer());
+
+  // Defense-in-depth against content-type spoofing: reject files whose bytes
+  // look like HTML/SVG/XML (active markup that can carry script) even when the
+  // declared MIME was an image. Real raster images never start with a markup token.
+  const leadingText = bytes.subarray(0, 256).toString('utf8').trimStart().toLowerCase();
+  if (leadingText.startsWith('<') && /<(svg|\?xml|!doctype|html|script)/.test(leadingText)) {
+    return fail('This file does not look like a valid image.', 400);
+  }
+
   const baseName = sanitizeBaseName(file.name);
   const ext = fileExtension(file);
   const fileName = `${baseName}-${Date.now()}-${crypto.randomUUID().replace(/-/g, '').slice(0, 8)}${ext}`;

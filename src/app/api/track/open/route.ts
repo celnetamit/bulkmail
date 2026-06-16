@@ -1,4 +1,5 @@
 import { readOpenTrackingToken } from '@/lib/tracking';
+import { rateLimit } from '@/lib/rate-limit';
 import { executeSql, queryRow } from '@/lib/sqlite';
 
 const TRANSPARENT_GIF = Uint8Array.from([
@@ -23,6 +24,14 @@ export async function GET(request: Request) {
   const payload = token ? await readOpenTrackingToken(token) : null;
 
   if (!payload) {
+    return pixelResponse();
+  }
+
+  // Throttle repeated hits to the SAME open pixel (keyed by campaign+contact, not
+  // by IP — opens are commonly proxied through shared provider IPs). Recording is
+  // idempotent, so when throttled we simply return the pixel without re-writing.
+  const limit = rateLimit(`open:${payload.campaignId}:${payload.contactId}`, 60, 60_000);
+  if (!limit.allowed) {
     return pixelResponse();
   }
 

@@ -8,6 +8,11 @@ import { isCampaignLockedForEditing } from '@/lib/campaign-send-queue';
 
 type Params = { params: { id: string } };
 const ALLOWED_STATUSES = new Set(['DRAFT', 'SCHEDULED', 'QUEUED', 'RETRYING', 'SENDING', 'PAUSED', 'CANCELLED', 'SENT', 'FAILED', 'SKIPPED']);
+// Statuses a client may set directly through this editing endpoint. Sending
+// lifecycle states (QUEUED/RETRYING/SENDING/SENT/FAILED/SKIPPED/PAUSED) are
+// owned by the send-queue and control endpoints and must never be forced here,
+// otherwise a campaign could be marked "SENT" with sentCount=0 and no delivery.
+const MANUALLY_SETTABLE_STATUSES = new Set(['DRAFT', 'SCHEDULED', 'CANCELLED']);
 
 export async function GET(_: Request, { params }: Params) {
   const auth = await requireUserFromCookies();
@@ -148,6 +153,9 @@ export async function PATCH(request: Request, { params }: Params) {
     return fail('name, subject, bodyHtml and status are required.', 400);
   }
   if (!ALLOWED_STATUSES.has(status)) return fail('Invalid status.', 400);
+  if (!MANUALLY_SETTABLE_STATUSES.has(status)) {
+    return fail('This status is managed by the send process and cannot be set manually. Use Send or the campaign controls.', 400);
+  }
 
   const existing = queryRow<{ id: string; listId: string; status: string; isArchived: number | boolean }>(
     'SELECT id, "listId", status, CASE WHEN COALESCE("isArchived", FALSE) THEN 1 ELSE 0 END as "isArchived" FROM "Campaign" WHERE id = ? AND "userId" = ? LIMIT 1',

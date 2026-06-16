@@ -67,6 +67,21 @@ export async function POST(request: Request, { params }: Params) {
     return fail('This user already belongs to this team.', 409);
   }
 
+  // TeamMember.userId is globally unique (a user can only be on one team), so an
+  // existing user already assigned to ANY team must not be reassigned here.
+  // Checking this *before* mutating the User row also prevents a manager from
+  // overwriting another team's user's name/limit and then failing the insert,
+  // which previously left an unauthorized partial mutation behind.
+  if (existingUser) {
+    const otherMembership = queryRow<{ teamId: string }>(
+      'SELECT "teamId" FROM "TeamMember" WHERE "userId" = ? LIMIT 1',
+      [existingUser.id],
+    );
+    if (otherMembership) {
+      return fail('This user already belongs to another team.', 409);
+    }
+  }
+
   const currentAllocation = Number(team.allocatedCredits || 0);
   if (currentAllocation + dailyEmailLimit > team.dailyCreditLimit) {
     return fail('Team credit limit would be exceeded.', 400);

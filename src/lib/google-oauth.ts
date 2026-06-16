@@ -23,6 +23,15 @@ export function getAppOrigin(request: Request) {
     }
   }
 
+  // In production we must NOT trust attacker-controllable forwarding headers
+  // (x-forwarded-host / host) to build OAuth redirect_uris or post-login
+  // redirects, since that enables host-header injection / open redirect.
+  // Configure APP_URL/PUBLIC_APP_URL instead; otherwise fall back to the
+  // framework-parsed request origin.
+  if (process.env.NODE_ENV === 'production') {
+    return new URL(request.url).origin;
+  }
+
   const forwardedProto = request.headers.get('x-forwarded-proto')?.split(',')[0]?.trim() || 'https';
   const forwardedHost =
     request.headers.get('x-forwarded-host')?.split(',')[0]?.trim() ||

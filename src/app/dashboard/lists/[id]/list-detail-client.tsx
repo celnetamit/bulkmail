@@ -134,7 +134,7 @@ export function ListDetailClient({ listId }: { listId: string }) {
     const response = await fetch(`/api/contacts?${params.toString()}`, { cache: 'no-store' });
     const data = (await response.json()) as { contacts?: Contact[]; pagination?: Pagination };
     setContacts(data.contacts || []);
-    setContactsPagination(data.pagination || contactsPagination);
+    setContactsPagination((current) => data.pagination || current);
   }
 
   useEffect(() => {

@@ -36,6 +36,23 @@ type Campaign = {
   isOwner?: boolean;
 };
 
+type CampaignTotals = {
+  sentCampaigns: number;
+  sent: number;
+  opened: number;
+  delivered: number;
+  bounced: number;
+  unsubscribed: number;
+};
+
+type CampaignsResponse = {
+  campaigns: Campaign[];
+  pagination?: { total: number; limit: number; offset: number; hasMore: boolean };
+  totals?: CampaignTotals;
+  error?: string;
+};
+
+const CAMPAIGNS_PAGE_SIZE = 50;
 const READ_ONLY_CAMPAIGN_STATUSES = new Set(['SENT']);
 const ACTION_LOCKED_CAMPAIGN_STATUSES = new Set(['QUEUED', 'RETRYING', 'SENDING', 'PAUSED', 'SENT']);
 
@@ -191,6 +208,11 @@ export default function CampaignsPage() {
   const toast = useToast();
   const campaignImportRef = useRef<HTMLInputElement | null>(null);
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
+  const [campaignTotal, setCampaignTotal] = useState(0);
+  const [campaignTotals, setCampaignTotals] = useState<CampaignTotals | null>(null);
+  const [hasMoreCampaigns, setHasMoreCampaigns] = useState(false);
+  const [loadingMoreCampaigns, setLoadingMoreCampaigns] = useState(false);
+  const loadedCampaignCountRef = useRef(0);
   const [lists, setLists] = useState<ListOption[]>([]);
   const [listsLoading, setListsLoading] = useState(false);
   const [listsLoaded, setListsLoaded] = useState(false);
@@ -215,15 +237,54 @@ export default function CampaignsPage() {
   const selectedCampaignCount = selectedCampaignIds.length;
 
   const loadCampaigns = useCallback(async () => {
-    const campaignsRes = await fetch(`/api/campaigns?summary=true&compact=true${showArchived ? '&includeArchived=true' : ''}`, { cache: 'no-store' });
-    const campaignsData = (await campaignsRes.json()) as { campaigns: Campaign[]; error?: string };
+    // Reload from the first page but keep showing as many rows as were already
+    // loaded (so a refresh after an action doesn't collapse the list).
+    const limit = Math.max(CAMPAIGNS_PAGE_SIZE, loadedCampaignCountRef.current || CAMPAIGNS_PAGE_SIZE);
+    const campaignsRes = await fetch(
+      `/api/campaigns?summary=true&compact=true&limit=${limit}&offset=0${showArchived ? '&includeArchived=true' : ''}`,
+      { cache: 'no-store' },
+    );
+    const campaignsData = (await campaignsRes.json()) as CampaignsResponse;
     if (!campaignsRes.ok) {
       toast.error('Campaign load failed', campaignsData.error || 'The campaign list could not be loaded.');
       return;
     }
-    setCampaigns(campaignsData.campaigns || []);
+    const next = campaignsData.campaigns || [];
+    setCampaigns(next);
+    loadedCampaignCountRef.current = next.length;
+    setCampaignTotal(campaignsData.pagination?.total ?? next.length);
+    setHasMoreCampaigns(Boolean(campaignsData.pagination?.hasMore));
+    setCampaignTotals(campaignsData.totals ?? null);
     setSelectedCampaignIds([]);
   }, [showArchived, toast]);
+
+  const loadMoreCampaigns = useCallback(async () => {
+    if (loadingMoreCampaigns) return;
+    setLoadingMoreCampaigns(true);
+    try {
+      const offset = loadedCampaignCountRef.current;
+      const campaignsRes = await fetch(
+        `/api/campaigns?summary=true&compact=true&limit=${CAMPAIGNS_PAGE_SIZE}&offset=${offset}${showArchived ? '&includeArchived=true' : ''}`,
+        { cache: 'no-store' },
+      );
+      const campaignsData = (await campaignsRes.json()) as CampaignsResponse;
+      if (!campaignsRes.ok) {
+        toast.error('Campaign load failed', campaignsData.error || 'More campaigns could not be loaded.');
+        return;
+      }
+      setCampaigns((current) => {
+        const seen = new Set(current.map((campaign) => campaign.id));
+        const merged = [...current, ...(campaignsData.campaigns || []).filter((campaign) => !seen.has(campaign.id))];
+        loadedCampaignCountRef.current = merged.length;
+        return merged;
+      });
+      setCampaignTotal((current) => campaignsData.pagination?.total ?? current);
+      setHasMoreCampaigns(Boolean(campaignsData.pagination?.hasMore));
+      if (campaignsData.totals) setCampaignTotals(campaignsData.totals);
+    } finally {
+      setLoadingMoreCampaigns(false);
+    }
+  }, [showArchived, toast, loadingMoreCampaigns]);
 
   const loadSenderIdentity = useCallback(async () => {
     const response = await fetch('/api/settings', { cache: 'no-store' });
@@ -401,6 +462,19 @@ export default function CampaignsPage() {
 
   const sentCampaigns = useMemo(() => campaigns.filter((campaign) => campaign.status === 'SENT'), [campaigns]);
   const summary = useMemo(() => {
+    // Prefer server-computed aggregates (accurate across ALL sent campaigns even
+    // when only a page is loaded); fall back to reducing the loaded set.
+    if (campaignTotals) {
+      const averageOpenRate = campaignTotals.sent > 0 ? (campaignTotals.opened / campaignTotals.sent) * 100 : 0;
+      return {
+        sent: campaignTotals.sent,
+        opened: campaignTotals.opened,
+        bounced: campaignTotals.bounced,
+        unsubscribed: campaignTotals.unsubscribed,
+        averageOpenRate,
+        sentCampaigns: campaignTotals.sentCampaigns,
+      };
+    }
     const totals = sentCampaigns.reduce(
       (acc, campaign) => ({
         sent: acc.sent + campaign.sentCount,
@@ -412,7 +486,7 @@ export default function CampaignsPage() {
     );
     const averageOpenRate = totals.sent > 0 ? (totals.opened / totals.sent) * 100 : 0;
     return { ...totals, averageOpenRate, sentCampaigns: sentCampaigns.length };
-  }, [sentCampaigns]);
+  }, [campaignTotals, sentCampaigns]);
   const activeCampaignProgress = activeCampaign
     ? activeCampaign.totalRecipients > 0
       ? Math.min(100, (activeCampaign.sentCount / activeCampaign.totalRecipients) * 100)
@@ -1080,7 +1154,12 @@ export default function CampaignsPage() {
                     </div>
                     <div className="campaigns-table__action-row campaigns-table__action-row--select">
                       <select className="status-select" value={c.status} onChange={(e) => updateStatus(c, e.target.value)} disabled={!canManageCampaign || isActionLockedCampaignStatus(c.status) || Boolean(c.isArchived)}>
-                        <option>DRAFT</option><option>SCHEDULED</option><option>QUEUED</option><option>RETRYING</option><option>SENDING</option><option>PAUSED</option><option>CANCELLED</option><option>SENT</option><option>FAILED</option><option>SKIPPED</option>
+                        {/* Only DRAFT/SCHEDULED/CANCELLED can be set manually; sending lifecycle
+                            states are owned by Send and the campaign controls. The current status is
+                            always included so the controlled select stays valid for read-only rows. */}
+                        {Array.from(new Set([c.status, 'DRAFT', 'SCHEDULED', 'CANCELLED'])).map((statusOption) => (
+                          <option key={statusOption} value={statusOption}>{statusOption}</option>
+                        ))}
                       </select>
                     </div>
                     <div className="campaigns-table__action-row">
@@ -1133,6 +1212,16 @@ export default function CampaignsPage() {
               })}
             </tbody>
           </table>
+          {hasMoreCampaigns ? (
+            <div className="campaigns-table__load-more" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.75rem', padding: '1rem' }}>
+              <span className="campaigns-table__meta campaigns-table__meta--muted">
+                Showing {campaigns.length} of {campaignTotal}
+              </span>
+              <button className="mini-btn" type="button" onClick={() => void loadMoreCampaigns()} disabled={loadingMoreCampaigns}>
+                {loadingMoreCampaigns ? 'Loading...' : 'Load more'}
+              </button>
+            </div>
+          ) : null}
         </div>
       </div>
 

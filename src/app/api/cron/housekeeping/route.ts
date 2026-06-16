@@ -1,5 +1,6 @@
 import { fail, ok } from '@/lib/http';
 import { runHousekeeping } from '@/lib/housekeeping';
+import { safeCompareSecret } from '@/lib/crypto';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -23,7 +24,7 @@ async function handleCron(request: Request) {
     return fail('HOUSEKEEPING_CRON_SECRET is not configured.', 503);
   }
 
-  if (readSecret(request) !== expectedSecret) {
+  if (!safeCompareSecret(readSecret(request), expectedSecret)) {
     return fail('Unauthorized', 401);
   }
 
