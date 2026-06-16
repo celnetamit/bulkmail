@@ -145,9 +145,10 @@ export async function PATCH(request: Request, { params }: Params) {
   return ok({ list });
 }
 
-export async function DELETE(_: Request, { params }: Params) {
+export async function DELETE(request: Request, { params }: Params) {
   const auth = await requireUserFromCookies();
   if ('error' in auth) return auth.error;
+  const forceDelete = new URL(request.url).searchParams.get('force') === 'true';
 
   const existing = queryRow<{ id: string }>(
     'SELECT id FROM "List" WHERE id = ? AND "userId" = ? LIMIT 1',
@@ -155,6 +156,28 @@ export async function DELETE(_: Request, { params }: Params) {
   );
 
   if (!existing) return fail('List not found.', 404);
+
+  const campaignUsage = queryRow<{ campaignCount: number }>(
+    'SELECT COUNT(*) as campaignCount FROM "Campaign" WHERE "listId" = ? AND "userId" = ?',
+    [params.id, auth.user.userId],
+  );
+  const campaignCount = campaignUsage?.campaignCount || 0;
+
+  if (campaignCount > 0 && !forceDelete) {
+    return fail(
+      `This list is used by ${campaignCount} campaign${campaignCount === 1 ? '' : 's'}. Delete it anyway?`,
+      409,
+      {
+        code: 'list_in_use',
+        campaignCount,
+        hardDeleteAvailable: true,
+      },
+    );
+  }
+
+  if (forceDelete && campaignCount > 0) {
+    executeSql('DELETE FROM "Campaign" WHERE "listId" = ? AND "userId" = ?', [params.id, auth.user.userId]);
+  }
 
   executeSql('DELETE FROM "List" WHERE id = ? AND "userId" = ?', [params.id, auth.user.userId]);
   await recordAuditEvent({
@@ -165,6 +188,10 @@ export async function DELETE(_: Request, { params }: Params) {
     entityType: 'List',
     entityId: params.id,
     scopeType: 'SELF',
+    metadata: {
+      forceDelete,
+      campaignCount,
+    },
   });
   return ok({ success: true });
 }

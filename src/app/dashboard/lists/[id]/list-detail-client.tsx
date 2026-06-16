@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { FormEvent, useEffect, useState } from 'react';
+import { ListDeleteModal } from '@/components/list-delete-modal';
 import { useToast } from '@/components/toast-provider';
 
 type ListDetail = {
@@ -33,6 +34,12 @@ type Pagination = {
   search: string;
   sort: string;
   order: 'asc' | 'desc';
+};
+
+type DeleteListResponse = {
+  error?: string;
+  code?: string;
+  campaignCount?: number;
 };
 
 function formatRange(page: number, pageSize: number, total: number) {
@@ -93,6 +100,8 @@ export function ListDetailClient({ listId }: { listId: string }) {
   const [csvText, setCsvText] = useState('');
   const [csvImporting, setCsvImporting] = useState(false);
   const [csvImportStatus, setCsvImportStatus] = useState('');
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteBusy, setDeleteBusy] = useState(false);
 
   async function loadList() {
     if (!listId) {
@@ -207,20 +216,37 @@ export function ListDetailClient({ listId }: { listId: string }) {
   }
 
   async function deleteList() {
-    if (!list) return;
-    if (list.isOwner === false) {
+    const currentList = list;
+    if (!currentList) return;
+    const listToDelete: ListDetail = currentList;
+    if (listToDelete.isOwner === false) {
       toast.warning('Read-only list', 'This list is read-only for your role.');
       return;
     }
-    if (!confirm(`Delete list "${list.name}"?`)) return;
+    setDeleteOpen(true);
+  }
 
-    const response = await fetch(`/api/lists/${list.id}`, { method: 'DELETE' });
-    const data = await response.json();
+  async function confirmDeleteList(forceDelete: boolean) {
+    if (!list) return;
+
+    setDeleteBusy(true);
+    const response = await fetch(`/api/lists/${list.id}${forceDelete ? '?force=true' : ''}`, { method: 'DELETE' });
+    const data = (await response.json().catch(() => ({}))) as DeleteListResponse;
+
     if (!response.ok) {
+      setDeleteBusy(false);
+      if (!forceDelete && response.status === 409 && data.code === 'list_in_use' && typeof data.campaignCount === 'number' && data.campaignCount > 0) {
+        setList((current) => (current ? { ...current, campaignsCount: data.campaignCount || 0 } : current));
+        setDeleteOpen(true);
+        return;
+      }
+
       toast.error('List delete failed', data.error || 'The list could not be deleted.');
       return;
     }
 
+    setDeleteBusy(false);
+    setDeleteOpen(false);
     toast.success('List deleted', 'The list was removed.');
     router.push('/dashboard/lists');
   }
@@ -357,6 +383,19 @@ export function ListDetailClient({ listId }: { listId: string }) {
 
   return (
     <div className="overview">
+      <ListDeleteModal
+        open={deleteOpen}
+        listName={list?.name || ''}
+        contactCount={list?.contactsCount || 0}
+        campaignCount={list?.campaignsCount || 0}
+        busy={deleteBusy}
+        onClose={() => {
+          if (deleteBusy) return;
+          setDeleteOpen(false);
+        }}
+        onDelete={confirmDeleteList}
+      />
+
       <header className="page-header">
         <div className="page-header__row">
           <div>

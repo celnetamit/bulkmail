@@ -4,6 +4,6 @@ export function ok<T>(data: T, status = 200) {
   return NextResponse.json(data, { status });
 }
 
-export function fail(message: string, status = 400) {
-  return NextResponse.json({ error: message }, { status });
+export function fail(message: string, status = 400, details: Record<string, unknown> = {}) {
+  return NextResponse.json({ error: message, ...details }, { status });
 }

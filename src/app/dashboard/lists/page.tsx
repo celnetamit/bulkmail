@@ -3,6 +3,7 @@
 import { ChangeEvent, FormEvent, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { IconHelp, IconImport, IconPlus } from '@/components/dashboard-icons';
+import { ListDeleteModal } from '@/components/list-delete-modal';
 import { useToast } from '@/components/toast-provider';
 
 type ListItem = {
@@ -42,6 +43,8 @@ type BulkListResponse = {
   listIds?: string[];
   createdListIds?: string[];
   lists?: ListItem[];
+  code?: string;
+  campaignCount?: number;
 };
 
 async function readJsonResponse<T>(response: Response): Promise<T | null> {
@@ -127,6 +130,8 @@ export default function ListsPage() {
   const [showArchived, setShowArchived] = useState(false);
   const [bulkLoading, setBulkLoading] = useState(false);
   const [importStatus, setImportStatus] = useState('');
+  const [deleteTarget, setDeleteTarget] = useState<ListItem | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
 
   async function loadLists() {
     const params = new URLSearchParams({
@@ -221,15 +226,29 @@ export default function ListsPage() {
   }
 
   async function deleteList(list: ListItem) {
-    if (!confirm(`Delete list "${list.name}"?`)) return;
+    setDeleteTarget(list);
+  }
 
-    const response = await fetch(`/api/lists/${list.id}`, { method: 'DELETE' });
-    const data = await readResponseMessage(response, 'Failed to delete list.');
+  async function confirmDeleteList(forceDelete: boolean) {
+    if (!deleteTarget) return;
+
+    setDeleteBusy(true);
+    const response = await fetch(`/api/lists/${deleteTarget.id}${forceDelete ? '?force=true' : ''}`, { method: 'DELETE' });
+    const data = (await readJsonResponse<BulkListResponse>(response)) || {};
+
     if (!response.ok) {
-      toast.error('List delete failed', data?.error || 'The list could not be deleted.');
+      setDeleteBusy(false);
+      if (!forceDelete && response.status === 409 && data.code === 'list_in_use' && typeof data.campaignCount === 'number' && data.campaignCount > 0) {
+        setDeleteTarget((current) => (current ? { ...current, campaignsCount: data.campaignCount || 0 } : current));
+        return;
+      }
+
+      toast.error('List delete failed', data.error || 'The list could not be deleted.');
       return;
     }
 
+    setDeleteBusy(false);
+    setDeleteTarget(null);
     toast.success('List deleted', 'The list was removed.');
     await loadLists();
   }
@@ -370,6 +389,19 @@ export default function ListsPage() {
 
   return (
     <div className="overview">
+      <ListDeleteModal
+        open={deleteTarget !== null}
+        listName={deleteTarget?.name || ''}
+        contactCount={deleteTarget?.contactsCount || 0}
+        campaignCount={deleteTarget?.campaignsCount || 0}
+        busy={deleteBusy}
+        onClose={() => {
+          if (deleteBusy) return;
+          setDeleteTarget(null);
+        }}
+        onDelete={confirmDeleteList}
+      />
+
       <header className="page-header">
         <div className="page-header__row">
           <div>
