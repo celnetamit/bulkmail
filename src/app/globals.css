@@ -784,31 +784,51 @@ p {
 }
 
 .stat-card {
-  background: linear-gradient(180deg, #63f5df 0%, #46ebd2 100%);
+  position: relative;
+  overflow: hidden;
+  background: #ffffff;
   border: 1px solid var(--border-color);
   border-radius: 1rem;
   padding: 1.5rem;
-  box-shadow: 0 10px 22px -14px rgba(15, 23, 42, 0.42);
-  transition: transform 0.2s;
-  color: #062b2d;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 14px 26px -20px rgba(15, 23, 42, 0.4);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  color: #0f172a;
+}
+
+.stat-card::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 3px;
+  background: linear-gradient(90deg, #2dd4bf 0%, #0d9488 100%);
 }
 
 .stat-card:hover {
-  transform: translateY(-5px);
+  transform: translateY(-3px);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05), 0 18px 32px -20px rgba(15, 23, 42, 0.5);
 }
 
 .stat-card h3 {
-  font-size: 0.875rem;
-  color: #0f3d42;
-  font-weight: 500;
+  font-size: 0.85rem;
+  color: #64748b;
+  font-weight: 600;
   margin-bottom: 0.5rem;
 }
 
 .stat-value {
   font-size: 2rem;
   font-weight: 700;
-  color: #062b2d;
+  color: #0f172a;
   margin-bottom: 0;
+}
+
+/* Some stat cards (e.g. Sender Identity) carry an action link; keep it inside
+   the card with proper spacing instead of overflowing the bottom edge. */
+.stat-card .mini-btn {
+  display: inline-flex;
+  align-items: center;
+  margin-top: 0.85rem;
+  margin-right: 0;
 }
 
 .text-red { color: #ef4444; }
@@ -4312,7 +4332,7 @@ p {
   }
 
   .user-profile__email {
-    max-width: min(38vw, 150px);
+    max-width: min(46vw, 220px);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -4321,7 +4341,17 @@ p {
   .logout-btn {
     padding-inline: 0.7rem;
   }
+}
 
+/* On very narrow screens the truncated email crowds the brand and Logout
+   button, so drop it and keep just the role badge + Logout for a clean header. */
+@media (max-width: 560px) {
+  .user-profile__email {
+    display: none;
+  }
+}
+
+@media (max-width: 720px) {
   .content-area {
     padding: 1rem;
   }
