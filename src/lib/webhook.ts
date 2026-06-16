@@ -19,10 +19,17 @@ export async function verifyWebhookSecret(request: Request) {
     `,
   );
   const expected = row?.webhookSharedSecretEncrypted ? decryptSecret(row.webhookSharedSecretEncrypted) || '' : '';
-  // Fail closed: when no shared secret is configured we cannot authenticate the
-  // caller, so unauthenticated (non-SNS) webhook deliveries must be rejected
-  // rather than silently accepted. SNS payloads are verified separately by
-  // signature in the route handler and never reach this code path.
-  if (!expected) return false;
+  if (!expected) {
+    // Fail closed in production: when no shared secret is configured we cannot
+    // authenticate the caller, so unauthenticated (non-SNS) webhook deliveries
+    // must be rejected rather than silently accepted. SNS payloads are verified
+    // separately by signature in the route handler and never reach this path.
+    //
+    // Outside production we accept unsigned deliveries so local development and
+    // the API smoke test can exercise the webhook ingest path without a secret,
+    // matching the documented `.env` contract ("leave blank to accept test
+    // webhook payloads without a secret").
+    return process.env.NODE_ENV !== 'production';
+  }
   return safeCompareSecret(received, expected);
 }
